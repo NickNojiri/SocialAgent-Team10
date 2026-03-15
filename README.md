@@ -1,22 +1,49 @@
-# SocialAgent-Team10
-oh who wants coffee
+# Team 10: AI Social Coordinator Agent
+An autonomous agent built with the **Lean Stack** to negotiate meeting times and venues between friends using Llama 3.1 and real-world location data.
 
-social-agent-team10/
-├── .env                # Secret API keys (Google Places, etc.)
-├── .gitignore          # Tells Git to ignore .env and local DB files
-├── requirements.txt    # List of all Python libraries needed
-├── README.md           # Instructions for the professor
-├── data/               # Folder where ChromaDB stores your "Vector Memory"
-│   └── chroma.db       # Actual local database file
-├── src/                # All your source code lives here
-│   ├── __init__.py     # Makes this folder a Python package
-│   ├── main.py         # Entry point: Runs the FastAPI server
-│   ├── api/            # API Route definitions
-│   │   └── endpoints.py
-│   ├── logic/          # The "Brain" (LLM & NLP logic)
-│   │   ├── scheduler.py  # Llama 3.1 negotiation logic
-│   │   └── parser.py     # spaCy/Duckling date extraction
-│   ├── services/       # External tool integrations
-│   │   └── google_maps.py # Google Places API calls
-│   └── utils/          # Helper functions (logging, date formatting)
-└── tests/              # Folder for testing your AI logic
+## 🚀 Quick Start
+To run the full integration test of the agent:
+
+1. **Activate Environment:**
+   ```bash
+   source .venv/bin/activate
+
+
+
+SocialAgent-Team10/
+├── .env                # Private API Keys (Google/Ollama)
+├── .gitignore          # Keeps the repo clean (ignores .venv, data/, etc.)
+├── README.md           # Project documentation
+├── requirements.txt    # Project dependencies
+├── test_unit.py        # Integration test script (The "Main Entry")
+├── .venv/              # Local Python environment (10k+ files, ignored)
+├── data/               # Persistent ChromaDB storage
+└── src/                # Core Source Code
+    ├── main.py         # FastAPI application entry
+    ├── api/            # API Route definitions
+    ├── logic/          # The "Brain" (Llama 3.1, NLP Parser, Database)
+    │   ├── parser.py
+    │   ├── scheduler.py
+    │   └── database.py
+    └── services/       # External Integrations (Google Places API)
+        └── google_maps.py
+
+🛠️ The Tech Stack
+
+    LLM: Llama 3.1 (via Ollama)
+
+    Orchestration: LangChain
+
+    API: FastAPI
+
+    Database: ChromaDB (Vector Storage)
+
+    NLP: spaCy & Duckling
+
+📂 Key Components
+
+    NLP Parser (parser.py): Converts messy text like "7ish on Friday" into machine timestamps.
+
+    Venue Scout (Maps.py): Finds the best-rated spots at a midpoint.
+
+    Scheduler (scheduler.py): The LLM "Brain" that resolves conflicts and picks the plan.
