@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+spacy
+duckling
+chromadb
+requests
+python-dotenv
