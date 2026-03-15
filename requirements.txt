@@ -1,9 +1,16 @@
+# Web Server
 fastapi
 uvicorn
+
+# AI & Logic
 langchain
 langchain-community
-spacy
-duckling
+langchain-ollama
+dateparser
+
+# Database & Storage
 chromadb
+
+# Utilities
 requests
 python-dotenv
