@@ -1,0 +1,6 @@
+# Team 10 Master Ignore
+.env                # Protects your Google API Keys
+__pycache__/        # Hides messy Python temp files
+data/               # Keeps your local AI memory private
+.venv/              # Double-check: ignores the virtual env
+*.pyc               # Ignore compiled files
