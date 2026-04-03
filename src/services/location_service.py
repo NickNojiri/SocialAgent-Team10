@@ -22,11 +22,11 @@ def get_midpoint(lat1, lon1, lat2, lon2):
     """Calculates the average Lat/Lng between two points."""
     return (lat1 + lat2) / 2, (lon1 + lon2) / 2
 
-def find_venues(lat, lng, place_type="cafe"):
+def find_venues(lat, lng, place_type="cafe", radius=500):
     """Finds venues via OpenStreetMap (Overpass API)."""
     query = f"""
     [out:json];
-    node["amenity"="{place_type}"](around:1500,{lat},{lng});
+    node["amenity"="{place_type}"](around:{radius},{lat},{lng});
     out body;
     """
     url = "https://overpass-api.de/api/interpreter"
