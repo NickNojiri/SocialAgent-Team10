@@ -3,6 +3,18 @@ Team 10: AI Social Coordinator Agent
 An autonomous social agent built with a Lean Stack to negotiate meeting times and venues between friends using local LLMs and real-world location data. This project prioritizes privacy and cost-efficiency by running models and location services locally or via free open-source APIs.
 🚀 Quick Start
 
+For development make sure to create your own virtual environment using:
+
+`py 3.12 -m venv .venv`
+
+Activate the environment: 
+
+`.venv\Scripts\activate`
+
+Then run:
+
+`pip install -r requirements.txt`
+
 To get the environment and agent running in a fresh Codespace:
 
     Automated Setup:
