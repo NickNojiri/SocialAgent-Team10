@@ -17,7 +17,7 @@ def run_integration_test():
     # 2. Initialize Agent and process the test coordination request
     agent = CoordinationAgent()
     result = agent.coordinate_meeting(
-        user_ids=["alfredo_123", "john_456"], 
+        user_ids=["alfredo_123", "john_456"],
         raw_input="The group wants to meet around this Friday at 7pm. Alfredo hates loud music."
     )
     

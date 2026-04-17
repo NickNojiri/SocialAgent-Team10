@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+
+  # Container 1: Discord Bot
+  discord-bot:
+    build: ./app
+    container_name: event-bot
+    env_file: .env
+    depends_on:
+      - llm
+    networks:
+      - event-net
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach Ollama on host
+
+  # Container 2: LLM
+  llm:
+    build: ./llm
+    container_name: event-llm
+    env_file: .env
+    depends_on:
+      - db
+    networks:
+      - event-net
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach Ollama on host
+
+  # Container 3: Memory/DB─
+  db:
+    build: ./db
+    container_name: event-db
+    networks:
+      - event-net
+    ports:
+      - "8002:8002"
+    volumes:
+      - db-data:/data # persists SQLite file across restarts             
+    restart: unless-stopped
+
+networks:
+  event-net:
+    driver: bridge
+
+volumes:
+  db-data:
