@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 import discord
 import httpx
 
-LLM_URL       = os.getenv("LLM_URL", "http://llm:8001")
-DB_URL        = os.getenv("DB_URL",  "http://db:8002")
+LLM_URL = os.getenv("LLM_URL", "http://llm:8001")
+DB_URL = os.getenv("DB_URL",  "http://db:8002")
 BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))  # 0 → respond to @mentions anywhere
 
 
@@ -70,7 +70,7 @@ async def on_message(message: discord.Message):
 
 async def call_llm(message: discord.Message):
     """Send the message to the LLM service and return (text, action, db_event_id)."""
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=3000.0) as client:
         resp = await client.post(
             f"{LLM_URL}/chat",
             json={
