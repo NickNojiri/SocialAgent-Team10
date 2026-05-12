@@ -13,7 +13,12 @@ import time
 from datetime import datetime, timezone
 
 import discord
+from discord import app_commands
+from discord.ext import commands
+
 import httpx
+import json
+from pathlib import Path
 
 # ── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -37,13 +42,16 @@ BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @men
 HEALTH_RETRY_SECONDS = 5
 HEALTH_MAX_ATTEMPTS  = 12   # give up after ~1 minute
 
-
 # ── Discord client setup ───────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True   # required to read message text
 
 bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
 
+# Saved channels for discord servers
+CONFIG_FILE = Path("channels.json")
+ENABLED_CHANNELS: set[int] = set()
 
 # ── Startup health check ───────────────────────────────────────────────────
 
@@ -76,10 +84,19 @@ async def wait_for_llm():
 @bot.event
 async def on_ready():
     log.info(f"=== Bot online: {bot.user} (ID: {bot.user.id}) ===")
-    if BOT_CHANNEL_ID:
-        log.info(f"Listening in channel {BOT_CHANNEL_ID}")
+
+    load_channels()
+
+    try:
+        synced = await tree.sync()
+        log.info(f"[slash] Synced {len(synced)} slash commands")
+    except Exception as exc:
+        log.exception(f"[slash] Failed to sync commands: {exc}")
+
+    if ENABLED_CHANNELS:
+        log.info(f"Enabled channels: {sorted(ENABLED_CHANNELS)}")
     else:
-        log.info("Listening for @mentions in all channels")
+        log.info("No enabled channels configured yet")
 
     # Run the health check in the background so the bot is already
     # connected to Discord while we wait for the LLM container to start.
@@ -94,10 +111,10 @@ async def on_message(message: discord.Message):
     if message.guild is None:
         return
 
-    bot_mentioned     = bot.user.mentioned_in(message)
-    in_target_channel = (BOT_CHANNEL_ID == 0 or message.channel.id == BOT_CHANNEL_ID)
+    bot_mentioned = bot.user.mentioned_in(message)
+    in_enabled_channel = message.channel.id in ENABLED_CHANNELS
 
-    if not (bot_mentioned or in_target_channel):
+    if not (bot_mentioned or in_enabled_channel):
         return
 
     log.info(
@@ -136,6 +153,64 @@ async def on_message(message: discord.Message):
         await handle_create_event(message, action, db_event_id)
 
 
+# ── Slash Commands ─────────────────────────────────────────────────────────
+
+@tree.command(
+    name="here",
+    description="Enable this channel for bot conversations"
+)
+@app_commands.default_permissions(manage_channels=True)
+async def here_command(interaction: discord.Interaction):
+
+    ENABLED_CHANNELS.add(interaction.channel.id)
+    save_channels()
+
+    log.info(f"[config] Enabled channel {interaction.channel.id}")
+
+    await interaction.response.send_message(
+        "✅ This channel is now a bot-enabled meeting channel."
+    )
+
+
+@tree.command(
+    name="leave",
+    description="Disable bot conversations in this channel"
+)
+@app_commands.default_permissions(manage_channels=True)
+async def leave_command(interaction: discord.Interaction):
+
+    ENABLED_CHANNELS.discard(interaction.channel.id)
+    save_channels()
+
+    log.info(f"[config] Disabled channel {interaction.channel.id}")
+
+    await interaction.response.send_message(
+        "🛑 Bot responses disabled in this channel."
+    )
+
+
+@tree.command(
+    name="channels",
+    description="List enabled bot channels"
+)
+async def channels_command(interaction: discord.Interaction):
+
+    if not ENABLED_CHANNELS:
+        await interaction.response.send_message(
+            "No bot-enabled channels configured."
+        )
+        return
+
+    channel_mentions = [
+        f"<#{channel_id}>"
+        for channel_id in ENABLED_CHANNELS
+    ]
+
+    await interaction.response.send_message(
+        "**Enabled Channels:**\n" + "\n".join(channel_mentions)
+    )
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 async def call_llm(message: discord.Message):
@@ -171,6 +246,29 @@ def collect_ping_targets(message: discord.Message) -> list[discord.Member]:
             targets.append(user)
     return targets
 
+
+def load_channels():
+    global ENABLED_CHANNELS
+
+    if CONFIG_FILE.exists():
+        try:
+            data = json.loads(CONFIG_FILE.read_text())
+            ENABLED_CHANNELS = set(int(x) for x in data)
+            log.info(f"[config] Loaded {len(ENABLED_CHANNELS)} enabled channels")
+        except Exception as exc:
+            log.warning(f"[config] Failed to load channels.json: {exc}")
+
+
+def save_channels():
+    try:
+        CONFIG_FILE.write_text(
+            json.dumps(list(ENABLED_CHANNELS), indent=2)
+        )
+    except Exception as exc:
+        log.warning(f"[config] Failed to save channels.json: {exc}")
+
+
+# ── Schedule ────────────────────────────────────────────────────────────────
 
 async def handle_create_event(
     message: discord.Message,

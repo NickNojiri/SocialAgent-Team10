@@ -25,6 +25,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
+from datetime import date
 
 # -- Logging setup -----------------------------------------------------------
 logging.basicConfig(
@@ -33,7 +34,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 log = logging.getLogger("llm-service")
-
 
 # -- Config ------------------------------------------------------------------
 OLLAMA_URL     = os.getenv("OLLAMA_URL",    "http://host.docker.internal:11434")
@@ -152,7 +152,7 @@ app.add_middleware(RequestLogMiddleware)
 
 # -- System prompt -----------------------------------------------------------
 
-SYSTEM_PROMPT = """You are Planner -- a friendly event coordination assistant living inside a Discord server for a group of friends.
+SYSTEM_PROMPT = """You are Eve -- a friendly event coordination assistant living inside a Discord server for a group of friends.
 
 Your job:
 * Help the group brainstorm, schedule, and keep track of events (game nights, outings, trips, etc.).
@@ -262,7 +262,7 @@ async def chat(req: ChatRequest):
             log.warning(f"[db] Could not persist user message: {exc}")
 
         # 3. Build messages array (same shape for Ollama and OpenAI)
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT + f"Today's date is {date.today()}"}]
         for h in history:
             prefix = f"{h['username']}: " if h.get("username") else ""
             messages.append({"role": h["role"], "content": prefix + h["content"]})
@@ -287,7 +287,7 @@ async def chat(req: ChatRequest):
             await client.post(f"{DB_URL}/messages", json={
                 "channel_id": req.channel_id,
                 "role":       "assistant",
-                "username":   "Planner",
+                "username":   "Eve",
                 "content":    raw_reply,
             })
         except Exception as exc:
