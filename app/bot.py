@@ -35,7 +35,7 @@ BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @men
 
 # How long to wait between LLM health-check retries on startup
 HEALTH_RETRY_SECONDS = 5
-HEALTH_MAX_ATTEMPTS  = 5   # give up after 5 tries
+HEALTH_MAX_ATTEMPTS  = 12   # give up after ~1 minute
 
 
 # ── Discord client setup ───────────────────────────────────────────────────
@@ -166,15 +166,28 @@ async def handle_create_event(
     """Create a Discord Scheduled Event and optionally update the DB record."""
     log.info(f"[event] Creating Discord scheduled event: {action}")
     try:
+        from datetime import timedelta
         raw_time = action.get("start_time", "")
         start_dt = datetime.fromisoformat(raw_time).replace(tzinfo=timezone.utc)
+
+        # end_time is required by Discord for external events.
+        # Use what the LLM provided; fall back to start + 2 hours.
+        raw_end  = action.get("end_time", "")
+        end_dt   = (
+            datetime.fromisoformat(raw_end).replace(tzinfo=timezone.utc)
+            if raw_end else start_dt + timedelta(hours=2)
+        )
+        if end_dt <= start_dt:
+            end_dt = start_dt + timedelta(hours=2)
+            log.warning("[event] end_time was not after start_time -- defaulting to +2 hours")
 
         discord_event = await message.guild.create_scheduled_event(
             name          = action.get("name", "Event")[:100],
             description   = action.get("description", "")[:1000],
             start_time    = start_dt,
+            end_time      = end_dt,
             entity_type   = discord.EntityType.external,
-            location      = "TBD",
+            location      = action.get("location", "TBD"),
             privacy_level = discord.PrivacyLevel.guild_only,
         )
 
