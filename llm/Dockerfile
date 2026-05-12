@@ -1,3 +1,6 @@
+# llm/app
+# This is the docker file for the LLM service container
+
 # Stage 1: Build the bot app
 FROM python:3.12-slim AS app
 

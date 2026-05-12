@@ -1,26 +1,145 @@
 """
 Container 2 — LLM Service
+- On startup: verifies connectivity to the DB service and to Ollama (or OpenAI).
 - Pulls conversation history from the DB service.
-- Builds a prompt and calls your local Ollama instance.
+- Builds a prompt and calls Ollama (llama3, gemma3:4b, …) or OpenAI (gpt-*).
 - Parses any structured actions the model returns (e.g. create_event).
 - Persists the assistant reply back to the DB service.
+
+Model routing (set OLLAMA_MODEL in .env):
+  llama3.2:latest  → Ollama  (default)
+  gemma3:4b        → Ollama
+  gpt-4o           → OpenAI  (requires OPENAI_API_KEY)
+  gpt-4o-mini      → OpenAI  (requires OPENAI_API_KEY)
 """
 
 import json
+import logging
 import os
 import re
+import time
+import uuid
+from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.base import BaseHTTPMiddleware  # noqa: F401 — imported via starlette below
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
-app = FastAPI(title="Event Planner LLM")
+# ── Logging setup ──────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+log = logging.getLogger("llm-service")
 
-OLLAMA_URL = os.getenv("OLLAMA_URL",  "http://host.docker.internal:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest ")
-DB_URL = os.getenv("DB_URL",      "http://db:8002")
+
+# ── Config ─────────────────────────────────────────────────────────────────
+OLLAMA_URL    = os.getenv("OLLAMA_URL",    "http://host.docker.internal:11434")
+OLLAMA_MODEL  = os.getenv("OLLAMA_MODEL",  "llama3.2:latest").strip()   # .strip() — prevents trailing-space bugs
+DB_URL        = os.getenv("DB_URL",        "http://db:8002")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_URL    = "https://api.openai.com/v1/chat/completions"
+
+# Route to OpenAI if the model name looks like a GPT model, otherwise use Ollama
+USE_OPENAI = OLLAMA_MODEL.lower().startswith("gpt-")
+
+
+# ── Startup / shutdown ─────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run connectivity checks before accepting traffic."""
+    log.info("=" * 60)
+    log.info("LLM Service starting up")
+    log.info(f"  Model   : {OLLAMA_MODEL}")
+    log.info(f"  Backend : {'OpenAI' if USE_OPENAI else f'Ollama @ {OLLAMA_URL}'}")
+    log.info(f"  DB      : {DB_URL}")
+    log.info("=" * 60)
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+
+        # ── Check DB ──────────────────────────────────────────────────────
+        try:
+            r = await client.get(f"{DB_URL}/health")
+            log.info(f"✅ DB reachable: {r.json()}")
+        except Exception as exc:
+            log.warning(f"⚠️  DB not reachable at startup — will retry per-request. ({exc})")
+
+        # ── Check LLM backend ─────────────────────────────────────────────
+        if USE_OPENAI:
+            if not OPENAI_API_KEY:
+                log.error("❌ OPENAI_API_KEY is not set! OpenAI calls will fail.")
+            else:
+                # Light check: list models endpoint (no quota consumed)
+                try:
+                    r = await client.get(
+                        "https://api.openai.com/v1/models",
+                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    )
+                    if r.status_code == 200:
+                        log.info(f"✅ OpenAI API key is valid (model={OLLAMA_MODEL})")
+                    else:
+                        log.warning(f"⚠️  OpenAI responded {r.status_code}: {r.text[:200]}")
+                except Exception as exc:
+                    log.warning(f"⚠️  Could not reach OpenAI at startup: {exc}")
+        else:
+            # Ollama: ping /api/tags and verify the requested model is present
+            try:
+                r = await client.get(f"{OLLAMA_URL}/api/tags")
+                r.raise_for_status()
+                available = [m["name"] for m in r.json().get("models", [])]
+                log.info(f"✅ Ollama reachable. Available models: {available}")
+                if OLLAMA_MODEL not in available:
+                    log.warning(
+                        f"⚠️  Model '{OLLAMA_MODEL}' not found in Ollama! "
+                        f"Run: ollama pull {OLLAMA_MODEL}"
+                    )
+                else:
+                    log.info(f"✅ Model '{OLLAMA_MODEL}' is ready")
+            except httpx.ConnectError:
+                log.error(
+                    f"❌ Cannot connect to Ollama at {OLLAMA_URL}. "
+                    "Make sure Ollama is running on the host and the container has "
+                    "'extra_hosts: host.docker.internal:host-gateway' set."
+                )
+            except Exception as exc:
+                log.error(f"❌ Ollama check failed: {exc}")
+
+    log.info("LLM Service ready — accepting requests")
+    yield
+    log.info("LLM Service shutting down")
+
+
+# ── App ────────────────────────────────────────────────────────────────────
+
+app = FastAPI(title="Event Planner LLM", lifespan=lifespan)
+
+
+# ── Per-request logging middleware ─────────────────────────────────────────
+
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        req_id = uuid.uuid4().hex[:8]
+        t0 = time.perf_counter()
+        log.info(f"[{req_id}] → {request.method} {request.url.path}")
+        try:
+            response: Response = await call_next(request)
+        except Exception as exc:
+            log.error(f"[{req_id}] ✗ Unhandled exception: {exc}")
+            raise
+        elapsed = (time.perf_counter() - t0) * 1000
+        log.info(f"[{req_id}] ← {response.status_code} ({elapsed:.0f} ms)")
+        return response
+
+
+app.add_middleware(RequestLogMiddleware)
+
 
 # ── System prompt ──────────────────────────────────────────────────────────
+
 SYSTEM_PROMPT = """You are Planner — a friendly event coordination assistant living inside a Discord server for a group of friends.
 
 Your job:
@@ -53,44 +172,99 @@ class ChatRequest(BaseModel):
     message:    str
 
 
+# ── LLM call helpers ───────────────────────────────────────────────────────
+
+async def call_ollama(client: httpx.AsyncClient, messages: list[dict]) -> str:
+    """Call local Ollama and return the assistant message content."""
+    log.info(f"[ollama] Sending {len(messages)} messages to model '{OLLAMA_MODEL}'")
+    t0 = time.perf_counter()
+    try:
+        resp = await client.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={"model": OLLAMA_MODEL, "messages": messages, "stream": False},
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+    except httpx.ConnectError as exc:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Ollama at {OLLAMA_URL}: {exc}")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama error {exc.response.status_code}: {exc.response.text[:300]}")
+
+    elapsed = (time.perf_counter() - t0) * 1000
+    content = resp.json()["message"]["content"]
+    log.info(f"[ollama] Response in {elapsed:.0f} ms — {len(content)} chars")
+    return content
+
+
+async def call_openai(client: httpx.AsyncClient, messages: list[dict]) -> str:
+    """Call OpenAI Chat Completions and return the assistant message content."""
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
+
+    log.info(f"[openai] Sending {len(messages)} messages to model '{OLLAMA_MODEL}'")
+    t0 = time.perf_counter()
+    try:
+        resp = await client.post(
+            OPENAI_URL,
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": OLLAMA_MODEL, "messages": messages},
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI error {exc.response.status_code}: {exc.response.text[:300]}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI connection error: {exc}")
+
+    elapsed = (time.perf_counter() - t0) * 1000
+    content = resp.json()["choices"][0]["message"]["content"]
+    log.info(f"[openai] Response in {elapsed:.0f} ms — {len(content)} chars")
+    return content
+
+
 # ── Main chat endpoint ─────────────────────────────────────────────────────
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    log.info(
+        f"[chat] guild={req.guild_id} channel={req.channel_id} "
+        f"user={req.username!r} | {req.message[:120]!r}"
+    )
+
     async with httpx.AsyncClient(timeout=90.0) as client:
 
         # 1. Fetch conversation history from DB
-        hist_resp = await client.get(f"{DB_URL}/messages/{req.channel_id}?limit=20")
-        history = hist_resp.json() if hist_resp.status_code == 200 else []
+        try:
+            hist_resp = await client.get(f"{DB_URL}/messages/{req.channel_id}?limit=20")
+            history = hist_resp.json() if hist_resp.status_code == 200 else []
+            log.debug(f"[db] Fetched {len(history)} history messages for channel {req.channel_id}")
+        except Exception as exc:
+            log.warning(f"[db] Could not fetch history: {exc} — proceeding without it")
+            history = []
 
         # 2. Persist the incoming user message
-        await client.post(f"{DB_URL}/messages", json={
-            "channel_id": req.channel_id,
-            "role":       "user",
-            "username":   req.username,
-            "content":    req.message,
-        })
-
-        # 3. Build the Ollama messages array
-        ollama_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        for h in history:
-            # Prefix stored messages with username so the model has social context
-            prefix = f"{h['username']}: " if h.get("username") else ""
-            ollama_messages.append({"role": h["role"], "content": prefix + h["content"]})
-        # Append the current turn
-        ollama_messages.append({"role": "user", "content": f"{req.username}: {req.message}"})
-
-        # 4. Call Ollama
         try:
-            ollama_resp = await client.post(
-                f"{OLLAMA_URL}/api/chat",
-                json={"model": OLLAMA_MODEL, "messages": ollama_messages, "stream": False},
-            )
-            ollama_resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Ollama error: {exc}")
+            await client.post(f"{DB_URL}/messages", json={
+                "channel_id": req.channel_id,
+                "role":       "user",
+                "username":   req.username,
+                "content":    req.message,
+            })
+        except Exception as exc:
+            log.warning(f"[db] Could not persist user message: {exc}")
 
-        raw_reply: str = ollama_resp.json()["message"]["content"]
+        # 3. Build the messages array (same shape for both Ollama and OpenAI)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for h in history:
+            prefix = f"{h['username']}: " if h.get("username") else ""
+            messages.append({"role": h["role"], "content": prefix + h["content"]})
+        messages.append({"role": "user", "content": f"{req.username}: {req.message}"})
+
+        # 4. Call the selected LLM backend
+        raw_reply = await (call_openai(client, messages) if USE_OPENAI else call_ollama(client, messages))
 
         # 5. Parse optional <action> block
         action = None
@@ -98,40 +272,85 @@ async def chat(req: ChatRequest):
         if match:
             try:
                 action = json.loads(match.group(1).strip())
-            except json.JSONDecodeError:
-                pass  # malformed — ignore silently
-            # Strip the tag from the visible text
+                log.info(f"[action] Parsed action: {action}")
+            except json.JSONDecodeError as exc:
+                log.warning(f"[action] Malformed action JSON (ignoring): {exc}")
             raw_reply = ACTION_PATTERN.sub("", raw_reply).strip()
 
         # 6. Persist the assistant reply
-        await client.post(f"{DB_URL}/messages", json={
-            "channel_id": req.channel_id,
-            "role":       "assistant",
-            "username":   "Planner",
-            "content":    raw_reply,
-        })
+        try:
+            await client.post(f"{DB_URL}/messages", json={
+                "channel_id": req.channel_id,
+                "role":       "assistant",
+                "username":   "Planner",
+                "content":    raw_reply,
+            })
+        except Exception as exc:
+            log.warning(f"[db] Could not persist assistant reply: {exc}")
 
         # 7. If the model wants to create an event, save a pending record
         db_event_id = None
         if action and action.get("type") == "create_event":
-            ev_resp = await client.post(f"{DB_URL}/events", json={
-                "guild_id":    req.guild_id,
-                "name":        action.get("name", "Unnamed Event"),
-                "description": action.get("description", ""),
-                "start_time":  action.get("start_time", ""),
-            })
-            if ev_resp.status_code == 201:
-                db_event_id = ev_resp.json().get("id")
+            try:
+                ev_resp = await client.post(f"{DB_URL}/events", json={
+                    "guild_id":    req.guild_id,
+                    "name":        action.get("name", "Unnamed Event"),
+                    "description": action.get("description", ""),
+                    "start_time":  action.get("start_time", ""),
+                })
+                if ev_resp.status_code == 201:
+                    db_event_id = ev_resp.json().get("id")
+                    log.info(f"[db] Saved pending event id={db_event_id}")
+                else:
+                    log.warning(f"[db] Event save returned {ev_resp.status_code}: {ev_resp.text}")
+            except Exception as exc:
+                log.warning(f"[db] Could not save pending event: {exc}")
 
         return {
             "response":    raw_reply,
             "action":      action,
-            "db_event_id": db_event_id,   # forwarded to the bot so it can PATCH after Discord confirms
+            "db_event_id": db_event_id,
         }
 
 
 # ── Health ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "model": OLLAMA_MODEL, "ollama": OLLAMA_URL}
+async def health():
+    """
+    Returns service status + a live reachability check of the LLM backend.
+    The bot polls this on startup.
+    """
+    backend_ok = False
+    backend_detail = ""
+
+    async with httpx.AsyncClient(timeout=4.0) as client:
+        if USE_OPENAI:
+            try:
+                r = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                )
+                backend_ok = r.status_code == 200
+                backend_detail = f"HTTP {r.status_code}"
+            except Exception as exc:
+                backend_detail = str(exc)
+        else:
+            try:
+                r = await client.get(f"{OLLAMA_URL}/api/tags")
+                backend_ok = r.status_code == 200
+                available = [m["name"] for m in r.json().get("models", [])]
+                backend_detail = f"models={available}"
+            except Exception as exc:
+                backend_detail = str(exc)
+
+    status = "ok" if backend_ok else "degraded"
+    log.info(f"[health] status={status} backend={backend_detail}")
+    return {
+        "status":   status,
+        "model":    OLLAMA_MODEL,
+        "backend":  "openai" if USE_OPENAI else "ollama",
+        "ollama":   OLLAMA_URL if not USE_OPENAI else None,
+        "backend_reachable": backend_ok,
+        "backend_detail":    backend_detail,
+    }
