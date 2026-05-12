@@ -158,12 +158,26 @@ async def call_llm(message: discord.Message):
     return data.get("response", "…"), data.get("action"), data.get("db_event_id")
 
 
+def collect_ping_targets(message: discord.Message) -> list[discord.Member]:
+    """
+    Return a deduplicated list of members to ping after event creation:
+    the message author + every @mentioned user (excluding the bot itself).
+    """
+    seen = set()
+    targets = []
+    for user in [message.author] + message.mentions:
+        if user.id not in seen and user.id != bot.user.id:
+            seen.add(user.id)
+            targets.append(user)
+    return targets
+
+
 async def handle_create_event(
     message: discord.Message,
     action: dict,
     db_event_id: int | None,
 ):
-    """Create a Discord Scheduled Event and optionally update the DB record."""
+    """Create a Discord Scheduled Event, then ping the author and all @mentioned users."""
     log.info(f"[event] Creating Discord scheduled event: {action}")
     try:
         from datetime import timedelta
@@ -172,8 +186,8 @@ async def handle_create_event(
 
         # end_time is required by Discord for external events.
         # Use what the LLM provided; fall back to start + 2 hours.
-        raw_end  = action.get("end_time", "")
-        end_dt   = (
+        raw_end = action.get("end_time", "")
+        end_dt  = (
             datetime.fromisoformat(raw_end).replace(tzinfo=timezone.utc)
             if raw_end else start_dt + timedelta(hours=2)
         )
@@ -192,9 +206,17 @@ async def handle_create_event(
         )
 
         log.info(f"[event] Discord event created: id={discord_event.id} name={discord_event.name!r}")
+
+        # Build the ping string: author + all @mentioned users
+        targets     = collect_ping_targets(message)
+        ping_str    = " ".join(u.mention for u in targets)
+        names_str   = ", ".join(u.display_name for u in targets)
+        log.info(f"[event] Pinging {len(targets)} user(s): {names_str}")
+
         await message.channel.send(
-            f"📅 **Discord event created!**\n"
-            f"**{discord_event.name}** — <t:{int(start_dt.timestamp())}:F>\n"
+            f"📅 **Event scheduled!** {ping_str}\n"
+            f"**{discord_event.name}** — <t:{int(start_dt.timestamp())}:F> "
+            f"to <t:{int(end_dt.timestamp())}:t>\n"
             f"{discord_event.url}"
         )
 
@@ -204,7 +226,7 @@ async def handle_create_event(
                     f"{DB_URL}/events/{db_event_id}",
                     json={"discord_event_id": str(discord_event.id)},
                 )
-                log.info(f"[db] Patched event {db_event_id} with discord_event_id={discord_event.id} → {patch_resp.status_code}")
+                log.info(f"[db] Patched event {db_event_id} → discord_event_id={discord_event.id} ({patch_resp.status_code})")
 
     except ValueError as exc:
         log.warning(f"[event] Bad start_time in action: {exc} | raw={action.get('start_time')!r}")
