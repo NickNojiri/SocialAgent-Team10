@@ -1,0 +1,60 @@
+[
+    {
+        "city1": "Durham, NC",
+        "city2": "Newark, NJ",
+        "venues": [
+            "Bear Creek BBQ (Barbecue)",
+            "Chief's",
+            "The Reluctant Navigator Restaurant"
+        ]
+    },
+    {
+        "city1": "San Antonio, TX",
+        "city2": "San Jose, CA",
+        "venues": [
+            "Starbucks (Coffee_Shop)",
+            "Denny's"
+        ]
+    },
+    {
+        "city1": "San Antonio, TX",
+        "city2": "Houston, TX",
+        "venues": [
+            "Taqueria Y Tienda Mexicana Los Primos (Mexican)"
+        ]
+    },
+    {
+        "city1": "Baton Rouge, LA",
+        "city2": "Kansas City, MO",
+        "venues": [
+            "Waffle House (American)",
+            "Pizza Hut (Pizza)",
+            "Colton's"
+        ]
+    },
+    {
+        "city1": "Omaha, NE",
+        "city2": "Louisville, KY",
+        "venues": [
+            "Eagles Bluff Restaurant (American)",
+            "Clarksville Station Restaurant & Outlook Farm",
+            "Pizza Hut (Pizza)"
+        ]
+    },
+    {
+        "city1": "Chula Vista, CA",
+        "city2": "Washington, DC",
+        "venues": [
+            "Route 66 Bowl (Pizza)"
+        ]
+    },
+    {
+        "city1": "Fresno, CA",
+        "city2": "Los Angeles, CA",
+        "venues": [
+            "Hungry Hunter Steakhouse (Steak_House)",
+            "Nuestro M\u00e9xico (Mexican)",
+            "Starbucks Drive Through (Coffee_Shop)"
+        ]
+    }
+]
