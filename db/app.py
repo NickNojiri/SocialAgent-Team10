@@ -8,13 +8,20 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
+# configure local or DOCKER path
+from pathlib import Path
+
+IS_DOCKER = os.path.exists("/.dockerenv")
+if IS_DOCKER:
+    DB_PATH = "/data/events.db"
+else:
+    DB_PATH = "./data/events.db"
+
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
 app = FastAPI(title="Event Planner DB")
-
-DB_PATH = "/data/events.db"
-
 
 # ── DB init ────────────────────────────────────────────────────────────────
 
@@ -77,6 +84,12 @@ class EventUpdate(BaseModel):
 
 
 # ── Message endpoints ──────────────────────────────────────────────────────
+@app.get("/")
+def root():
+    return {
+        "service": "event-planner-db",
+        "status": "running"
+    }
 
 @app.get("/messages/{channel_id}")
 def get_messages(channel_id: str, limit: int = 20):

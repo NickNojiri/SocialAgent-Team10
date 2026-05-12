@@ -34,8 +34,8 @@ logging.getLogger("discord.gateway").setLevel(logging.WARNING)
 logging.getLogger("discord.http").setLevel(logging.WARNING)
 
 # ── Config ─────────────────────────────────────────────────────────────────
-LLM_URL        = os.getenv("LLM_URL",       "http://llm:8001")
-DB_URL         = os.getenv("DB_URL",        "http://db:8002")
+LLM_URL = os.getenv("LLM_URL", "http://llm:8001")
+DB_URL = os.getenv("DB_URL", "http://db:8002")
 BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @mentions anywhere
 
 # How long to wait between LLM health-check retries on startup
@@ -116,6 +116,10 @@ async def on_message(message: discord.Message):
 
     if not (bot_mentioned or in_enabled_channel):
         return
+
+    # Add the mentioned bot in the channel to enabled channel
+    if (bot_mentioned and not in_enabled_channel):
+        ENABLED_CHANNELS.add(message.channel.id)
 
     log.info(
         f"[msg] guild={message.guild.id} channel={message.channel.id} "
