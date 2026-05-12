@@ -35,7 +35,7 @@ BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @men
 
 # How long to wait between LLM health-check retries on startup
 HEALTH_RETRY_SECONDS = 5
-HEALTH_MAX_ATTEMPTS  = 12   # give up after ~1 minute
+HEALTH_MAX_ATTEMPTS  = 5   # give up after 5 tries
 
 
 # ── Discord client setup ───────────────────────────────────────────────────
