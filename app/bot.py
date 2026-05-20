@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import discord
 from discord import app_commands
 from discord.ext import commands
+from datetime import timedelta
 
 import httpx
 import json
@@ -282,26 +283,33 @@ async def handle_create_event(
     """Create a Discord Scheduled Event, then ping the author and all @mentioned users."""
     log.info(f"[event] Creating Discord scheduled event: {action}")
     try:
-        from datetime import timedelta
-        raw_time = action.get("start_time", "")
-        start_dt = datetime.fromisoformat(raw_time).replace(tzinfo=timezone.utc)
+        PST = timezone(timedelta(hours=-8))
+
+        raw_start = action.get("start_time", "")
+        raw_end = action.get("end_time", "")
+
+        start_dt = datetime.fromisoformat(raw_start).replace(tzinfo=timezone.utc).astimezone(PST)
+
+        end_dt = (
+            datetime.fromisoformat(raw_end).replace(tzinfo=timezone.utc).astimezone(PST)
+            if raw_end
+            else start_dt + timedelta(hours=2)
+        )
 
         # end_time is required by Discord for external events.
         # Use what the LLM provided; fall back to start + 2 hours.
-        raw_end = action.get("end_time", "")
-        end_dt  = (
-            datetime.fromisoformat(raw_end).replace(tzinfo=timezone.utc)
-            if raw_end else start_dt + timedelta(hours=2)
-        )
         if end_dt <= start_dt:
+            log.warning("[event] end_time was not after start_time — defaulting to +2 hours")
             end_dt = start_dt + timedelta(hours=2)
-            log.warning("[event] end_time was not after start_time -- defaulting to +2 hours")
 
+        true_start_time = start_dt + timedelta(hours=7)
+        true_end_time = end_dt + timedelta(hours=7)
+        
         discord_event = await message.guild.create_scheduled_event(
             name          = action.get("name", "Event")[:100],
             description   = action.get("description", "")[:1000],
-            start_time    = start_dt,
-            end_time      = end_dt,
+            start_time    = true_start_time,
+            end_time      = true_end_time,
             entity_type   = discord.EntityType.external,
             location      = action.get("location", "TBD"),
             privacy_level = discord.PrivacyLevel.guild_only,
@@ -317,8 +325,8 @@ async def handle_create_event(
 
         await message.channel.send(
             f"📅 **Event scheduled!** {ping_str}\n"
-            f"**{discord_event.name}** — <t:{int(start_dt.timestamp())}:F> "
-            f"to <t:{int(end_dt.timestamp())}:t>\n"
+            f"**{discord_event.name}** — <t:{int(true_start_time.timestamp())}:F> "
+            f"to <t:{int(true_end_time.timestamp())}:t>\n"
             f"{discord_event.url}"
         )
 
