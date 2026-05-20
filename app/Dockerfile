@@ -1,3 +1,6 @@
+# app/bot
+# This is the docker file for the app/discord bot service layer
+
 # Stage 1: Build the bot app
 FROM python:3.12-slim AS app
 

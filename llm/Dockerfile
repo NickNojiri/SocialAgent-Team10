@@ -1,3 +1,7 @@
+# llm/app
+# This is the docker file for the LLM service container
+# 8001
+
 # Stage 1: Build the bot app
 FROM python:3.12-slim AS app
 
@@ -14,7 +18,7 @@ RUN mkdir -p /data
 COPY . .
 
 # Expose port
-EXPOSE 8002
+EXPOSE 8001
 
 # Run FastAPI
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
