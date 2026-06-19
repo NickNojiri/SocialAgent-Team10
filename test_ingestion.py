@@ -241,6 +241,12 @@ class TestNormalizer:
         assert any("friday" in t.lower() for t in times)
         assert any("8pm" in t.lower() for t in times)
 
+    def test_heuristic_venue_truncated(self):
+        long_venue = "A" * 200
+        candidates = normalize(make_raw(caption=f"at {long_venue}"))
+        assert len(candidates["venue_name"]) == 110
+        assert candidates["venue_name"] == long_venue[:110]
+
 
 # ── Validator pipeline ──────────────────────────────────────────────────────
 

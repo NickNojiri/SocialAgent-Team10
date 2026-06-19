@@ -104,6 +104,9 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         candidate_times = _dedupe([*ext.candidate_times, *candidate_times])
         geo = _merge_geo(geo, ext)
 
+    if venue:
+        venue = venue[:110].strip()
+
     return {
         "venue_name": venue,
         "core_theme": core_theme,
