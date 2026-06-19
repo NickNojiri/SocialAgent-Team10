@@ -101,6 +101,10 @@ We maintain a strict .gitignore to protect privacy and repository health:
 
 📥 Ingestion Engine
 
+> **Note**: The Ingestion Engine feature is currently staged on the `ingestion-engine` branch. 
+> To review and merge it into `main`, you can approve the pull request on GitHub or run locally:
+> `git checkout main && git merge origin/ingestion-engine && git push origin main`
+
 A local pipeline that turns explicit public post/page URLs into strictly validated "Event Inspiration" records (venue name, core theme, category, geolocation context clues) stored as JSONL for downstream phases.
 
 - **Phase 1 — capture & heuristics:** Playwright renders the page, isolates the human-written text, and regex/keyword heuristics extract the fields.
