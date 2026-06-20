@@ -59,6 +59,16 @@ def recommend(req: RecommendRequest):
     }
 
 
+from fastapi.responses import JSONResponse
+
+@app.get("/ready")
+def ready():
+    try:
+        count = get_service().sink.count()
+        return {"ready": True, "events": count}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"ready": False, "reason": str(e)})
+
 @app.get("/health")
 def health():
     return {"status": "ok", "collection": _settings.chroma_collection}
