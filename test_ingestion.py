@@ -6,6 +6,7 @@ Offline by design: schema/extractor tests build snapshots by hand; the
 Playwright tests navigate local fixture files (allow_file_urls) — no network.
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -1109,6 +1110,33 @@ class TestRunReport:
         assert result_line(rej).startswith("[reject]")
         wall = IngestionResult(url="u3", fetch_status=FetchStatus.LOGIN_WALL)
         assert result_line(wall).startswith("[login_wall]")
+
+
+class TestRunReportJson:
+    def test_to_dict_is_machine_readable(self):
+        report = _run_report(
+            IngestionResult(url="u1", fetch_status=FetchStatus.OK, record=chroma_record()),
+            IngestionResult(url="u2", fetch_status=FetchStatus.OK, rejection_reason="bad venue"),
+            IngestionResult(url="u3", fetch_status=FetchStatus.LOGIN_WALL),
+        )
+
+        data = report.to_dict()
+
+        assert data["counts"] == {
+            "processed": 3,
+            "validated": 1,
+            "rejected": 1,
+            "unreadable": 1,
+        }
+        assert data["fetch_outcomes"] == {"ok": 2, "login_wall": 1}
+        assert data["rejections"] == [{"url": "u2", "reason": "bad venue"}]
+        assert data["connectivity_failures"] == [{"url": "u3", "status": "login_wall"}]
+        assert data["results"] == [
+            {"url": "u1", "fetch_status": "ok", "validated": True, "rejection_reason": None},
+            {"url": "u2", "fetch_status": "ok", "validated": False, "rejection_reason": "bad venue"},
+            {"url": "u3", "fetch_status": "login_wall", "validated": False, "rejection_reason": None},
+        ]
+        json.dumps(data)
 
 
 @pytest.mark.asyncio

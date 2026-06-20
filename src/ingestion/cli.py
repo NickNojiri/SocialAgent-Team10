@@ -13,6 +13,7 @@ unreachable (or --no-llm is set) the pipeline degrades to Phase 1 heuristics.
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -44,6 +45,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--no-geocode", action="store_true", help="skip geo enrichment (no Nominatim calls)")
     parser.add_argument("--no-temporal", action="store_true", help="skip temporal parsing (no schedule)")
     parser.add_argument("--chroma", action="store_true", help="also write records to the ChromaDB vector store")
+    parser.add_argument("--report-json", type=Path, help="write the run report as machine-readable JSON")
     parser.add_argument("--model", help="override the Ollama model (default: llama3.1:8b)")
     # Offline fixtures/tests only; hidden from --help on purpose.
     parser.add_argument("--allow-file-urls", action="store_true", help=argparse.SUPPRESS)
@@ -157,6 +159,8 @@ def main(argv=None) -> int:
         on_result=lambda r: print(result_line(r)),  # live per-URL progress
     )
     report = asyncio.run(pipeline.run(args.urls))
+    if args.report_json:
+        args.report_json.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     print("\n" + report.render())
     return 0
 

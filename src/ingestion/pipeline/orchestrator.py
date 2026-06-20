@@ -186,6 +186,39 @@ class RunReport:
     def _counter(self, values) -> Counter:
         return Counter(values)
 
+    def to_dict(self) -> dict:
+        fetch_counts = self._counter(r.fetch_status.value for r in self.results)
+        return {
+            "started_at": self.started_at.isoformat(),
+            "duration_s": self.duration_s,
+            "out_path": str(self.out_path) if self.out_path is not None else None,
+            "chroma_count": self.chroma_count,
+            "counts": {
+                "processed": len(self.results),
+                "validated": len(self.validated),
+                "rejected": len(self.rejected),
+                "unreadable": len(self.connectivity_failures),
+            },
+            "fetch_outcomes": dict(fetch_counts),
+            "rejections": [
+                {"url": r.url, "reason": r.rejection_reason}
+                for r in self.rejected
+            ],
+            "connectivity_failures": [
+                {"url": r.url, "status": r.fetch_status.value}
+                for r in self.connectivity_failures
+            ],
+            "results": [
+                {
+                    "url": r.url,
+                    "fetch_status": r.fetch_status.value,
+                    "validated": r.record is not None,
+                    "rejection_reason": r.rejection_reason,
+                }
+                for r in self.results
+            ],
+        }
+
     def render(self) -> str:
         lines: list[str] = []
         bar = "═" * 64
