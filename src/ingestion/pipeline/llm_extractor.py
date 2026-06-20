@@ -138,15 +138,15 @@ class LlmFieldExtractor:
 
     def _strip_hallucinations(self, ext: LlmExtraction, payload_text: str) -> LlmExtraction:
         """Enforce prompt rule 2 in code: discard fields not grounded in the input."""
-        haystack = _norm(payload_text)
+        haystack = _collapse(payload_text)
 
-        if ext.venue_name and _norm(ext.venue_name) not in haystack:
+        if ext.venue_name and _collapse(ext.venue_name) not in haystack:
             log.info(f"[llm] discarding ungrounded venue_name {ext.venue_name!r}")
             ext.venue_name = None
-        if ext.raw_location_text and _norm(ext.raw_location_text) not in haystack:
+        if ext.raw_location_text and _collapse(ext.raw_location_text) not in haystack:
             log.info(f"[llm] discarding ungrounded raw_location_text {ext.raw_location_text!r}")
             ext.raw_location_text = None
-        ext.place_names = [p for p in ext.place_names if p.strip() and _norm(p) in haystack]
+        ext.place_names = [p for p in ext.place_names if p.strip() and _collapse(p) in haystack]
         if ext.category not in CategoryLiteral:
             ext.category = "other"
         return ext
@@ -167,8 +167,12 @@ def _payload_text(payload: dict) -> str:
     return " ".join(parts)
 
 
-def _norm(text: str) -> str:
-    return _NON_ALNUM.sub(" ", text.lower()).strip()
+def _collapse(text: str) -> str:
+    """Alphanumeric-only, lowercased. Grounding on this lets a venue the model
+    legitimately re-spaced ('@abouttimecafe' -> 'About Time Cafe') still match the
+    source text — which the prompt expressly permits ('you may fix casing/spacing')
+    — while a genuinely invented name still won't appear."""
+    return _NON_ALNUM.sub("", text.lower())
 
 
 def _summarize(exc: ValidationError) -> str:
