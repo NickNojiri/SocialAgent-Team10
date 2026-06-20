@@ -11,3 +11,15 @@ test:
 
 serve:
 	ollama serve
+
+ingest:
+	python -m src.ingestion.cli
+
+recommend:
+	uvicorn src.ingestion.serving.app:app --port 8003 --reload
+
+smoke:
+	python scripts/smoke_ingest.py
+
+test-offline:
+	pytest -k "not live" -q
