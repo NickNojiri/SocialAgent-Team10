@@ -145,9 +145,44 @@ class TestInstagramExtractor:
         )
         raw = InstagramExtractor().extract(snapshot)
         assert raw.caption == IG_CAPTION
+        assert raw.description is None
         assert raw.author_handle == "bitesoflb"
         assert set(raw.hashtags) >= {"birria", "LongBeachFood", "tacos"}
         assert raw.platform == "instagram"
+
+    def test_og_description_with_trailing_period_strips_wrapper(self):
+        snapshot = make_snapshot(
+            meta={
+                "og:description": (
+                    '120 likes, 8 comments - bitesoflb on June 5, 2026: '
+                    '"Birria pop-up at Casa Loma". '
+                )
+            }
+        )
+        raw = InstagramExtractor().extract(snapshot)
+        assert raw.caption == "Birria pop-up at Casa Loma"
+
+    def test_author_instagram_title_is_not_venue_title(self):
+        snapshot = make_snapshot(meta={"og:title": 'Adrian on Instagram: "new cafe at @x"'})
+        raw = InstagramExtractor().extract(snapshot)
+        assert raw.title is None
+
+    def test_description_wrapper_is_never_forwarded(self):
+        snapshot = make_snapshot(meta={"og:description": IG_OG_DESCRIPTION})
+        raw = InstagramExtractor().extract(snapshot)
+        assert raw.description is None
+
+    def test_truncated_og_description_strips_preamble(self):
+        snapshot = make_snapshot(
+            meta={
+                "og:description": (
+                    '4,049 likes, 21 comments - eatwithadrian on June 5, 2026: '
+                    '"new valorant pop-up'
+                )
+            }
+        )
+        raw = InstagramExtractor().extract(snapshot)
+        assert raw.caption == "new valorant pop-up"
 
     def test_rendered_caption_preferred_over_og_excerpt(self):
         snapshot = make_snapshot(
@@ -457,6 +492,20 @@ class TestLlmExtractorLadder:
         assert result.venue_name is None
         assert result.raw_location_text is None
         assert result.place_names == ["Long Beach"]
+
+    def test_collapsed_alphanumeric_venue_grounding(self):
+        extractor = make_extractor()
+        payload_text = "new drinks and pastries from @abouttimecafe this weekend"
+
+        grounded = extractor._strip_hallucinations(
+            LlmExtraction(venue_name="About Time Cafe"), payload_text
+        )
+        ungrounded = extractor._strip_hallucinations(
+            LlmExtraction(venue_name="Totally Fake Place"), payload_text
+        )
+
+        assert grounded.venue_name == "About Time Cafe"
+        assert ungrounded.venue_name is None
 
 
 class TestNormalizeWithLlm:
@@ -1249,6 +1298,43 @@ class TestCliMain:
         output = capsys.readouterr().out
         assert code == 1
         assert "INGESTION RUN REPORT" in output
+
+    def test_report_json_writes_parseable_summary(self, monkeypatch, capsys, tmp_path):
+        import src.ingestion.cli as cli
+
+        validated = IngestionResult(url="u1", fetch_status=FetchStatus.OK, record=chroma_record())
+        report_path = tmp_path / "report.json"
+
+        class FakePipeline:
+            def __init__(self, settings, **kwargs):
+                pass
+
+            async def run(self, urls):
+                return _run_report(validated)
+
+        monkeypatch.setattr(cli, "build_extractor", lambda settings: None)
+        monkeypatch.setattr(cli, "build_geo_enricher", lambda settings: None)
+        monkeypatch.setattr(cli, "build_temporal_resolver", lambda settings: None)
+        monkeypatch.setattr(cli, "build_chroma_sink", lambda settings: None)
+        monkeypatch.setattr(cli, "IngestionPipeline", FakePipeline)
+
+        code = cli.main(
+            [
+                "https://example.test/post",
+                "--out",
+                str(tmp_path / "out.jsonl"),
+                "--report-json",
+                str(report_path),
+            ]
+        )
+
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        assert code == 0
+        assert {"counts", "fetch_outcomes", "results"} <= data.keys()
+        assert data["counts"]["validated"] == 1
+        assert data["fetch_outcomes"] == {"ok": 1}
+        assert data["results"][0]["url"] == "u1"
+        assert "INGESTION RUN REPORT" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio
