@@ -1,6 +1,6 @@
 Team 10: AI Social Coordinator Agent
 
-[![CI](https://github.com/SocialAgent-Team10/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/NickNojiri/SocialAgent-Team10/actions/workflows/ci.yml/badge.svg)](https://github.com/NickNojiri/SocialAgent-Team10/actions/workflows/ci.yml)
 
 Project status: ingestion engine Phases 1-7 complete, 100 tests passing.
 

@@ -15,6 +15,7 @@ SELECTOR_PROFILES: dict[str, list[tuple[str, TextRole]]] = {
         ("article h1", TextRole.CAPTION),
         ("h1", TextRole.TITLE),
         ('a[href*="/explore/locations/"]', TextRole.LOCATION_TAG),
+        ('a[href*="/locations/"]', TextRole.LOCATION_TAG),
     ],
 }
 
