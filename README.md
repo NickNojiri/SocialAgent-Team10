@@ -1,5 +1,9 @@
 Team 10: AI Social Coordinator Agent
 
+[![CI](https://github.com/SocialAgent-Team10/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+
+Project status: ingestion engine Phases 1-7 complete, 100 tests passing.
+
 An autonomous social agent built with a Lean Stack to negotiate meeting times and venues between friends using local LLMs and real-world location data. This project prioritizes privacy and cost-efficiency by running models and location services locally or via free open-source APIs.
 🚀 Quick Start
 
