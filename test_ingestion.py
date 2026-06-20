@@ -1117,7 +1117,11 @@ async def test_pipeline_runs_both_fixtures_end_to_end():
         allow_file_urls=True, per_domain_delay_s=0, settle_timeout_ms=2000
     )
     pipeline = IngestionPipeline(
-        settings, temporal_resolver=TemporalResolver(settings)  # no LLM / geo / sinks
+        # Freeze "now" to the suite's reference time so the fixtures' fixed event
+        # dates stay in the future — otherwise this test rots once the wall clock
+        # passes the jsonld fixture's 2026-06-20 startDate.
+        settings,
+        temporal_resolver=TemporalResolver(settings, now=NOW_REF),  # no LLM / geo / sinks
     )
     urls = [
         (FIXTURES / "instagram_post.html").resolve().as_uri(),
