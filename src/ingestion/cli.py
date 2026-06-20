@@ -46,6 +46,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--no-temporal", action="store_true", help="skip temporal parsing (no schedule)")
     parser.add_argument("--chroma", action="store_true", help="also write records to the ChromaDB vector store")
     parser.add_argument("--report-json", type=Path, help="write the run report as machine-readable JSON")
+    parser.add_argument("--quiet", action="store_true", help="suppress per-URL progress lines")
     parser.add_argument("--model", help="override the Ollama model (default: llama3.1:8b)")
     # Offline fixtures/tests only; hidden from --help on purpose.
     parser.add_argument("--allow-file-urls", action="store_true", help=argparse.SUPPRESS)
@@ -156,13 +157,13 @@ def main(argv=None) -> int:
         temporal_resolver=build_temporal_resolver(settings),
         jsonl_sink=JsonlSink(args.out),
         chroma_sink=build_chroma_sink(settings),
-        on_result=lambda r: print(result_line(r)),  # live per-URL progress
+        on_result=None if args.quiet else lambda r: print(result_line(r)),  # live per-URL progress
     )
     report = asyncio.run(pipeline.run(args.urls))
     if args.report_json:
         args.report_json.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     print("\n" + report.render())
-    return 0
+    return 0 if report.validated else 1
 
 
 if __name__ == "__main__":

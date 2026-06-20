@@ -1139,6 +1139,118 @@ class TestRunReportJson:
         json.dumps(data)
 
 
+class TestPipelineGuard:
+    @pytest.mark.asyncio
+    async def test_per_url_exception_becomes_error_result(self, monkeypatch):
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        class FakeSession:
+            def __init__(self, settings):
+                self.settings = settings
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def fetch(self, url):
+                return PageSnapshot(
+                    url=url,
+                    status=FetchStatus.OK,
+                    fetched_at=NOW,
+                    meta={
+                        "og:title": "Taco Night",
+                        "og:description": "Birria tacos at Casa Loma this Friday 8pm",
+                    },
+                )
+
+        class ExplodingExtractor:
+            model = "boom"
+
+            def extract(self, payload):
+                raise RuntimeError("llm exploded")
+
+        monkeypatch.setattr(orchestrator, "SocialSessionManager", FakeSession)
+        pipeline = IngestionPipeline(IngestionSettings(), extractor=ExplodingExtractor())
+
+        report = await pipeline.run(["https://example.test/post"])
+
+        assert len(report.results) == 1
+        result = report.results[0]
+        assert result.url == "https://example.test/post"
+        assert result.fetch_status is FetchStatus.ERROR
+        assert result.record is None
+        assert "RuntimeError: llm exploded" in result.rejection_reason
+
+
+class TestRunReportBuckets:
+    def test_error_rejections_do_not_change_connectivity_bucket(self):
+        report = _run_report(
+            IngestionResult(url="u1", fetch_status=FetchStatus.OK, record=chroma_record()),
+            IngestionResult(url="u2", fetch_status=FetchStatus.OK, rejection_reason="bad venue"),
+            IngestionResult(url="u3", fetch_status=FetchStatus.LOGIN_WALL),
+            IngestionResult(url="u4", fetch_status=FetchStatus.ERROR, rejection_reason="unexpected error: RuntimeError"),
+        )
+
+        assert [r.url for r in report.validated] == ["u1"]
+        assert [r.url for r in report.rejected] == ["u2", "u4"]
+        assert [r.url for r in report.connectivity_failures] == ["u3"]
+
+
+class TestCliMain:
+    def test_quiet_suppresses_progress_but_keeps_final_report(self, monkeypatch, capsys, tmp_path):
+        import src.ingestion.cli as cli
+
+        validated = IngestionResult(url="u1", fetch_status=FetchStatus.OK, record=chroma_record())
+
+        class FakePipeline:
+            def __init__(self, settings, **kwargs):
+                self.on_result = kwargs["on_result"]
+
+            async def run(self, urls):
+                if self.on_result is not None:
+                    self.on_result(validated)
+                return _run_report(validated)
+
+        monkeypatch.setattr(cli, "build_extractor", lambda settings: None)
+        monkeypatch.setattr(cli, "build_geo_enricher", lambda settings: None)
+        monkeypatch.setattr(cli, "build_temporal_resolver", lambda settings: None)
+        monkeypatch.setattr(cli, "build_chroma_sink", lambda settings: None)
+        monkeypatch.setattr(cli, "IngestionPipeline", FakePipeline)
+
+        code = cli.main(["https://example.test/post", "--quiet", "--out", str(tmp_path / "out.jsonl")])
+
+        output = capsys.readouterr().out
+        assert code == 0
+        assert "[ok]" not in output
+        assert "INGESTION RUN REPORT" in output
+
+    def test_main_returns_nonzero_when_no_records_validate(self, monkeypatch, capsys, tmp_path):
+        import src.ingestion.cli as cli
+
+        unreadable = IngestionResult(url="u1", fetch_status=FetchStatus.LOGIN_WALL)
+
+        class FakePipeline:
+            def __init__(self, settings, **kwargs):
+                pass
+
+            async def run(self, urls):
+                return _run_report(unreadable)
+
+        monkeypatch.setattr(cli, "build_extractor", lambda settings: None)
+        monkeypatch.setattr(cli, "build_geo_enricher", lambda settings: None)
+        monkeypatch.setattr(cli, "build_temporal_resolver", lambda settings: None)
+        monkeypatch.setattr(cli, "build_chroma_sink", lambda settings: None)
+        monkeypatch.setattr(cli, "IngestionPipeline", FakePipeline)
+
+        code = cli.main(["https://example.test/post", "--out", str(tmp_path / "out.jsonl")])
+
+        output = capsys.readouterr().out
+        assert code == 1
+        assert "INGESTION RUN REPORT" in output
+
+
 @pytest.mark.asyncio
 async def test_pipeline_runs_both_fixtures_end_to_end():
     settings = IngestionSettings(
