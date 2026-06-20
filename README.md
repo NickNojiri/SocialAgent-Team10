@@ -129,6 +129,16 @@ Usage:
 `python -m src.ingestion.cli <public-url> --chroma`   *(also write to the ChromaDB vector store)*
 `python -m src.ingestion.cli <public-url> --model gemma3:4b`   *(use a different local model)*
 
+**Live example** — the LLM layer turning a messy real caption into a clean, validated record:
+
+```text
+[llm] using llama3.1:8b @ http://localhost:11434
+[ok]  <instagram-post> -> 'Casa Loma' / market_popup | conf=0.6 | time=scheduled 2026-06-27T03:00:00+00:00
+ ✅ validated : 1 → data/inspirations.jsonl
+```
+
+From the caption *“Late-night birria tacos pop-up at Casa Loma 📍 4th St, Long Beach — this Friday 8pm!”* the model isolates `venue_name = "Casa Loma"`, tags it `market_popup`, and resolves “this Friday 8pm” to a UTC schedule — where the `--no-llm` heuristic would have dumped the whole caption (tripping the venue-name length limit).
+
 Tests:
 
 `python -m pytest test_ingestion.py -v`   *(offline; the one live test self-skips when Ollama isn't running)*
