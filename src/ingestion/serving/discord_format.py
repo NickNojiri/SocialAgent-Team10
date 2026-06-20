@@ -46,3 +46,32 @@ def format_recommendations(recs: list[Recommendation]) -> str:
         return _EMPTY
     header = "✨ **Here's what I found:**"
     return header + "\n\n" + "\n\n".join(format_recommendation(r) for r in recs)
+
+
+def format_as_embed(recs: list[Recommendation]) -> dict:
+    if not recs:
+        return {"title": "No Recommendations", "description": _EMPTY, "color": 0xFF0000}
+    
+    fields = []
+    for rec in recs:
+        emoji = _CATEGORY_EMOJI.get(rec.category, "📍")
+        category = rec.category.replace("_", " ")
+        
+        value_lines = []
+        if rec.core_theme:
+            value_lines.append(rec.core_theme)
+        value_lines.append(_time_line(rec))
+        if rec.source_url:
+            value_lines.append(f"[Source link]({rec.source_url})")
+            
+        fields.append({
+            "name": f"{emoji} {rec.venue_name} — *{category}*",
+            "value": "\n".join(value_lines),
+            "inline": False
+        })
+        
+    return {
+        "title": "✨ Here's what I found:",
+        "color": 0x00FF00,
+        "fields": fields
+    }
