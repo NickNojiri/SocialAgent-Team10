@@ -14,12 +14,14 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from src.ingestion.config import IngestionSettings
+from src.ingestion.serving.board import router as board_router
 from src.ingestion.serving.discord_format import format_recommendations
 from src.ingestion.serving.recommender import RecommendationService
 
 log = logging.getLogger("ingestion.serving")
 
 app = FastAPI(title="SocialAgent Recommendations")
+app.include_router(board_router)
 # IngestionSettings isn't env-bound, so read the container-relevant knobs here:
 # in Docker, Ollama is reached via host.docker.internal and data/ is a bind mount.
 _settings = IngestionSettings(
