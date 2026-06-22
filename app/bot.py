@@ -160,14 +160,15 @@ async def on_message(message: discord.Message):
     if action and action.get("type") == "create_event":
         await handle_create_event(message, action, db_event_id)
 
-    # Phase 6: opt-in chat-context event suggestions. The recommend service applies
-    # the intent gate + cooldown + relevance/dedup, so this stays quiet unless there's
-    # a genuinely good, non-repeated match. Best-effort — never breaks the bot.
+    # Phase 6: opt-in chat-context event suggestions. When intent is detected the
+    # recommendations are posted in a thread on the user's message so the main
+    # channel stays clean. Best-effort — never breaks the bot.
     if message.channel.id in SUGGESTION_CHANNELS:
         try:
             data = await call_recommend(message.channel.id, message.content, "auto")
             if not data.get("suppressed") and data.get("recommendations"):
-                await message.channel.send(data["markdown"])
+                thread = await message.create_thread(name="Spot suggestions")
+                await thread.send(data["markdown"])
         except Exception as exc:
             log.debug(f"[recommend] auto-suggest skipped: {exc}")
 
