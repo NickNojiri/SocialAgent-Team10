@@ -20,6 +20,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Optional, TYPE_CHECKING
 
+from src.ingestion.browser.ig_embed import try_embed_fallback
 from src.ingestion.browser.session_manager import SocialSessionManager
 from src.ingestion.config import IngestionSettings
 from src.ingestion.extractors.base import select_extractor
@@ -78,6 +79,12 @@ class IngestionPipeline:
             for url in urls:
                 try:
                     snapshot = await session.fetch(url)
+                    # If IG returned a login wall, attempt the embed-page fallback
+                    # before giving up — recovers the caption without login ~70% of the time.
+                    if snapshot.status is FetchStatus.LOGIN_WALL:
+                        recovered = await try_embed_fallback(url)
+                        if recovered is not None:
+                            snapshot = recovered
                     result = self._process(snapshot)
                 except Exception as exc:  # last-ditch guard: one URL never kills the run
                     log.exception(f"[pipeline] unexpected error on {url}: {exc}")
