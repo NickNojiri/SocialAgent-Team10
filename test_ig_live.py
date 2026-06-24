@@ -24,10 +24,21 @@ pytestmark = pytest.mark.live
 # ── Add real reel/post URLs here before running ──────────────────────────────
 # Tracking params (?igsh=...) stripped — the shortcode is all that matters.
 IG_URLS: list[str] = [
+    # Batch 1 (added 2026-06-24)
     "https://www.instagram.com/reel/DZIPn-ppdU4/",
     "https://www.instagram.com/reel/DZXT8n7p8ME/",
     "https://www.instagram.com/p/DZtDNAokmUh/",
     "https://www.instagram.com/reel/DZpsu1eowNm/",
+    # Batch 2 (added 2026-06-24)
+    "https://www.instagram.com/reel/DYSYFuXsgbH/",
+    "https://www.instagram.com/reel/DC4YSNHP10U/",
+    "https://www.instagram.com/reel/C907WpjPUp2/",
+    "https://www.instagram.com/reel/DY0LbwRyhto/",
+    "https://www.instagram.com/reel/DUfLG_mAUc5/",
+    "https://www.instagram.com/reel/DRbgCEMkRSs/",
+    "https://www.instagram.com/reel/DKAXPHFSmEr/",
+    "https://www.instagram.com/reel/C51pgTAycsF/",
+    "https://www.instagram.com/reel/DVIRTIYjvt6/",
 ]
 
 PASS_RATE_TARGET = 0.90   # target: 90% of URLs yield a caption (adjust as you test)
