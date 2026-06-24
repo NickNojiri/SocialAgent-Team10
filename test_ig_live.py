@@ -22,8 +22,12 @@ from src.ingestion.schemas.results import FetchStatus
 pytestmark = pytest.mark.live
 
 # ── Add real reel/post URLs here before running ──────────────────────────────
+# Tracking params (?igsh=...) stripped — the shortcode is all that matters.
 IG_URLS: list[str] = [
-    # "https://www.instagram.com/reel/REPLACE_ME/",
+    "https://www.instagram.com/reel/DZIPn-ppdU4/",
+    "https://www.instagram.com/reel/DZXT8n7p8ME/",
+    "https://www.instagram.com/p/DZtDNAokmUh/",
+    "https://www.instagram.com/reel/DZpsu1eowNm/",
 ]
 
 PASS_RATE_TARGET = 0.90   # target: 90% of URLs yield a caption (adjust as you test)

@@ -7,6 +7,7 @@ returns a minimal PageSnapshot the rest of the pipeline can use as-is.
 No Playwright needed — the embed page is a simple server-rendered HTML response.
 """
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -54,7 +55,14 @@ def _shortcode(url: str) -> Optional[str]:
 def _caption_from_html(html: str) -> Optional[str]:
     m = _JSON_CAPTION.search(html)
     if m:
-        raw = m.group(1).encode().decode("unicode_escape")
+        # Decode as a real JSON string: this correctly recombines \uXXXX surrogate
+        # PAIRS (emoji) into single codepoints. `unicode_escape` decodes each half
+        # independently, leaving lone surrogates that crash on UTF-8 encode when the
+        # caption is later written to the JSONL sink — and IG captions are full of emoji.
+        try:
+            raw = json.loads('"' + m.group(1) + '"')
+        except json.JSONDecodeError:
+            raw = m.group(1)
         return raw.strip() or None
 
     m = _HTML_CAPTION.search(html)
