@@ -4,11 +4,14 @@ Container 1 — Discord Bot
 - Forwards messages to the LLM service and posts the reply.
 - If the LLM returns a create_event action, creates a Discord Scheduled Event
   and patches the DB record with the resulting Discord event ID.
+- Detects Instagram reel/post URLs and creates a thread with the caption
+  fetched via the embed endpoint (no login required).
 """
 
 import asyncio
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -42,6 +45,18 @@ BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @men
 # How long to wait between LLM health-check retries on startup
 HEALTH_RETRY_SECONDS = 5
 HEALTH_MAX_ATTEMPTS  = 12   # give up after ~1 minute
+
+# ── Instagram URL detection ─────────────────────────────────────────────────
+# Matches /reel/, /p/, /tv/, /reels/ paths and captures the shortcode.
+_IG_URL_RE = re.compile(
+    r'https?://(?:www\.)?instagram\.com/(?:reel|p|tv|reels)/([A-Za-z0-9_-]+)',
+    re.IGNORECASE,
+)
+_IG_EMBED_TMPL = "https://www.instagram.com/p/{}/embed/captioned/"
+# Pulls the caption text out of the embed page JSON blob.
+_JSON_CAPTION_RE = re.compile(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"')
+_HTML_CAPTION_RE = re.compile(r'<span class="[^"]*Caption[^"]*"[^>]*>(.*?)</span>', re.DOTALL)
+_HTML_TAG_RE = re.compile(r'<[^>]+')
 
 # ── Discord client setup ───────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -126,6 +141,11 @@ async def on_message(message: discord.Message):
         f"[msg] guild={message.guild.id} channel={message.channel.id} "
         f"user={message.author.display_name!r} | {message.content[:120]!r}"
     )
+
+    # Instagram URL → thread with caption preview (no LLM call needed)
+    if _IG_URL_RE.search(message.content):
+        await handle_ig_links(message)
+        return
 
     t0 = time.perf_counter()
     async with message.channel.typing():
@@ -271,6 +291,103 @@ def save_channels():
         )
     except Exception as exc:
         log.warning(f"[config] Failed to save channels.json: {exc}")
+
+
+# ── Instagram helpers ───────────────────────────────────────────────────────
+
+def _caption_from_html(html: str) -> str | None:
+    """Pull caption text from IG embed page (JSON blob or HTML span)."""
+    m = _JSON_CAPTION_RE.search(html)
+    if m:
+        try:
+            # json.loads properly recombines surrogate emoji pairs (\\uD83C\\uDF75 → 🍵)
+            raw = json.loads('"' + m.group(1) + '"')
+        except json.JSONDecodeError:
+            raw = m.group(1)
+        return raw.strip() or None
+    m = _HTML_CAPTION_RE.search(html)
+    if m:
+        text = _HTML_TAG_RE.sub("", m.group(1)).strip()
+        return text or None
+    return None
+
+
+async def fetch_ig_caption(shortcode: str) -> str | None:
+    """Fetch the caption of an IG post via the public embed endpoint — no login needed."""
+    url = _IG_EMBED_TMPL.format(shortcode)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) "
+            "Gecko/20100101 Firefox/124.0"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.instagram.com/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                log.warning(f"[ig-embed] HTTP {resp.status_code} for shortcode={shortcode}")
+                return None
+            return _caption_from_html(resp.text)
+    except Exception as exc:
+        log.warning(f"[ig-embed] fetch failed for {shortcode}: {exc}")
+        return None
+
+
+def _thread_name_from_caption(caption: str | None, count: int) -> str:
+    """Derive a short, readable thread name from the caption text."""
+    if count > 1:
+        return f"Spots from {count} reels"
+    if not caption:
+        return "Spot suggestions"
+    # Use first sentence or first 60 chars of the caption
+    first_line = caption.split("\n")[0][:80].rstrip()
+    return first_line[:80] if first_line else "Spot suggestions"
+
+
+async def handle_ig_links(message: discord.Message) -> None:
+    """Detect IG URLs in a message, fetch their captions, and open a suggestions thread."""
+    matches = list(_IG_URL_RE.finditer(message.content))
+    if not matches:
+        return
+
+    # Acknowledge immediately so the user knows we saw the link
+    try:
+        await message.add_reaction("👀")
+    except discord.HTTPException:
+        pass
+
+    # Fetch all captions concurrently
+    shortcodes = [m.group(1) for m in matches]
+    captions = await asyncio.gather(*[fetch_ig_caption(sc) for sc in shortcodes])
+
+    first_caption = next((c for c in captions if c), None)
+    thread_name = _thread_name_from_caption(first_caption, len(matches))
+
+    try:
+        thread = await message.create_thread(name=thread_name[:100])
+    except discord.HTTPException as exc:
+        log.warning(f"[ig] couldn't create thread: {exc}")
+        return
+
+    for idx, (m, caption) in enumerate(zip(matches, captions), start=1):
+        url = m.group(0)
+        header = f"**Reel {idx}:**" if len(matches) > 1 else "**Reel:**"
+        if caption:
+            preview = caption[:800]
+            await thread.send(f"{header} <{url}>\n```\n{preview}\n```")
+        else:
+            await thread.send(
+                f"{header} <{url}>\n"
+                "_(Caption not available — reel may be private or the embed is rate-limited)_"
+            )
+
+    await thread.send(
+        "React with ⭐ to save this spot!\n"
+        "_Tip: run `python -m src.ingestion.cli <url>` to extract venue + location details._"
+    )
 
 
 # ── Schedule ────────────────────────────────────────────────────────────────
