@@ -43,6 +43,7 @@ _TIME_MENTION = re.compile(
 
 # Payload caps so a giant caption can't blow the model's context window.
 _MAX_CAPTION = 1500
+_MAX_TRANSCRIPT = 1500
 _MAX_TITLE = 200
 _MAX_DESC = 500
 _MAX_HASHTAGS = 15
@@ -61,6 +62,9 @@ def build_llm_payload(raw: RawPostSnapshot) -> dict:
     description = _clean(raw.description)
     if description and description != caption:  # avoid feeding the same text twice
         payload["og_description"] = description[:_MAX_DESC]
+    transcript = _clean(raw.transcript)
+    if transcript:  # spoken venue/location the caption may omit (Phase 2.5)
+        payload["transcript"] = transcript[:_MAX_TRANSCRIPT]
     if raw.location_text:
         payload["location_text"] = raw.location_text.strip()
     if raw.hashtags:
@@ -74,7 +78,7 @@ def build_llm_payload(raw: RawPostSnapshot) -> dict:
 def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = None) -> dict:
     """Return candidate kwargs for EventInspiration (validation happens later)."""
     caption = raw.caption or ""
-    searchable = " ".join(filter(None, [raw.caption, raw.title, raw.description]))
+    searchable = " ".join(filter(None, [raw.caption, raw.transcript, raw.title, raw.description]))
 
     # 1. Heuristic baseline — always computed, deterministic, cheap.
     venue = _venue_candidate(raw, caption)

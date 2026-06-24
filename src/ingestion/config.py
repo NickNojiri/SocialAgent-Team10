@@ -36,6 +36,15 @@ class IngestionSettings(BaseModel):
     llm_max_retries: int = Field(1, ge=0)  # corrective re-prompts after a parse failure
     llm_seed: int = 42                      # fixed seed + temperature 0 → deterministic
 
+    # ── Audio transcription (Phase 2.5) ──────────────────────────────────────
+    # Reels often *say* the venue/location out loud without writing it in the
+    # caption. When enabled and a video URL is present (og:video survives the IG
+    # login overlay), the audio is transcribed locally with Whisper and fed to
+    # the LLM alongside the caption. Best-effort: no video, no Whisper, or a
+    # download/transcribe failure all degrade to "no transcript" — never a crash.
+    transcribe_enabled: bool = False        # opt-in; needs faster-whisper + ffmpeg installed
+    whisper_model: str = "base"             # tiny | base | small — accuracy vs speed on CPU
+
     # ── Geographic enrichment (Phase 3) ──────────────────────────────────────
     # Resolves GeoContext location clues to coordinates via the repo's existing
     # Nominatim helper. Degrades to "unresolved" (never crashes) when the geocoder

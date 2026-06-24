@@ -93,6 +93,7 @@ class SocialSessionManager:
                 return self._snapshot(url, FetchStatus.ERROR, error=str(exc))
 
             await self._settle(page)
+            await self._dismiss_login_overlay(page)
 
             meta = await self._collect_meta(page)
             status = await self._classify(page, response, meta)
@@ -142,6 +143,27 @@ class SocialSessionManager:
             )
         except PlaywrightTimeoutError:
             pass  # busy pages never go idle; whatever has rendered is what we read
+
+    async def _dismiss_login_overlay(self, page: Page) -> None:
+        """Best-effort: close the "log in to continue" dialog IG overlays on public
+        posts, so the content underneath becomes readable. We never type credentials
+        or follow the login flow — we only click the dialog's own dismiss control.
+        A miss is fine; the og: tags are read regardless of the overlay."""
+        for selector in (
+            'div[role="dialog"] svg[aria-label="Close"]',
+            'div[role="dialog"] [aria-label="Close"]',
+            'svg[aria-label="Close"]',
+            'div[role="dialog"] button:has-text("Not Now")',
+            'div[role="dialog"] button:has-text("Not now")',
+        ):
+            try:
+                element = await page.query_selector(selector)
+                if element is not None and await element.is_visible():
+                    await element.click(timeout=1500)
+                    await page.wait_for_timeout(300)  # let the dialog animate out
+                    return
+            except PlaywrightError:
+                continue  # selector absent or not clickable — try the next one
 
     async def _classify(
         self, page: Page, response: Optional[Response], meta: dict[str, str]

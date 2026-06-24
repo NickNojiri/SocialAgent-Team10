@@ -29,7 +29,10 @@ Transport = Callable[[list[dict], dict], str]
 
 SYSTEM_PROMPT = """You are a strict data-extraction engine inside a local pipeline. You are not a chatbot.
 You receive a JSON object containing text fragments scraped from one public social media
-post (caption, title, location tag, hashtags). Extract event-inspiration fields.
+post (caption, title, location tag, hashtags) and, when available, a `transcript` of the
+video's spoken audio. The transcript is a valid source for venue_name/location — a place
+that is only *said* in the video still counts as appearing in the input. Extract
+event-inspiration fields.
 
 Rules:
 1. Output ONLY a JSON object matching the schema you were given. No prose, no markdown.
@@ -157,7 +160,7 @@ class LlmFieldExtractor:
 
 def _payload_text(payload: dict) -> str:
     parts: list[str] = []
-    for key in ("caption", "title", "og_description", "location_text"):
+    for key in ("caption", "transcript", "title", "og_description", "location_text"):
         value = payload.get(key)
         if value:
             parts.append(str(value))

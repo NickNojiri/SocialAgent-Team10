@@ -7,3 +7,9 @@ requests==2.33.1
 chromadb==1.5.7
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
+
+# Optional: reel audio transcription (Phase 2.5). Only needed when
+# transcribe_enabled=True. faster-whisper also requires ffmpeg on the system
+# (apt install ffmpeg / brew install ffmpeg). The pipeline degrades to
+# "no transcript" without these, so they stay optional.
+# faster-whisper==1.0.3

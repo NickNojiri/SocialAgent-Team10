@@ -34,6 +34,7 @@ from src.ingestion.sinks.jsonl_sink import JsonlSink
 
 if TYPE_CHECKING:
     from src.ingestion.sinks.chroma_sink import ChromaSink
+    from src.ingestion.pipeline.transcriber import Transcriber
 
 log = logging.getLogger("ingestion.orchestrator")
 
@@ -56,6 +57,7 @@ class IngestionPipeline:
         settings: IngestionSettings,
         *,
         extractor: Optional[LlmFieldExtractor] = None,
+        transcriber: Optional["Transcriber"] = None,
         geo_enricher: Optional[GeoEnricher] = None,
         temporal_resolver: Optional[TemporalResolver] = None,
         jsonl_sink: Optional[JsonlSink] = None,
@@ -64,6 +66,7 @@ class IngestionPipeline:
     ):
         self.settings = settings
         self.extractor = extractor
+        self.transcriber = transcriber
         self.geo_enricher = geo_enricher
         self.temporal_resolver = temporal_resolver
         self.jsonl_sink = jsonl_sink
@@ -124,6 +127,19 @@ class IngestionPipeline:
 
         page_extractor = select_extractor(snapshot.final_url or snapshot.url)
         raw = page_extractor.extract(snapshot)
+
+        # Phase 2.5: transcribe the reel's audio so a venue/location that is only
+        # *spoken* (never written in the caption) still reaches the LLM. The video
+        # URL lives in og:video, which IG serves even behind the login overlay.
+        if self.transcriber is not None:
+            from src.ingestion.pipeline.transcriber import video_url_from_meta
+
+            video_url = video_url_from_meta(snapshot.meta)
+            if video_url:
+                transcript = self.transcriber.transcribe_url(video_url)
+                if transcript:
+                    raw.transcript = transcript
+
         record, reason = build_record(raw, extractor=self.extractor)
         if record is None:
             return IngestionResult(
