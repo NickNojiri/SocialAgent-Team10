@@ -1,0 +1,74 @@
+"""Offline tests for the reel-capture cards (no network, no Discord gateway).
+
+Run from the repo root:  pytest app/test_cards.py -v
+"""
+
+import cards
+
+
+def test_extract_ig_urls_strips_tracking_params():
+    urls = cards.extract_ig_urls(
+        "check this https://www.instagram.com/reel/DZXT8n7p8ME/?igsh=abc123 out"
+    )
+    assert urls == ["https://www.instagram.com/reel/DZXT8n7p8ME/"]
+
+
+def test_extract_ig_urls_variants_and_dedup():
+    text = (
+        "https://instagram.com/p/ABC123/ "
+        "http://www.instagram.com/tv/XYZ789/ "
+        "https://www.instagram.com/reel/DZXT8n7p8ME/ "
+        "https://www.instagram.com/reel/DZXT8n7p8ME/?igsh=zzz "  # duplicate of the previous
+    )
+    assert cards.extract_ig_urls(text) == [
+        "https://instagram.com/p/ABC123/",
+        "http://www.instagram.com/tv/XYZ789/",
+        "https://www.instagram.com/reel/DZXT8n7p8ME/",
+    ]
+
+
+def test_extract_ig_urls_ignores_non_posts():
+    assert cards.extract_ig_urls("no links here") == []
+    assert cards.extract_ig_urls("https://example.com/reel/abc/") == []
+    assert cards.extract_ig_urls("https://www.instagram.com/someuser/") == []  # profile, not a post
+
+
+def test_build_spot_embed_scheduled():
+    event = {
+        "id": "abc",
+        "venue": "Nikushou Nakata Honten",
+        "category": "food_drink",
+        "theme": "top-grade wagyu yakiniku",
+        "source_url": "https://www.instagram.com/reel/DZXT8n7p8ME/",
+        "start_epoch": 1781000000,
+        "end_epoch": 1781007200,
+        "votes": 3,
+        "sharer": "nick",
+    }
+    embed = cards.build_spot_embed(event)
+    assert "Nikushou Nakata Honten" in embed.title
+    assert embed.title.startswith("🍽️")  # food_drink emoji
+    assert embed.url == event["source_url"]
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["Category"] == "food drink"
+    assert "<t:1781000000:F>" in fields["When"]
+    assert "shared by nick" in embed.footer.text
+
+
+def test_build_spot_embed_unscheduled_and_already():
+    event = {"id": "x", "venue": "Cafe X", "category": "cafe_dessert", "already": True, "votes": 5}
+    embed = cards.build_spot_embed(event)
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["When"] == "no fixed date"
+    assert any("Already in the catalog" in f.value for f in embed.fields)
+
+
+def test_build_spot_view_has_four_buttons_with_event_id():
+    view = cards.build_spot_view("deadbeef", votes=2)
+    custom_ids = [child.custom_id for child in view.children]
+    assert custom_ids == [
+        "spot:vote:1:deadbeef",
+        "spot:vote:-1:deadbeef",
+        "spot:similar:deadbeef",
+        "spot:remove:deadbeef",
+    ]

@@ -7,6 +7,10 @@ services:
     build: ./app
     container_name: event-bot
     env_file: .env
+    environment:
+      # Reel capture posts to the host admin app (ingest + shared votes).
+      - INGEST_URL=${INGEST_URL:-http://host.docker.internal:8010}
+      - ADMIN_URL=${ADMIN_URL:-http://host.docker.internal:8010}
     depends_on:
       - llm
       - recommend
@@ -14,7 +18,7 @@ services:
       - event-net
     restart: unless-stopped
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # reach Ollama on host
+      - "host.docker.internal:host-gateway"   # reach Ollama + admin app on host
 
   # Container 2: LLM
   llm:

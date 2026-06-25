@@ -21,6 +21,8 @@ import httpx
 import json
 from pathlib import Path
 
+import cards
+
 # ── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +40,10 @@ logging.getLogger("discord.http").setLevel(logging.WARNING)
 LLM_URL = os.getenv("LLM_URL", "http://llm:8001")
 DB_URL = os.getenv("DB_URL", "http://db:8002")
 RECOMMEND_URL = os.getenv("RECOMMEND_URL", "http://recommend:8003")   # Phase 6 retrieval service
+# Reel capture → the host admin app (ingest + shared votes). In Docker the bot
+# reaches the host via host.docker.internal; use localhost when run directly.
+INGEST_URL = os.getenv("INGEST_URL", "http://host.docker.internal:8010")
+ADMIN_URL = os.getenv("ADMIN_URL", INGEST_URL)
 BOT_CHANNEL_ID = int(os.getenv("BOT_CHANNEL_ID", "0"))   # 0 → respond to @mentions anywhere
 
 # How long to wait between LLM health-check retries on startup
@@ -56,6 +62,8 @@ CONFIG_FILE = Path("channels.json")
 ENABLED_CHANNELS: set[int] = set()
 # Channels opted into automatic chat-context event suggestions (Phase 6, in-memory, off by default)
 SUGGESTION_CHANNELS: set[int] = set()
+# Channels designated as reel "drop zones" — any IG link posted here is auto-captured.
+DROP_CHANNELS: set[int] = set()
 
 # ── Startup health check ───────────────────────────────────────────────────
 
@@ -90,6 +98,7 @@ async def on_ready():
     log.info(f"=== Bot online: {bot.user} (ID: {bot.user.id}) ===")
 
     load_channels()
+    cards.register_dynamic_items(bot)   # keep spot buttons alive across restarts
 
     try:
         synced = await tree.sync()
@@ -109,15 +118,28 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    # Ignore our own messages and DMs
     if message.author.bot:
         return
-    if message.guild is None:
-        return
 
-    bot_mentioned = bot.user.mentioned_in(message)
+    content = message.content or ""
+    urls = cards.extract_ig_urls(content)
+    is_dm = message.guild is None
+    bot_mentioned = bot.user is not None and bot.user.mentioned_in(message)
+    in_drop_channel = message.channel.id in DROP_CHANNELS
     in_enabled_channel = message.channel.id in ENABLED_CHANNELS
 
+    # ── Reel capture: a DM, a #drop-reels channel, or an @mention with a link.
+    # No command, no setup — the user just pastes a reel.
+    if urls and (is_dm or in_drop_channel or bot_mentioned):
+        await handle_reel_capture(message, urls)
+        return
+
+    # A DM with no link → gentle onboarding so the user knows what to do.
+    if is_dm:
+        await message.channel.send(embed=_welcome_embed())
+        return
+
+    # ── Existing guild conversation path: @mention or enabled channel only.
     if not (bot_mentioned or in_enabled_channel):
         return
 
@@ -127,7 +149,7 @@ async def on_message(message: discord.Message):
 
     log.info(
         f"[msg] guild={message.guild.id} channel={message.channel.id} "
-        f"user={message.author.display_name!r} | {message.content[:120]!r}"
+        f"user={message.author.display_name!r} | {content[:120]!r}"
     )
 
     t0 = time.perf_counter()
@@ -171,6 +193,90 @@ async def on_message(message: discord.Message):
                 await thread.send(data["markdown"])
         except Exception as exc:
             log.debug(f"[recommend] auto-suggest skipped: {exc}")
+
+
+# ── Reel capture ─────────────────────────────────────────────────────────────
+
+async def handle_reel_capture(message: discord.Message, urls: list[str]):
+    """Paste-and-go: ack with a reaction, ingest the reel(s), reply with cards."""
+    await _add_reaction(message, "⏳")
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(f"{INGEST_URL}/api/ingest", json={"urls": urls})
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        log.warning(f"[capture] ingest failed: {exc}")
+        await _swap_reaction(message, "⏳", "⚠️")
+        await message.reply(
+            "⚠️ Couldn't reach the catalog service — is the admin app running?",
+            mention_author=False,
+        )
+        return
+
+    events = data.get("events", [])
+    await _swap_reaction(message, "⏳", "✅" if events else "⚠️")
+
+    if not events:
+        await message.reply(_capture_failure_text(data), mention_author=False)
+        return
+
+    sharer = message.author.display_name
+    if len(events) > 3:   # a big paste → one tidy summary instead of N cards
+        await message.reply(embed=_summary_embed(events, sharer), mention_author=False)
+        return
+
+    for event in events:
+        event["sharer"] = sharer
+        event["already"] = not event.get("new", True)
+        await message.reply(
+            embed=cards.build_spot_embed(event),
+            view=cards.build_spot_view(event["id"], int(event.get("votes", 0))),
+            mention_author=False,
+        )
+
+
+async def _add_reaction(message: discord.Message, emoji: str):
+    try:
+        await message.add_reaction(emoji)
+    except Exception:
+        pass
+
+
+async def _swap_reaction(message: discord.Message, old: str, new: str):
+    try:
+        await message.remove_reaction(old, bot.user)
+    except Exception:
+        pass
+    await _add_reaction(message, new)
+
+
+def _capture_failure_text(data: dict) -> str:
+    if data.get("unreadable"):
+        return "🚫 I couldn't read that reel — it may be private or removed."
+    return "🤔 I read it, but couldn't find a venue worth saving."
+
+
+def _summary_embed(events: list[dict], sharer: str) -> discord.Embed:
+    embed = discord.Embed(title=f"✅ Added {len(events)} spots", color=0x3FB950)
+    lines = []
+    for event in events[:10]:
+        tag = "" if event.get("new", True) else " · already saved"
+        lines.append(f"{cards.emoji_for(event.get('category'))} **{event.get('venue')}**{tag}")
+    embed.description = "\n".join(lines)
+    embed.set_footer(text=f"shared by {sharer} · vote on each with /catalog")
+    return embed
+
+
+def _welcome_embed() -> discord.Embed:
+    return discord.Embed(
+        title="👋 Drop a reel, get a spot",
+        description=(
+            "Paste any Instagram reel or post link here — no commands needed.\n"
+            "I'll catalog the venue and post a card you can 👍 to vote up."
+        ),
+        color=0x6EA8FE,
+    )
 
 
 # ── Slash Commands ─────────────────────────────────────────────────────────
@@ -266,6 +372,53 @@ async def suggestions_command(interaction: discord.Interaction, state: str):
     await interaction.response.send_message(msg)
 
 
+# ── Reel capture commands ────────────────────────────────────────────────────
+
+@tree.command(
+    name="dropchannel",
+    description="Auto-capture any Instagram reel link posted in this channel",
+)
+@app_commands.describe(state="on or off")
+@app_commands.default_permissions(manage_channels=True)
+async def dropchannel_command(interaction: discord.Interaction, state: str):
+    if state.strip().lower() in ("on", "enable", "true"):
+        DROP_CHANNELS.add(interaction.channel_id)
+        msg = "✅ This is now a reel drop channel — just paste links, no commands needed."
+    else:
+        DROP_CHANNELS.discard(interaction.channel_id)
+        msg = "🛑 This channel is no longer auto-capturing reels."
+    save_channels()
+    log.info(f"[config] dropchannel {state!r} for channel {interaction.channel_id}")
+    await interaction.response.send_message(msg)
+
+
+@tree.command(name="help", description="How to save spots with the bot")
+async def help_command(interaction: discord.Interaction):
+    await interaction.response.send_message(embed=_welcome_embed(), ephemeral=True)
+
+
+@tree.command(name="catalog", description="Show the top-voted spots in the catalog")
+async def catalog_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(f"{INGEST_URL}/api/events")
+            resp.raise_for_status()
+            events = resp.json().get("events", [])
+    except Exception as exc:
+        log.warning(f"[catalog] fetch failed: {exc}")
+        await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
+        return
+    if not events:
+        await interaction.followup.send("The catalog is empty — paste a reel to start it!")
+        return
+    lines = [
+        f"{cards.emoji_for(ev.get('category'))} **{ev.get('venue')}** · {int(ev.get('votes', 0))} 👍"
+        for ev in events[:10]
+    ]
+    await interaction.followup.send("🏆 **Top spots**\n" + "\n".join(lines))
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 async def call_recommend(channel_id: int, message: str, mode: str) -> dict:
@@ -312,13 +465,19 @@ def collect_ping_targets(message: discord.Message) -> list[discord.Member]:
 
 
 def load_channels():
-    global ENABLED_CHANNELS
+    global ENABLED_CHANNELS, DROP_CHANNELS
 
     if CONFIG_FILE.exists():
         try:
             data = json.loads(CONFIG_FILE.read_text())
-            ENABLED_CHANNELS = set(int(x) for x in data)
-            log.info(f"[config] Loaded {len(ENABLED_CHANNELS)} enabled channels")
+            if isinstance(data, list):           # legacy format: a bare list of enabled channels
+                ENABLED_CHANNELS = set(int(x) for x in data)
+            else:
+                ENABLED_CHANNELS = set(int(x) for x in data.get("enabled", []))
+                DROP_CHANNELS = set(int(x) for x in data.get("drop", []))
+            log.info(
+                f"[config] Loaded {len(ENABLED_CHANNELS)} enabled, {len(DROP_CHANNELS)} drop channels"
+            )
         except Exception as exc:
             log.warning(f"[config] Failed to load channels.json: {exc}")
 
@@ -326,7 +485,7 @@ def load_channels():
 def save_channels():
     try:
         CONFIG_FILE.write_text(
-            json.dumps(list(ENABLED_CHANNELS), indent=2)
+            json.dumps({"enabled": list(ENABLED_CHANNELS), "drop": list(DROP_CHANNELS)}, indent=2)
         )
     except Exception as exc:
         log.warning(f"[config] Failed to save channels.json: {exc}")
