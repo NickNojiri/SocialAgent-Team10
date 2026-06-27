@@ -132,9 +132,9 @@ class IngestionPipeline:
         # *spoken* (never written in the caption) still reaches the LLM. The video
         # URL lives in og:video, which IG serves even behind the login overlay.
         if self.transcriber is not None:
-            from src.ingestion.pipeline.transcriber import video_url_from_meta
+            from src.ingestion.pipeline.transcriber import video_url_from_html, video_url_from_meta
 
-            video_url = video_url_from_meta(snapshot.meta)
+            video_url = video_url_from_meta(snapshot.meta) or video_url_from_html(snapshot.html)
             if video_url:
                 transcript = self.transcriber.transcribe_url(video_url)
                 if transcript:

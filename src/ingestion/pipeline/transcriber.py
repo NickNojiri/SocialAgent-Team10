@@ -13,8 +13,10 @@ a video URL exists, fully injectable for offline tests, and a failure is a norma
 requires them, and a machine without them simply gets transcript=None.
 """
 
+import json
 import logging
 import os
+import re
 import tempfile
 from typing import Callable, Optional
 
@@ -39,6 +41,26 @@ def video_url_from_meta(meta: dict[str, str]) -> Optional[str]:
         if url and url.startswith("http"):
             return url
     return None
+
+
+_VIDEO_VERSIONS_RE = re.compile(r'"video_versions":\s*\[\s*\{[^}]*?"url":"([^"]+)"')
+
+
+def video_url_from_html(html: Optional[str]) -> Optional[str]:
+    """Fallback when og:video is absent (IG stopped emitting it for logged-out
+    reels): the page still embeds the mp4 in a "video_versions" JSON blob. Pull
+    the first URL and JSON-unescape it (\\/ -> /, \\uXXXX -> char)."""
+    if not html:
+        return None
+    match = _VIDEO_VERSIONS_RE.search(html)
+    if not match:
+        return None
+    raw = match.group(1)
+    try:
+        url = json.loads(f'"{raw}"')
+    except Exception:
+        url = raw.replace("\\/", "/")
+    return url if url.startswith("http") else None
 
 
 class Transcriber:
