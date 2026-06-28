@@ -13,6 +13,21 @@ import ssl
 import time
 from datetime import datetime, timezone
 
+# MUST run before importing discord/aiohttp — aiohttp builds a verified SSL context
+# at import time, so the default context has to be overridden first. On TLS-
+# intercepting networks the proxy CA fails OpenSSL; BOT_INSECURE_SSL=1 skips it.
+if os.getenv("BOT_INSECURE_SSL") == "1":
+    _orig_ssl_ctx = ssl.create_default_context
+
+    def _insecure_ssl_ctx(*args, **kwargs):
+        ctx = _orig_ssl_ctx(*args, **kwargs)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    ssl.create_default_context = _insecure_ssl_ctx
+    ssl._create_default_https_context = _insecure_ssl_ctx
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -56,18 +71,10 @@ HEALTH_MAX_ATTEMPTS  = 12   # give up after ~1 minute
 intents = discord.Intents.default()
 intents.message_content = True   # required to read message text
 
-# On TLS-intercepting networks the proxy's CA cert makes Discord's TLS fail
-# verification. BOT_INSECURE_SSL=1 routes the gateway/REST through an unverified
-# context so the bot can still connect (use only on a trusted/intercepted network).
-_connector = None
 if os.getenv("BOT_INSECURE_SSL") == "1":
-    _ctx = ssl.create_default_context()
-    _ctx.check_hostname = False
-    _ctx.verify_mode = ssl.CERT_NONE
-    _connector = aiohttp.TCPConnector(ssl=_ctx)
-    log.warning("[ssl] TLS verification DISABLED (BOT_INSECURE_SSL=1) — trusted networks only")
+    log.warning("[ssl] cert verification disabled for the intercepting proxy (BOT_INSECURE_SSL=1)")
 
-bot = discord.Client(intents=intents, connector=_connector)
+bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
 # Saved channels for discord servers
