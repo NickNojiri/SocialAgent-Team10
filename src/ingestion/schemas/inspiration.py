@@ -101,6 +101,9 @@ class EventInspiration(BaseModel):
     record_id: UUID = Field(default_factory=uuid4)
     venue_name: str = Field(min_length=1, max_length=120)
     core_theme: str = Field(min_length=3, max_length=280)  # "late-night birria pop-up"
+    # User-facing "quick description" from the reel's audio (Phase 2.5). None when
+    # there was nothing to transcribe — the card shows "No info" in that case.
+    summary: Optional[str] = Field(None, max_length=600)
     category: EventCategory
     geo: GeoContext
     hashtags: list[str] = []

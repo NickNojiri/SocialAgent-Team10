@@ -23,12 +23,47 @@ from src.ingestion.cli import (
 )
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
+from src.ingestion.pipeline.summarizer import summarize_place
 from src.ingestion.sinks.chroma_sink import ChromaSink
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
 app = FastAPI(title="SocialAgent Admin")
 _settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False)
 _sink = ChromaSink(_settings)
+
+# Route host TLS through the Windows cert store so the reel video download works on
+# TLS-intercepting networks (see the transcriber). Best-effort.
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
+
+def _build_transcriber():
+    """Whisper transcriber for reel audio, built once (model loads on first use).
+    Stays None when faster-whisper isn't installed, so ingest just skips audio."""
+    try:
+        from faster_whisper import WhisperModel
+
+        from src.ingestion.pipeline.transcriber import Transcriber
+
+        model = WhisperModel(_settings.whisper_model, device="cpu", compute_type="int8")
+
+        def _fn(path: str):
+            segments, _info = model.transcribe(path, beam_size=1, vad_filter=True)
+            return " ".join(s.text for s in segments).strip()
+
+        return Transcriber(_settings, transcribe_fn=_fn)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("ingestion.admin").warning(f"[stt] transcription off: {exc}")
+        return None
+
+
+_transcriber = _build_transcriber()
 
 
 class IngestBody(BaseModel):
@@ -55,6 +90,7 @@ def list_events():
                 "category": m.get("category", "other"),
                 "theme": m.get("core_theme", ""),
                 "source_url": m.get("source_url", ""),
+                "blurb": m.get("summary", ""),
                 "votes": int(m.get("votes", 0)),
                 "schedule": m.get("schedule_status", "unscheduled"),
                 "start_utc": m.get("start_utc", ""),
@@ -73,6 +109,8 @@ async def ingest(body: IngestBody):
     pipeline = IngestionPipeline(
         _settings,
         extractor=build_extractor(_settings),
+        transcriber=_transcriber,
+        summarizer=lambda cap, tr: summarize_place(cap, tr, _settings),
         geo_enricher=None,  # geocoding off here (fast; Nominatim often blocked)
         temporal_resolver=build_temporal_resolver(_settings),
         jsonl_sink=JsonlSink(Path("data/inspirations.jsonl")),
@@ -104,6 +142,7 @@ def _event_summary(result, existing_ids: set) -> dict:
         "category": meta.get("category") or result.record.category.value,
         "theme": meta.get("core_theme") or result.record.core_theme,
         "source_url": meta.get("source_url", ""),
+        "blurb": meta.get("summary", ""),          # video-based quick description ("" → "No info")
         "schedule": meta.get("schedule_status", "unscheduled"),
         "start_epoch": meta.get("start_epoch"),
         "end_epoch": meta.get("end_epoch"),

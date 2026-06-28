@@ -432,6 +432,66 @@ async def catalog_command(interaction: discord.Interaction):
     await interaction.followup.send("🏆 **Top spots**\n" + "\n".join(lines))
 
 
+# ── Planning ─────────────────────────────────────────────────────────────────
+
+@tree.command(
+    name="plan",
+    description="Read the recent chat and plan an outing together",
+)
+async def plan_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
+    # Gather the recent multi-person chat (skip the bot's own messages).
+    lines: list[str] = []
+    async for m in interaction.channel.history(limit=25):
+        if m.author.bot or not m.content.strip():
+            continue
+        lines.append(f"{m.author.display_name}: {m.content.strip()}")
+    lines.reverse()
+    transcript = "\n".join(lines)[:4000]
+    if not transcript:
+        await interaction.followup.send(
+            "There's not much to go on yet — chat about what you're feeling, then `/plan` again."
+        )
+        return
+
+    try:
+        data = await call_plan(interaction.channel_id, transcript)
+    except Exception as exc:
+        log.warning(f"[plan] failed: {exc}")
+        await interaction.followup.send("⚠️ Couldn't reach the planner right now.")
+        return
+
+    request = data.get("request", {})
+    recs = data.get("recommendations", [])
+
+    thread = await _open_plan_thread(interaction, request)
+    target = thread or interaction.channel
+    await target.send(embed=_what_i_heard_embed(request))
+    if not recs:
+        await target.send("I couldn't find a match yet — add a vibe or widen the area, then `/plan` again.")
+    else:
+        for rec in recs:
+            event = {
+                "id": rec.get("content_hash"),
+                "venue": rec.get("venue_name"),
+                "category": rec.get("category"),
+                "theme": rec.get("core_theme"),
+                "source_url": rec.get("source_url"),
+                "start_epoch": rec.get("start_epoch"),
+                "end_epoch": rec.get("end_epoch"),
+                "votes": 0,
+            }
+            await target.send(
+                embed=cards.build_spot_embed(event),
+                view=cards.build_spot_view(event["id"], 0),
+            )
+    if thread is not None:
+        await interaction.followup.send(f"📋 I put a plan together in {thread.mention} — vote on the picks!")
+    else:
+        await interaction.followup.send("📋 Here's a plan — vote on the picks above!")
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 async def call_recommend(channel_id: int, message: str, mode: str) -> dict:
@@ -441,6 +501,54 @@ async def call_recommend(channel_id: int, message: str, mode: str) -> dict:
         resp = await client.post(f"{RECOMMEND_URL}/recommend", json=payload)
         resp.raise_for_status()
         return resp.json()
+
+
+async def call_plan(channel_id: int, transcript: str) -> dict:
+    """Ask the recommend service to synthesize the group's request + a shortlist."""
+    payload = {"channel_id": str(channel_id), "transcript": transcript}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{RECOMMEND_URL}/plan", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _what_i_heard_embed(request: dict) -> discord.Embed:
+    """The 'here's what I heard' confirmation card for /plan."""
+    embed = discord.Embed(
+        title="📋 Here's what I heard",
+        description="Vote on the picks below — or keep chatting and `/plan` again to refine.",
+        color=0x6EA8FE,
+    )
+    fields = [
+        ("🍽️ vibe", request.get("vibe")),
+        ("📍 area", request.get("area")),
+        ("💸 budget", request.get("budget")),
+        ("🕗 when", request.get("time")),
+    ]
+    shown = False
+    for name, val in fields:
+        if val:
+            embed.add_field(name=name, value=str(val), inline=True)
+            shown = True
+    if not shown:
+        embed.add_field(name="🍽️ vibe", value="something fun", inline=True)
+    return embed
+
+
+async def _open_plan_thread(interaction: discord.Interaction, request: dict):
+    """Create a dedicated plan thread off the channel. Returns None (post inline)
+    when we're already in a thread or lack permission to make one."""
+    name = "📋 " + (request.get("vibe") or "Plan")
+    if request.get("area"):
+        name += f" · {request['area']}"
+    channel = interaction.channel
+    if isinstance(channel, discord.Thread):
+        return None
+    try:
+        return await channel.create_thread(name=name[:90], type=discord.ChannelType.public_thread)
+    except Exception as exc:
+        log.warning(f"[plan] could not open thread: {exc}")
+        return None
 
 
 async def call_llm(message: discord.Message):

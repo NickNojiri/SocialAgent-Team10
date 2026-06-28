@@ -59,6 +59,23 @@ def recommend(req: RecommendRequest):
     }
 
 
+class PlanRequest(BaseModel):
+    channel_id: str
+    transcript: str          # the recent multi-person chat the bot collected
+
+
+@app.post("/plan")
+def plan(req: PlanRequest):
+    """Group planning: chat transcript -> synthesized request + a shortlist."""
+    result = get_service().plan(req.channel_id, req.transcript)
+    return {
+        "request": result.request,
+        "query": result.query,
+        "recommendations": [asdict(r) for r in result.recommendations],
+        "markdown": format_recommendations(result.recommendations),
+    }
+
+
 from fastapi.responses import JSONResponse
 
 @app.get("/ready")

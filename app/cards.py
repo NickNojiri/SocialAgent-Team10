@@ -79,8 +79,16 @@ def build_spot_embed(event: dict) -> discord.Embed:
         color=_CATEGORY_COLOR.get(category, 0x888780),
         url=event.get("source_url") or None,
     )
-    if event.get("theme"):
-        embed.description = str(event["theme"])[:300]
+    desc_parts: list[str] = []
+    blurb = event.get("blurb")
+    if blurb is not None:                       # capture flow: video-based quick description
+        desc_parts.append(f"📝 {blurb}" if blurb else "📝 No info")
+    elif event.get("theme"):
+        desc_parts.append(str(event["theme"])[:300])
+    if event.get("source_url"):
+        desc_parts.append(f"▶ [Watch the reel]({event['source_url']})")
+    if desc_parts:
+        embed.description = "\n\n".join(desc_parts)
     embed.add_field(name="Category", value=category.replace("_", " "), inline=True)
 
     start_epoch = event.get("start_epoch")

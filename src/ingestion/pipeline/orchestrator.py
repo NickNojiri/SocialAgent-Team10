@@ -58,6 +58,7 @@ class IngestionPipeline:
         *,
         extractor: Optional[LlmFieldExtractor] = None,
         transcriber: Optional["Transcriber"] = None,
+        summarizer: Optional[Callable[[Optional[str], Optional[str]], Optional[str]]] = None,
         geo_enricher: Optional[GeoEnricher] = None,
         temporal_resolver: Optional[TemporalResolver] = None,
         jsonl_sink: Optional[JsonlSink] = None,
@@ -67,6 +68,7 @@ class IngestionPipeline:
         self.settings = settings
         self.extractor = extractor
         self.transcriber = transcriber
+        self.summarizer = summarizer
         self.geo_enricher = geo_enricher
         self.temporal_resolver = temporal_resolver
         self.jsonl_sink = jsonl_sink
@@ -148,6 +150,14 @@ class IngestionPipeline:
                 rejection_reason=reason,
                 raw_ref=self._save_raw(snapshot),
             )
+
+        # Phase 2.5: a user-facing "quick description" from the audio. Only when we
+        # actually transcribed something — no transcript → no summary → card shows "No info".
+        if self.summarizer is not None and getattr(raw, "transcript", None):
+            try:
+                record.summary = self.summarizer(getattr(raw, "caption", None), raw.transcript)
+            except Exception as exc:
+                log.warning(f"[summary] skipped: {type(exc).__name__}: {exc}")
 
         if self.geo_enricher is not None:           # Phase 3
             record = self.geo_enricher.enrich(record)

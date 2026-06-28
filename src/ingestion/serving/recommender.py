@@ -6,12 +6,19 @@ so this is fully unit-testable offline (fake embedder + injected clock).
 
 Spam prevention = intent gate (auto only) + per-channel cooldown (auto only) +
 relevance-distance floor + recent-id dedup + max results.
+
+Group planning (Phase 8): synthesize_request() + RecommendationService.plan()
+read a whole multi-person chat transcript into a structured group request and
+retrieve a shortlist, reusing the same ranking/spam logic.
 """
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Optional
+
+import httpx
 
 from src.ingestion.config import IngestionSettings
 
@@ -53,6 +60,45 @@ def looks_like_request(text: str) -> bool:
     return bool(tokens & _TRIGGERS)
 
 
+def synthesize_request(transcript: str, settings: IngestionSettings) -> dict:
+    """LLM-synthesize a group's collective request from a chat transcript.
+
+    Returns a dict with whatever of {vibe, area, budget, time} it could fill.
+    Degrades to {} on any Ollama/parse failure — callers fall back to keyword
+    extraction, so this never breaks /plan.
+    """
+    prompt = (
+        "A group of friends is deciding where to go out together. From their chat below, "
+        "infer what they COLLECTIVELY want and return ONLY a JSON object with these string keys:\n"
+        '  "vibe"   - the food/drink/activity they want (short, e.g. "boba", "tacos", "live music")\n'
+        '  "area"   - neighborhood or city if mentioned, else ""\n'
+        '  "budget" - one of "cheap", "moderate", "fancy", or ""\n'
+        '  "time"   - when, e.g. "tonight", "this weekend", else ""\n\n'
+        f"Chat:\n{transcript}\n"
+    )
+    try:
+        resp = httpx.post(
+            f"{settings.ollama_url}/api/generate",
+            json={
+                "model": settings.ollama_model,
+                "prompt": prompt,
+                "stream": False,
+                "format": "json",  # force valid JSON output
+            },
+            timeout=settings.llm_timeout_s,
+        )
+        resp.raise_for_status()
+        data = json.loads(resp.json().get("response", "{}"))
+    except Exception:
+        return {}
+    out: dict = {}
+    for key in ("vibe", "area", "budget", "time"):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()
+    return out
+
+
 @dataclass
 class Recommendation:
     content_hash: str
@@ -71,6 +117,13 @@ class RecommendationResult:
     recommendations: list[Recommendation] = field(default_factory=list)
     suppressed: bool = False
     reason: Optional[str] = None
+
+
+@dataclass
+class PlanResult:
+    request: dict = field(default_factory=dict)        # {vibe, area, budget, time}
+    recommendations: list[Recommendation] = field(default_factory=list)
+    query: str = ""
 
 
 class RecommendationService:
@@ -131,6 +184,16 @@ class RecommendationService:
         for rec in picked:
             recent[rec.content_hash] = now
         return RecommendationResult(recommendations=picked)
+
+    def plan(self, channel_id: str, transcript: str, *, now: Optional[float] = None) -> "PlanResult":
+        """Group-planning entry point: synthesize the group's request from a chat
+        transcript, then retrieve a shortlist (reusing recommend's ranking/spam logic)."""
+        request = synthesize_request(transcript, self.settings)
+        query = " ".join(v for v in (request.get("vibe"), request.get("area")) if v).strip()
+        if not query:
+            query = extract_query(transcript)        # fallback: keyword vibe over the whole thread
+        result = self.recommend(channel_id, query, mode="command", now=now)
+        return PlanResult(request=request, recommendations=result.recommendations, query=query)
 
     def _expire_recent(self, recent: dict[str, float], now: float) -> None:
         window = self.settings.rec_dedup_window_s
