@@ -62,6 +62,7 @@ curl -s http://localhost:11434/api/tags | head -c 200   # Ollama should answer
 | 3 | https://www.instagram.com/reel/DWCIfM4jYwa/ | shows a map, **no spoken audio** → caption-only summary |
 | 4 | https://www.instagram.com/reel/DX0z0HRyRsg/ | music + caption only → caption-only summary |
 | 5 | https://www.instagram.com/reel/DZtagrnR1vA/ | music + caption only → caption-only summary |
+| 6 | https://www.instagram.com/reel/DE4ECPeRPbv/ | unknown — classify on first run (spoken vs music/caption-only) |
 
 (`?igsh=...` tracking params stripped — the extractor strips them anyway.)
 
@@ -76,7 +77,8 @@ python scripts/test_transcribe.py \
   "https://www.instagram.com/reel/DZd_edNJKJI/" \
   "https://www.instagram.com/reel/DWCIfM4jYwa/" \
   "https://www.instagram.com/reel/DX0z0HRyRsg/" \
-  "https://www.instagram.com/reel/DZtagrnR1vA/"
+  "https://www.instagram.com/reel/DZtagrnR1vA/" \
+  "https://www.instagram.com/reel/DE4ECPeRPbv/"
 ```
 
 Tip: start with **one** known-good reel (#1) to confirm the whole chain works
@@ -109,6 +111,7 @@ For each reel, confirm:
 | 3 |              |             |                  |                    |       |
 | 4 |              |             |                  |                    |       |
 | 5 |              |             |                  |                    |       |
+| 6 |              |             |                  |                    |       |
 
 ---
 
