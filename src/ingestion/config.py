@@ -1,12 +1,48 @@
 """Tunable knobs for the ingestion engine. Defaults are deliberately polite."""
 
+import os
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
+def _default_chromium_executable_path() -> Optional[str]:
+    """Allow pointing Playwright at a pre-installed Chromium.
+
+    Some environments ship a Chromium build that doesn't match the version
+    Playwright would otherwise download (e.g. CI sandboxes, TLS-intercepting
+    networks where the auto-download is blocked). Setting
+    PLAYWRIGHT_EXECUTABLE_PATH (or CHROMIUM_EXECUTABLE_PATH) lets the launcher
+    use that binary instead of failing with "executable doesn't exist".
+
+    As a last resort, if PLAYWRIGHT_BROWSERS_PATH points at a managed browser
+    pool that exposes a ready-to-use `chromium` symlink, use that. This keeps
+    pre-provisioned sandboxes working without anyone exporting an env var,
+    while normal dev/CI (no such symlink) falls through to the bundled build.
+    """
+    explicit = os.getenv("PLAYWRIGHT_EXECUTABLE_PATH") or os.getenv(
+        "CHROMIUM_EXECUTABLE_PATH"
+    )
+    if explicit:
+        return explicit
+
+    pool = os.getenv("PLAYWRIGHT_BROWSERS_PATH")
+    if pool:
+        candidate = Path(pool) / "chromium"
+        if candidate.exists():
+            return str(candidate.resolve())
+
+    return None
+
+
 class IngestionSettings(BaseModel):
     headless: bool = True
+    # Optional explicit Chromium binary; falls back to Playwright's bundled
+    # build when unset. Read from env so tests/CI need no code changes.
+    chromium_executable_path: Optional[str] = Field(
+        default_factory=_default_chromium_executable_path
+    )
     nav_timeout_ms: int = Field(20_000, gt=0)
     # Cap on waiting for dynamic layouts to finish rendering — never unbounded.
     settle_timeout_ms: int = Field(8_000, gt=0)

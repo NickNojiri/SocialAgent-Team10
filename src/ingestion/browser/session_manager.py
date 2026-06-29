@@ -46,7 +46,10 @@ class SocialSessionManager:
 
     async def __aenter__(self) -> "SocialSessionManager":
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=self.settings.headless)
+        launch_kwargs: dict = {"headless": self.settings.headless}
+        if self.settings.chromium_executable_path:
+            launch_kwargs["executable_path"] = self.settings.chromium_executable_path
+        self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
