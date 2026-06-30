@@ -38,7 +38,8 @@ No spreadsheets. No copy-paste. Paste a link, get a plan.
 ## What it looks like
 
 **Capture → card.** Paste a reel; SpotBot replies with a spot card. 👍 *Want to go*,
-👎 *Not for me*, find *Similar nearby*, or *Remove* it.
+👎 *Not for me*, ✨ *Add suggestions* (posts similar spots as their own votable cards),
+or *Remove* it.
 
 ![Spot card](docs/images/discord_spot_card.png)
 
@@ -142,8 +143,9 @@ Slash commands fill in the rest:
 | `/here` · `/leave` · `/channels` | Enable / disable / list conversational channels. |
 | `/help` | How to save spots with the bot. |
 
-On a spot card: **Want to go** (👍) and **Not for me** (👎) vote · **Similar nearby**
-finds related spots · **Remove** deletes it (requires *Manage Messages* in a server).
+On a spot card: **Want to go** (👍) and **Not for me** (👎) vote · **Add suggestions**
+(✨) posts similar spots as their own votable cards · **Remove** deletes it (requires
+*Manage Messages* in a server).
 
 ---
 
@@ -217,8 +219,6 @@ SocialAgent-Team10/
 
 ## Roadmap
 
-- **Add suggestions** button — actively surface *and* save similar spots from a card
-  (the current *Similar nearby* button is read-only).
 - **Authenticated IG ingestion** for higher reliability — see
   [docs/IG_AUTH_INGESTION_PLAN.md](docs/IG_AUTH_INGESTION_PLAN.md).
 

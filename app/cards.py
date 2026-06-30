@@ -7,8 +7,8 @@ so they keep working after a bot restart (registered via register_dynamic_items)
 Talks to the same HTTP endpoints the website uses, so a Discord vote and a web
 vote land in one shared store:
   ADMIN_URL      /api/events/{id}/vote   (👍/👎)   ·   /api/events/{id}  (remove)
-  ADMIN_URL      /api/events                       (Similar nearby lookup)
-  RECOMMEND_URL  /recommend                        (Similar nearby query)
+  ADMIN_URL      /api/events                       (Add-suggestions lookup)
+  RECOMMEND_URL  /recommend                        (Add-suggestions query)
 """
 
 import os
@@ -150,15 +150,17 @@ class VoteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:vote
         await interaction.response.edit_message(view=build_spot_view(self.event_id, votes))
 
 
-class SimilarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:similar:(?P<eid>[^:]+)"):
+class AddSuggestionsButton(
+    discord.ui.DynamicItem[discord.ui.Button], template=r"spot:suggest:(?P<eid>[^:]+)"
+):
     def __init__(self, event_id: str):
         self.event_id = event_id
         super().__init__(
             discord.ui.Button(
-                style=discord.ButtonStyle.secondary,
-                label="Similar nearby",
-                emoji="📍",
-                custom_id=f"spot:similar:{event_id}",
+                style=discord.ButtonStyle.success,
+                label="Add suggestions",
+                emoji="✨",
+                custom_id=f"spot:suggest:{event_id}",
             )
         )
 
@@ -167,13 +169,29 @@ class SimilarButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:s
         return cls(match["eid"])
 
     async def callback(self, interaction: discord.Interaction):
+        """Find spots similar to this one and post each as its own votable card."""
         await interaction.response.defer(thinking=True)
         query = await _event_query(self.event_id)
         if not query:
             await interaction.followup.send("⚠️ I can't find that spot anymore.")
             return
-        markdown = await _recommend(interaction.channel_id, query)
-        await interaction.followup.send(markdown or "No similar spots yet — paste a few more reels!")
+        suggestions = await _suggest_events(
+            interaction.channel_id, query, exclude_id=self.event_id
+        )
+        if not suggestions:
+            await interaction.followup.send(
+                "No similar spots yet — paste a few more reels and try again!"
+            )
+            return
+        await interaction.followup.send(
+            f"✨ Added {len(suggestions)} similar spot"
+            f"{'' if len(suggestions) == 1 else 's'} to vote on:"
+        )
+        for ev in suggestions:
+            await interaction.followup.send(
+                embed=build_spot_embed(ev),
+                view=build_spot_view(ev["id"], ev.get("votes", 0)),
+            )
 
 
 class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:remove:(?P<eid>[^:]+)"):
@@ -212,38 +230,49 @@ class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:re
 
 
 def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
-    """The action row attached to a spot card: vote up/down, similar, remove."""
+    """The action row attached to a spot card: vote up/down, add suggestions, remove."""
     view = discord.ui.View(timeout=None)
     view.add_item(VoteButton(event_id, 1, votes))
     view.add_item(VoteButton(event_id, -1))
-    view.add_item(SimilarButton(event_id))
+    view.add_item(AddSuggestionsButton(event_id))
     view.add_item(RemoveButton(event_id))
     return view
 
 
 def register_dynamic_items(client: discord.Client) -> None:
     """Call once in on_ready so buttons keep working after a restart."""
-    client.add_dynamic_items(VoteButton, SimilarButton, RemoveButton)
+    client.add_dynamic_items(VoteButton, AddSuggestionsButton, RemoveButton)
 
 
-# ── helpers for the Similar button ───────────────────────────────────────────
+# ── helpers for the Add-suggestions button ───────────────────────────────────
 
 
-async def _event_query(event_id: str) -> str:
-    """Look an event up in the catalog and build a vibe query (venue + theme)."""
+async def _events_by_id() -> dict:
+    """Snapshot the catalog as {event_id: event_dict} for enriching suggestions."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(f"{ADMIN_URL}/api/events")
             resp.raise_for_status()
-            for ev in resp.json().get("events", []):
-                if ev.get("id") == event_id:
-                    return " ".join(p for p in (ev.get("venue"), ev.get("theme")) if p).strip()
+            return {e["id"]: e for e in resp.json().get("events", []) if e.get("id")}
     except Exception:
-        pass
-    return ""
+        return {}
 
 
-async def _recommend(channel_id, message: str) -> str:
+async def _event_query(event_id: str) -> str:
+    """Look an event up in the catalog and build a vibe query (venue + theme)."""
+    ev = (await _events_by_id()).get(event_id)
+    if not ev:
+        return ""
+    return " ".join(p for p in (ev.get("venue"), ev.get("theme")) if p).strip()
+
+
+async def _suggest_events(channel_id, message: str, *, exclude_id: str = "", limit: int = 3) -> list[dict]:
+    """Query similar spots and return them as catalog event dicts ready for cards.
+
+    The recommender surfaces spots already in the catalog (their Chroma id is the
+    content hash), so each suggestion reuses the live event — votes and all — and
+    its buttons work immediately. The source card is excluded from its own results.
+    """
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -251,6 +280,29 @@ async def _recommend(channel_id, message: str) -> str:
                 json={"channel_id": str(channel_id), "message": message, "mode": "command"},
             )
             resp.raise_for_status()
-            return resp.json().get("markdown", "")
+            recs = resp.json().get("recommendations", [])
     except Exception:
-        return ""
+        return []
+
+    catalog = await _events_by_id()
+    out: list[dict] = []
+    seen: set[str] = {exclude_id}
+    for rec in recs:
+        cid = rec.get("content_hash")
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        ev = catalog.get(cid) or {
+            "id": cid,
+            "venue": rec.get("venue_name"),
+            "category": rec.get("category"),
+            "theme": rec.get("core_theme"),
+            "source_url": rec.get("source_url"),
+            "votes": 0,
+        }
+        if not ev.get("blurb"):          # empty blurb → let the embed fall back to theme
+            ev.pop("blurb", None)
+        out.append(ev)
+        if len(out) >= limit:
+            break
+    return out

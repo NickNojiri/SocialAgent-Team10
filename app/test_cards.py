@@ -69,6 +69,6 @@ def test_build_spot_view_has_four_buttons_with_event_id():
     assert custom_ids == [
         "spot:vote:1:deadbeef",
         "spot:vote:-1:deadbeef",
-        "spot:similar:deadbeef",
+        "spot:suggest:deadbeef",
         "spot:remove:deadbeef",
     ]

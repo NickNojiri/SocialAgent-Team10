@@ -117,7 +117,7 @@ def spot_card():
     bx = 76
     bx = pill(d, bx, by, "Want to go · 3", WHITE, BLURPLE, f(14, True))
     bx = pill(d, bx, by, "Not for me", WHITE, PILL, f(14))
-    bx = pill(d, bx, by, "Similar nearby", WHITE, PILL, f(14))
+    bx = pill(d, bx, by, "Add suggestions", WHITE, GREEN, f(14, True))
     bx = pill(d, bx, by, "Remove", WHITE, PILL, f(14))
     img.save(OUT / "discord_spot_card.png")
 
