@@ -72,6 +72,7 @@ class GenericExtractor:
             caption=description,
             title=title,
             description=description,
+            image_url=snapshot.meta.get("og:image") or snapshot.meta.get("og:image:url"),
             location_text=location_text,
             hashtags=HASHTAG_RE.findall(text_pool),
             lat=lat,

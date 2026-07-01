@@ -40,6 +40,9 @@ def test_build_spot_embed_scheduled():
         "category": "food_drink",
         "theme": "top-grade wagyu yakiniku",
         "source_url": "https://www.instagram.com/reel/DZXT8n7p8ME/",
+        "image": "https://cdn.ig/thumb.jpg",
+        "lat": 35.17,
+        "lng": 136.91,
         "start_epoch": 1781000000,
         "end_epoch": 1781007200,
         "votes": 3,
@@ -49,9 +52,11 @@ def test_build_spot_embed_scheduled():
     assert "Nikushou Nakata Honten" in embed.title
     assert embed.title.startswith("🍽️")  # food_drink emoji
     assert embed.url == event["source_url"]
+    assert embed.thumbnail.url == "https://cdn.ig/thumb.jpg"
     fields = {f.name: f.value for f in embed.fields}
     assert fields["Category"] == "food drink"
     assert "<t:1781000000:F>" in fields["When"]
+    assert fields["Where"] == "[Open map](https://www.google.com/maps?q=35.17,136.91)"
     assert "shared by nick" in embed.footer.text
 
 
@@ -61,6 +66,8 @@ def test_build_spot_embed_unscheduled_and_already():
     fields = {f.name: f.value for f in embed.fields}
     assert fields["When"] == "no fixed date"
     assert any("Already in the catalog" in f.value for f in embed.fields)
+    assert embed.thumbnail.url is None       # no image → no thumbnail
+    assert "Where" not in fields             # no coords → no map field
 
 
 def test_build_spot_view_has_four_buttons_with_event_id():

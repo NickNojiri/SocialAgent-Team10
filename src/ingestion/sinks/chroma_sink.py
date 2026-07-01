@@ -144,6 +144,8 @@ def _metadata(record: EventInspiration) -> dict:
     }
     if getattr(record, "summary", None):
         meta["summary"] = record.summary
+    if getattr(record, "image_url", None):
+        meta["image_url"] = record.image_url
     if geo.lat is not None and geo.lng is not None:
         meta["lat"] = geo.lat
         meta["lng"] = geo.lng

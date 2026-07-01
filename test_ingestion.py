@@ -150,6 +150,13 @@ class TestInstagramExtractor:
         assert set(raw.hashtags) >= {"birria", "LongBeachFood", "tacos"}
         assert raw.platform == "instagram"
 
+    def test_og_image_becomes_image_url(self):
+        snapshot = make_snapshot(
+            meta={"og:description": IG_OG_DESCRIPTION, "og:image": "https://cdn.ig/thumb.jpg"}
+        )
+        assert InstagramExtractor().extract(snapshot).image_url == "https://cdn.ig/thumb.jpg"
+        assert InstagramExtractor().extract(make_snapshot(meta={})).image_url is None
+
     def test_og_description_with_trailing_period_strips_wrapper(self):
         snapshot = make_snapshot(
             meta={
@@ -282,6 +289,12 @@ class TestNormalizer:
         candidates = normalize(make_raw(caption=f"at {long_venue}"))
         assert len(candidates["venue_name"]) == 110
         assert candidates["venue_name"] == long_venue[:110]
+
+    def test_image_url_passthrough_is_http_only(self):
+        good = normalize(make_raw(caption=IG_CAPTION, image_url="https://cdn.ig/t.jpg"))
+        assert good["image_url"] == "https://cdn.ig/t.jpg"
+        assert normalize(make_raw(caption=IG_CAPTION, image_url="blob:notaurl"))["image_url"] is None
+        assert normalize(make_raw(caption=IG_CAPTION))["image_url"] is None
 
 
 # ── Validator pipeline ──────────────────────────────────────────────────────

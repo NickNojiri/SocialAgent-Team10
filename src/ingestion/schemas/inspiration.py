@@ -104,6 +104,9 @@ class EventInspiration(BaseModel):
     # User-facing "quick description" from the reel's audio (Phase 2.5). None when
     # there was nothing to transcribe — the card shows "No info" in that case.
     summary: Optional[str] = Field(None, max_length=600)
+    # Post thumbnail (og:image) for spot cards; code-owned display data, never
+    # touched by the LLM. Non-http values are dropped in normalize().
+    image_url: Optional[str] = Field(None, max_length=2000)
     category: EventCategory
     geo: GeoContext
     hashtags: list[str] = []

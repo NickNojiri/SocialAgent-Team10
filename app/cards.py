@@ -89,6 +89,8 @@ def build_spot_embed(event: dict) -> discord.Embed:
         desc_parts.append(f"▶ [Watch the reel]({event['source_url']})")
     if desc_parts:
         embed.description = "\n\n".join(desc_parts)
+    if event.get("image"):
+        embed.set_thumbnail(url=event["image"])
     embed.add_field(name="Category", value=category.replace("_", " "), inline=True)
 
     start_epoch = event.get("start_epoch")
@@ -99,6 +101,14 @@ def build_spot_embed(event: dict) -> discord.Embed:
     else:
         when = "no fixed date"
     embed.add_field(name="When", value=when, inline=True)
+
+    lat, lng = event.get("lat"), event.get("lng")
+    if lat is not None and lng is not None:
+        embed.add_field(
+            name="Where",
+            value=f"[Open map](https://www.google.com/maps?q={lat},{lng})",
+            inline=True,
+        )
 
     if event.get("already"):
         embed.add_field(

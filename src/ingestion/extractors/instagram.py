@@ -87,6 +87,7 @@ class InstagramExtractor:
             # keeps the post's publish date out of time extraction and the LLM payload.
             description=None,
             author_handle=author,
+            image_url=snapshot.meta.get("og:image") or snapshot.meta.get("og:image:url"),
             location_text=snapshot.first_text(TextRole.LOCATION_TAG),
             hashtags=HASHTAG_RE.findall(text_pool),
             mentions=MENTION_RE.findall(caption or ""),

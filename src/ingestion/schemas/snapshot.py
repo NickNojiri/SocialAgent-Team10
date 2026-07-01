@@ -62,6 +62,7 @@ class RawPostSnapshot(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     author_handle: Optional[str] = None
+    image_url: Optional[str] = None        # og:image — thumbnail for spot cards
     location_text: Optional[str] = None
     hashtags: list[str] = []
     mentions: list[str] = []

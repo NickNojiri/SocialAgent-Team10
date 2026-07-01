@@ -111,6 +111,8 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     if venue:
         venue = venue[:110].strip()
 
+    image_url = (raw.image_url or "").strip()
+
     return {
         "venue_name": venue,
         "core_theme": core_theme,
@@ -118,6 +120,8 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         "geo": geo,
         "hashtags": raw.hashtags,
         "candidate_times": candidate_times,
+        # Code-owned like coordinates — the LLM never supplies or overrides it.
+        "image_url": image_url if image_url.startswith("http") else None,
     }
 
 
