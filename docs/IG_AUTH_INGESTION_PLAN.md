@@ -1,5 +1,11 @@
 # Plan: Authenticated Instagram Ingestion → API → Discord
 
+> **Status:** Tasks 1 + 4 + 5(offline) are built — `src/ingestion/sources/ig_authed.py`
+> (injectable client, lazy instagrapi import), config/env plumbing, and
+> `test_ig_authed.py` (7 offline tests). Next: on a real network with a burner
+> account, `pip install instagrapi`, set `IG_USERNAME`/`IG_PASSWORD`, and run the
+> live measurement (Task 5 live mode) to replace the estimates below.
+
 ## Why this plan exists
 
 Unauthenticated scraping (Playwright + `/embed/` fallback) cannot reach the 99%

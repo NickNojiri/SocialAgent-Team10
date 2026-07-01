@@ -13,3 +13,8 @@ uvicorn[standard]==0.44.0
 # (apt install ffmpeg / brew install ffmpeg). The pipeline degrades to
 # "no transcript" without these, so they stay optional.
 # faster-whisper==1.0.3
+
+# Optional: authenticated Instagram fetch (docs/IG_AUTH_INGESTION_PLAN.md).
+# Only needed when IG_USERNAME/IG_PASSWORD are set; the module imports it
+# lazily and everything degrades to the Playwright path without it.
+# instagrapi==2.1.5

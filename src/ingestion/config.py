@@ -61,6 +61,14 @@ class IngestionSettings(BaseModel):
     allow_file_urls: bool = False
     raw_dir: Path = Path("data/raw")
 
+    # ── Authenticated IG source (roadmap Phase 0.1) ──────────────────────────
+    # Credentials for src/ingestion/sources/ig_authed.py — a dedicated burner
+    # account only, never a personal one. The session cookie is persisted at
+    # ig_session_path (gitignored) so login happens once, not per run.
+    ig_username: str = Field(default_factory=lambda: os.getenv("IG_USERNAME", ""))
+    ig_password: str = Field(default_factory=lambda: os.getenv("IG_PASSWORD", ""))
+    ig_session_path: Path = Path("data/ig_session.json")
+
     # ── LLM extraction (Phase 2) ─────────────────────────────────────────────
     # When enabled, a local Ollama model isolates the high-fidelity fields and
     # the Phase 1 regex heuristics become the fallback. When Ollama is
