@@ -219,8 +219,15 @@ SocialAgent-Team10/
 
 ## Roadmap
 
-- **Authenticated IG ingestion** for higher reliability — see
+The full product plan — hosted bot + OSS core, Discord UX phases, capture sources,
+web companion, and the growth playbook — lives in
+**[docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)**. Near-term highlights:
+
+- **Capture reliability → 95–99%** via authenticated IG ingestion — see
   [docs/IG_AUTH_INGESTION_PLAN.md](docs/IG_AUTH_INGESTION_PLAN.md).
+- **Spot card v2** — reel thumbnails and map links on cards.
+- **`/plan` v2** — vote quorum → auto-created Discord Scheduled Event.
+- **Shareable web catalog** — a public map/list page per server.
 
 ---
 
