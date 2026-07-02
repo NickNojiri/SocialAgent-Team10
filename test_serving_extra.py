@@ -91,6 +91,25 @@ def test_recommend_spam_guard_cooldown_and_dedup():
     assert not res.suppressed
 
 
+def test_apply_vote_identity_and_anonymous():
+    from src.ingestion.serving.admin import VoteBody, _apply_vote, _voters
+
+    meta: dict = {}
+    _apply_vote(meta, VoteBody(delta=1, user_id="1", user_name="nick"))
+    _apply_vote(meta, VoteBody(delta=1, user_id="2", user_name="sam"))
+    _apply_vote(meta, VoteBody(delta=1, user_id="1", user_name="nick"))  # idempotent re-vote
+    assert meta["votes"] == 2
+    assert set(_voters(meta).values()) == {"nick", "sam"}
+
+    _apply_vote(meta, VoteBody(delta=-1, user_id="2"))   # "Not for me" leaves the list
+    assert meta["votes"] == 1
+    assert set(_voters(meta).values()) == {"nick"}
+
+    anon = _apply_vote({}, VoteBody(delta=1))            # web UI keeps the plain counter
+    assert anon["votes"] == 1
+    assert "voters" not in anon
+
+
 def test_recommend_routes_by_guild(monkeypatch):
     """Each guild_id gets its own service/collection; '' reuses the legacy one."""
     built = []

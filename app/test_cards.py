@@ -84,6 +84,31 @@ def test_build_spot_embed_unscheduled_and_already():
     assert "Where" not in fields             # no coords → no map field
 
 
+def test_with_whos_in_adds_replaces_and_clears():
+    embed = cards.build_spot_embed({"id": "x", "venue": "Cafe X", "category": "other"})
+    cards.with_whos_in(embed, ["nick", "sam"])
+    assert {f.name: f.value for f in embed.fields}["Who's in"] == "nick, sam"
+    cards.with_whos_in(embed, ["nick"])   # replaces in place, never duplicates
+    whos_in = [f for f in embed.fields if f.name == "Who's in"]
+    assert len(whos_in) == 1 and whos_in[0].value == "nick"
+    cards.with_whos_in(embed, [])
+    assert all(f.name != "Who's in" for f in embed.fields)
+
+
+def test_default_start_time_is_a_future_friday_evening():
+    from datetime import datetime, timezone
+
+    start = cards.default_start_time()
+    assert start.weekday() == 4          # Friday
+    assert start.hour == 19
+    assert start > datetime.now(timezone.utc)
+
+
+def test_lock_in_button_custom_id():
+    button = cards.LockInButton("deadbeef")
+    assert button.custom_id == "spot:lockin:deadbeef"
+
+
 def test_build_spot_view_has_four_buttons_with_event_id():
     view = cards.build_spot_view("deadbeef", votes=2)
     custom_ids = [child.custom_id for child in view.children]

@@ -11,6 +11,7 @@ Votes are stored in each event's Chroma metadata (`votes`), so the recommender
 can later rank by popularity.
 """
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -85,6 +86,34 @@ class IngestBody(BaseModel):
 
 class VoteBody(BaseModel):
     delta: int = 1
+    # When set, votes carry identity: "Want to go" joins the voters list,
+    # "Not for me" leaves it, and the count is the list's size. Anonymous
+    # votes (the web UI) keep the plain counter behavior.
+    user_id: str = ""
+    user_name: str = ""
+
+
+def _voters(meta: dict) -> dict:
+    """The {user_id: display_name} map stored as a JSON string in metadata."""
+    try:
+        return json.loads(meta.get("voters") or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def _apply_vote(meta: dict, body: VoteBody) -> dict:
+    """Pure vote transition — split out so the quorum logic is testable offline."""
+    if body.user_id:
+        voters = _voters(meta)
+        if body.delta > 0:
+            voters[body.user_id] = body.user_name or body.user_id
+        else:
+            voters.pop(body.user_id, None)
+        meta["voters"] = json.dumps(voters)
+        meta["votes"] = len(voters)
+    else:
+        meta["votes"] = int(meta.get("votes", 0)) + body.delta
+    return meta
 
 
 # ── API ──────────────────────────────────────────────────────────────────────
@@ -108,6 +137,7 @@ def list_events(guild_id: str = ""):
                 "lng": m.get("lng"),
                 "blurb": m.get("summary", ""),
                 "votes": int(m.get("votes", 0)),
+                "voters": sorted(_voters(m).values()),
                 "schedule": m.get("schedule_status", "unscheduled"),
                 "start_utc": m.get("start_utc", ""),
             }
@@ -167,6 +197,7 @@ def _event_summary(result, existing_ids: set, sink: ChromaSink) -> dict:
         "start_epoch": meta.get("start_epoch"),
         "end_epoch": meta.get("end_epoch"),
         "votes": int(meta.get("votes", 0)),
+        "voters": sorted(_voters(meta).values()),
         "new": cid not in existing_ids,
     }
 
@@ -183,10 +214,13 @@ def vote(event_id: str, body: VoteBody, guild_id: str = ""):
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")
-    meta = res["metadatas"][0] or {}
-    meta["votes"] = int(meta.get("votes", 0)) + body.delta
+    meta = _apply_vote(res["metadatas"][0] or {}, body)
     sink.collection.update(ids=[event_id], metadatas=[meta])
-    return {"id": event_id, "votes": meta["votes"]}
+    return {
+        "id": event_id,
+        "votes": meta["votes"],
+        "voters": sorted(_voters(meta).values()),
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
