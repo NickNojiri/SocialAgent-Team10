@@ -37,9 +37,10 @@ No spreadsheets. No copy-paste. Paste a link, get a plan.
 
 ## What it looks like
 
-**Capture → card.** Paste a reel; SpotBot replies with a spot card. 👍 *Want to go*,
-👎 *Not for me*, ✨ *Add suggestions* (posts similar spots as their own votable cards),
-or *Remove* it.
+**Capture → card.** Paste a reel; SpotBot replies with a spot card — thumbnail, map
+link, and who's in. 👍 *Want to go*, 👎 *Not for me*, ✨ *Add suggestions* (posts
+similar spots as their own votable cards), or *Remove* it. When enough people are
+in (default 3), SpotBot offers to **lock it in as a Discord Scheduled Event**.
 
 ![Spot card](docs/images/discord_spot_card.png)
 
@@ -143,9 +144,17 @@ Slash commands fill in the rest:
 | `/here` · `/leave` · `/channels` | Enable / disable / list conversational channels. |
 | `/help` | How to save spots with the bot. |
 
-On a spot card: **Want to go** (👍) and **Not for me** (👎) vote · **Add suggestions**
-(✨) posts similar spots as their own votable cards · **Remove** deletes it (requires
-*Manage Messages* in a server).
+On a spot card: **Want to go** (👍) and **Not for me** (👎) vote — the card shows
+*who's* in, not just a count · **Add suggestions** (✨) posts similar spots as their
+own votable cards · **Remove** deletes it (requires *Manage Messages* in a server).
+At **quorum** (`SPOT_QUORUM`, default 3) the bot offers a 📅 **Lock it in** button
+that creates a Discord Scheduled Event (the spot's resolved time, or next Friday
+7pm) with the map link as its location.
+
+Every Discord server gets its **own catalog** (DM captures go to your personal
+stash), and each catalog has a read-only **share page** at
+`http://localhost:8010/share?guild_id=<id>` — safe to send to friends who don't
+have the bot yet.
 
 ---
 
@@ -162,6 +171,9 @@ All settings come from `.env` (see `.env.example`):
 | `LLM_URL` / `DB_URL` / `RECOMMEND_URL` | internal `:8001` / `:8002` / `:8003` | Service URLs. |
 | `INGEST_URL` / `ADMIN_URL` | `http://host.docker.internal:8010` | Catalog/admin app. |
 | `CHROMA_PATH` | `data` | Path to the Chroma vector store. |
+| `SPOT_QUORUM` | `3` | "Want to go" votes needed before the bot offers to lock in an event. |
+| `BOT_TZ` | `America/Los_Angeles` | Timezone for the default event time (next Friday 7pm). |
+| `IG_USERNAME` / `IG_PASSWORD` | unset | Optional burner account for the authed IG fetch path (`pip install instagrapi`). |
 | `BOT_INSECURE_SSL` | unset | Set to `1` to skip TLS verification on intercepting proxies. |
 
 Services and ports: **bot** (Discord) · **llm** `:8001` · **db** `:8002` ·
@@ -221,13 +233,17 @@ SocialAgent-Team10/
 
 The full product plan — hosted bot + OSS core, Discord UX phases, capture sources,
 web companion, and the growth playbook — lives in
-**[docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)**. Near-term highlights:
+**[docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)**.
 
-- **Capture reliability → 95–99%** via authenticated IG ingestion — see
+Shipped from the first slice: ✅ spot card v2 (thumbnails + map links) ·
+✅ per-server catalogs (multi-tenant foundation) · ✅ who's-in votes + quorum →
+Discord Scheduled Events · ✅ read-only share page (`/share`) · ✅ authed IG
+source (offline foundation). Next up:
+
+- **Measure capture reliability live** with a burner account — see
   [docs/IG_AUTH_INGESTION_PLAN.md](docs/IG_AUTH_INGESTION_PLAN.md).
-- **Spot card v2** — reel thumbnails and map links on cards.
-- **`/plan` v2** — vote quorum → auto-created Discord Scheduled Event.
-- **Shareable web catalog** — a public map/list page per server.
+- **TikTok / YouTube Shorts capture** and the job queue for hosted scale.
+- **`/setup` wizard**, weekly digests, and the map view on the share page.
 
 ---
 

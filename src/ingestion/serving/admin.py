@@ -228,6 +228,17 @@ def index():
     return _PAGE
 
 
+@app.get("/share", response_class=HTMLResponse)
+def share():
+    """Read-only catalog page — safe to send to people outside the server.
+
+    The growth surface (docs/PRODUCT_ROADMAP.md 2.3): viewable without the bot
+    installed, no add/vote/remove controls, with an install call-to-action.
+    Guild selection via ?guild_id=… (default: the single-tenant catalog).
+    """
+    return _SHARE_PAGE
+
+
 # ── UI ───────────────────────────────────────────────────────────────────────
 
 _PAGE = """<!doctype html>
@@ -310,6 +321,67 @@ async function addUrls(){
 }
 async function vote(id,delta){await fetch('/api/events/'+id+'/vote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta})});load();}
 async function del(id){if(!confirm('Remove this event?'))return;await fetch('/api/events/'+id,{method:'DELETE'});load();}
+load();
+</script>
+</body></html>"""
+
+
+_SHARE_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SpotBot — our spots</title>
+<style>
+  :root{--bg:#0f1117;--card:#1a1d27;--line:#2a2e3a;--txt:#e7e9ee;--mut:#9aa0ad;--acc:#6ea8fe;--ok:#3fb950}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+  header{padding:20px 24px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:20px} .sub{color:var(--mut);font-size:13px;margin-top:4px}
+  main{max-width:860px;margin:0 auto;padding:24px}
+  .count{color:var(--mut);font-size:13px;margin:0 0 12px}
+  .ev{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}
+  .thumb{width:72px;height:72px;border-radius:8px;object-fit:cover;background:#26304a;flex:none}
+  .votes{min-width:56px;text-align:center;color:var(--ok);font-weight:700;font-size:16px;align-self:center}
+  .votes span{display:block;color:var(--mut);font-weight:400;font-size:11px}
+  .meta{flex:1;min-width:0}
+  .venue{font-weight:700;font-size:16px}
+  .badge{display:inline-block;background:#26304a;color:var(--acc);border-radius:999px;padding:1px 9px;font-size:11px;margin-left:8px;vertical-align:middle}
+  .theme{color:var(--mut);font-size:13px;margin:4px 0;overflow:hidden;text-overflow:ellipsis}
+  .row{font-size:12px;color:var(--mut)} .row a{color:var(--acc);text-decoration:none}
+  .empty{color:var(--mut);text-align:center;padding:40px}
+  footer{max-width:860px;margin:0 auto;padding:8px 24px 32px;color:var(--mut);font-size:13px}
+  footer a{color:var(--acc);text-decoration:none;font-weight:600}
+</style></head><body>
+<header><h1>📍 Our spots</h1>
+<div class="sub">A group catalog of places we want to go — captured from shared reels.</div></header>
+<main>
+  <div class="count" id="count"></div>
+  <div id="list"></div>
+</main>
+<footer>Powered by <a href="https://github.com/NickNojiri/SocialAgent-Team10" target="_blank">SpotBot</a>
+— paste a reel in Discord, get a votable spot. Add it to your server.</footer>
+<script>
+const EMOJI={food_drink:"🍽️",cafe_dessert:"🍰",nightlife:"🍸",live_music:"🎶",market_popup:"🛍️",outdoors:"🏞️",community:"🤝",other:"📍"};
+const GUILD=new URLSearchParams(location.search).get('guild_id')||'';
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+async function load(){
+  const r=await fetch('/api/events?guild_id='+encodeURIComponent(GUILD)); const d=await r.json();
+  document.getElementById('count').textContent=d.count+' spot'+(d.count===1?'':'s');
+  const list=document.getElementById('list');
+  if(!d.events.length){list.innerHTML='<div class="empty">Nothing here yet.</div>';return;}
+  list.innerHTML=d.events.map(e=>`
+    <div class="ev">
+      ${e.image?`<img class="thumb" src="${esc(e.image)}" alt=""/>`:''}
+      <div class="meta">
+        <div><span class="venue">${esc(e.venue)}</span><span class="badge">${EMOJI[e.category]||'📍'} ${esc((e.category||'other').replace(/_/g,' '))}</span></div>
+        <div class="theme">${esc(e.theme||'')}</div>
+        <div class="row">
+          ${e.schedule==='scheduled'&&e.start_utc?('🗓️ '+new Date(e.start_utc).toLocaleString()+' · '):''}
+          ${(e.lat!=null&&e.lng!=null)?`<a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=17/${e.lat}/${e.lng}" target="_blank">map ↗</a> · `:''}
+          ${e.source_url?`<a href="${esc(e.source_url)}" target="_blank">source ↗</a>`:''}
+        </div>
+      </div>
+      <div class="votes">👍 ${e.votes}<span>${esc((e.voters||[]).slice(0,4).join(', '))}</span></div>
+    </div>`).join('');
+}
 load();
 </script>
 </body></html>"""

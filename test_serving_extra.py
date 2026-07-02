@@ -91,6 +91,16 @@ def test_recommend_spam_guard_cooldown_and_dedup():
     assert not res.suppressed
 
 
+def test_share_page_is_served_and_read_only():
+    from src.ingestion.serving.admin import app as admin_app
+
+    resp = TestClient(admin_app).get("/share")
+    assert resp.status_code == 200
+    assert "Powered by" in resp.text                  # the install call-to-action
+    for write_marker in ("api/ingest", "vote(", "del("):
+        assert write_marker not in resp.text          # no write controls on the public page
+
+
 def test_apply_vote_identity_and_anonymous():
     from src.ingestion.serving.admin import VoteBody, _apply_vote, _voters
 

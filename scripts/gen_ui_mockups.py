@@ -86,7 +86,7 @@ def field(d, x, y, label, value):
 
 # ── 1. Spot card (reel capture result) ──────────────────────────────────────
 def spot_card():
-    W, H = 760, 430
+    W, H = 760, 520
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
     avatar(d, 24, 24, BLURPLE, "S")
@@ -95,18 +95,28 @@ def spot_card():
            font=f(13), fill=MUTE, anchor="lm")
 
     def body(d, x, y):
+        # reel thumbnail (Discord places it top-right of the embed)
+        tx = x + 600 - 32 - 84
+        rrect(d, (tx, y, tx + 84, y + 84), 8, (38, 48, 74))
+        d.polygon([(tx + 34, y + 30), (tx + 34, y + 54), (tx + 56, y + 42)], fill=WHITE)
         # category dot + title
         d.ellipse((x, y, x + 16, y + 16), fill=(224, 123, 57))
         d.text((x + 26, y + 8), "Casa Loma", font=f(20, True), fill=WHITE, anchor="lm")
         y += 38
-        d.text((x, y), "Late-night birria tacos pop-up — handmade, all cash, til 2am.",
+        d.text((x, y), "Late-night birria tacos pop-up — handmade,",
                font=f(14), fill=GREY, anchor="lm")
-        y += 30
+        y += 22
+        d.text((x, y), "all cash, til 2am.", font=f(14), fill=GREY, anchor="lm")
+        y += 26
         d.text((x, y), "Watch the reel", font=f(14, True), fill=(126, 168, 254), anchor="lm")
         y += 34
         field(d, x, y, "Category", "food drink")
-        field(d, x + 220, y, "When", "Fri Jun 26 · 8:00 PM")
-        y += 56
+        field(d, x + 190, y, "When", "Fri Jun 26 · 8:00 PM")
+        d.text((x + 400, y), "Where", font=f(13, True), fill=WHITE, anchor="lm")
+        d.text((x + 400, y + 20), "Open map", font=f(14), fill=(126, 168, 254), anchor="lm")
+        y += 52
+        field(d, x, y, "Who's in", "nick, sam, jo")
+        y += 50
         d.text((x, y), "shared by nick  ·  via Instagram", font=f(12), fill=MUTE, anchor="lm")
         return y + 16
 
