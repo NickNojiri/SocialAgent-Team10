@@ -27,16 +27,31 @@ _settings = IngestionSettings(
     chroma_path=os.getenv("CHROMA_PATH", "data"),
 )
 _service: Optional[RecommendationService] = None
+_services: dict[str, RecommendationService] = {}
 
 
-def get_service() -> RecommendationService:
-    """Lazily build the service (and its ChromaSink) on first use."""
+def _build_service(guild_id: str = "") -> RecommendationService:
+    from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
+
+    sink = ChromaSink(_settings, collection_name=collection_for_guild(_settings, guild_id))
+    return RecommendationService(sink, _settings)
+
+
+def get_service(guild_id: str = "") -> RecommendationService:
+    """Lazily build one service (and ChromaSink) per guild catalog.
+
+    "" is the legacy/single-tenant catalog and keeps the `_service` global so
+    existing self-hosts (and tests that patch it) behave exactly as before.
+    """
     global _service
-    if _service is None:
-        from src.ingestion.sinks.chroma_sink import ChromaSink
-
-        _service = RecommendationService(ChromaSink(_settings), _settings)
-    return _service
+    key = str(guild_id or "")
+    if key == "":
+        if _service is None:
+            _service = _build_service("")
+        return _service
+    if key not in _services:
+        _services[key] = _build_service(key)
+    return _services[key]
 
 
 class RecommendRequest(BaseModel):
@@ -44,11 +59,12 @@ class RecommendRequest(BaseModel):
     message: str
     mode: str = "command"          # "command" (explicit /events) | "auto" (chat-context)
     category: Optional[str] = None
+    guild_id: str = ""             # "" → the legacy/single-tenant catalog
 
 
 @app.post("/recommend")
 def recommend(req: RecommendRequest):
-    result = get_service().recommend(
+    result = get_service(req.guild_id).recommend(
         req.channel_id, req.message, mode=req.mode, category=req.category
     )
     return {
@@ -62,12 +78,13 @@ def recommend(req: RecommendRequest):
 class PlanRequest(BaseModel):
     channel_id: str
     transcript: str          # the recent multi-person chat the bot collected
+    guild_id: str = ""       # "" → the legacy/single-tenant catalog
 
 
 @app.post("/plan")
 def plan(req: PlanRequest):
     """Group planning: chat transcript -> synthesized request + a shortlist."""
-    result = get_service().plan(req.channel_id, req.transcript)
+    result = get_service(req.guild_id).plan(req.channel_id, req.transcript)
     return {
         "request": result.request,
         "query": result.query,

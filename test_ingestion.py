@@ -958,6 +958,36 @@ class TestChromaSink:
         sink.write(IngestionResult(url="x", fetch_status=FetchStatus.OK, record=chroma_record()))
         assert sink.count() == 1
 
+    def test_guild_collections_are_isolated(self, tmp_path):
+        from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
+
+        settings = IngestionSettings(chroma_path=str(tmp_path))
+        legacy = ChromaSink(settings, embedder=fake_embedder)
+        guild = ChromaSink(
+            settings,
+            embedder=fake_embedder,
+            collection_name=collection_for_guild(settings, "123456789"),
+        )
+        legacy.add(chroma_record(content_text="legacy post"))
+        guild.add(chroma_record(content_text="guild post"))
+        assert legacy.count() == 1
+        assert guild.count() == 1  # not 2 — tenants don't see each other
+
+    def test_collection_for_guild_naming(self):
+        from src.ingestion.sinks.chroma_sink import collection_for_guild
+
+        settings = IngestionSettings()
+        assert collection_for_guild(settings, "") == settings.chroma_collection
+        assert (
+            collection_for_guild(settings, "123456789")
+            == f"{settings.chroma_collection}__g123456789"
+        )
+        # unsafe chars stripped so any input yields a valid Chroma name
+        assert (
+            collection_for_guild(settings, "dm-42!x")
+            == f"{settings.chroma_collection}__gdm-42x"
+        )
+
 
 # ── live embedder test (skipped unless Ollama embeddings are reachable) ──────
 

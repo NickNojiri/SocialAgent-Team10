@@ -18,6 +18,7 @@ this sink mirrors JsonlSink.write so the two are interchangeable in the pipeline
 """
 
 import logging
+import re
 from typing import Callable, Optional
 
 import httpx
@@ -29,6 +30,16 @@ from src.ingestion.schemas.results import IngestionResult
 log = logging.getLogger("ingestion.chroma")
 
 Embedder = Callable[[list[str]], list[list[float]]]
+
+
+def collection_for_guild(settings: IngestionSettings, guild_id: str = "") -> str:
+    """Tenant isolation is by collection: one per Discord guild (or DM stash).
+
+    An empty guild_id keeps the original collection name, so single-tenant
+    self-hosts and everything written before multi-tenancy stay untouched.
+    """
+    gid = re.sub(r"[^A-Za-z0-9_-]", "", str(guild_id or ""))
+    return f"{settings.chroma_collection}__g{gid}" if gid else settings.chroma_collection
 
 
 class OllamaEmbedder:
@@ -54,12 +65,17 @@ class OllamaEmbedder:
 
 
 class ChromaSink:
-    def __init__(self, settings: IngestionSettings, embedder: Optional[Embedder] = None):
+    def __init__(
+        self,
+        settings: IngestionSettings,
+        embedder: Optional[Embedder] = None,
+        collection_name: Optional[str] = None,
+    ):
         import chromadb  # lazy: only when Chroma is actually used
 
         self.client = chromadb.PersistentClient(path=settings.chroma_path)
         self.collection = self.client.get_or_create_collection(
-            name=settings.chroma_collection,
+            name=collection_name or settings.chroma_collection,
             metadata={"hnsw:space": "cosine"},
         )
         self.embedder = embedder or OllamaEmbedder(settings)

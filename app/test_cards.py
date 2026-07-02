@@ -3,7 +3,19 @@
 Run from the repo root:  pytest app/test_cards.py -v
 """
 
+from types import SimpleNamespace
+
 import cards
+
+
+def test_guild_key_server_dm_and_fallback():
+    server_msg = SimpleNamespace(guild=SimpleNamespace(id=123), author=SimpleNamespace(id=9))
+    assert cards.guild_key(server_msg) == "123"
+    dm_msg = SimpleNamespace(guild=None, author=SimpleNamespace(id=9))
+    assert cards.guild_key(dm_msg) == "dm-9"          # DMs → personal stash
+    dm_interaction = SimpleNamespace(guild=None, user=SimpleNamespace(id=7))
+    assert cards.guild_key(dm_interaction) == "dm-7"  # interactions use .user
+    assert cards.guild_key(SimpleNamespace(guild=None)) == ""  # legacy fallback
 
 
 def test_extract_ig_urls_strips_tracking_params():

@@ -207,7 +207,9 @@ async def on_message(message: discord.Message):
     # channel stays clean. Best-effort — never breaks the bot.
     if message.channel.id in SUGGESTION_CHANNELS:
         try:
-            data = await call_recommend(message.channel.id, message.content, "auto")
+            data = await call_recommend(
+                message.channel.id, message.content, "auto", cards.guild_key(message)
+            )
             if not data.get("suppressed") and data.get("recommendations"):
                 thread = await message.create_thread(name="Spot suggestions")
                 await thread.send(data["markdown"])
@@ -222,7 +224,10 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
     await _add_reaction(message, "⏳")
     try:
         async with httpx.AsyncClient(timeout=180.0) as client:
-            resp = await client.post(f"{INGEST_URL}/api/ingest", json={"urls": urls})
+            resp = await client.post(
+                f"{INGEST_URL}/api/ingest",
+                json={"urls": urls, "guild_id": cards.guild_key(message)},
+            )
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
@@ -367,7 +372,9 @@ async def channels_command(interaction: discord.Interaction):
 async def events_command(interaction: discord.Interaction, vibe: str):
     await interaction.response.defer(thinking=True)
     try:
-        data = await call_recommend(interaction.channel_id, vibe, "command")
+        data = await call_recommend(
+            interaction.channel_id, vibe, "command", cards.guild_key(interaction)
+        )
         await interaction.followup.send(data.get("markdown") or "No matches found.")
     except Exception as exc:
         log.warning(f"[recommend] /events failed: {exc}")
@@ -422,7 +429,10 @@ async def catalog_command(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(f"{INGEST_URL}/api/events")
+            resp = await client.get(
+                f"{INGEST_URL}/api/events",
+                params={"guild_id": cards.guild_key(interaction)},
+            )
             resp.raise_for_status()
             events = resp.json().get("events", [])
     except Exception as exc:
@@ -463,7 +473,7 @@ async def plan_command(interaction: discord.Interaction):
         return
 
     try:
-        data = await call_plan(interaction.channel_id, transcript)
+        data = await call_plan(interaction.channel_id, transcript, cards.guild_key(interaction))
     except Exception as exc:
         log.warning(f"[plan] failed: {exc}")
         await interaction.followup.send("⚠️ Couldn't reach the planner right now.")
@@ -501,18 +511,23 @@ async def plan_command(interaction: discord.Interaction):
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-async def call_recommend(channel_id: int, message: str, mode: str) -> dict:
+async def call_recommend(channel_id: int, message: str, mode: str, guild_id: str = "") -> dict:
     """Query the recommendation service (mirrors call_llm's HTTP pattern)."""
-    payload = {"channel_id": str(channel_id), "message": message, "mode": mode}
+    payload = {
+        "channel_id": str(channel_id),
+        "message": message,
+        "mode": mode,
+        "guild_id": guild_id,
+    }
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(f"{RECOMMEND_URL}/recommend", json=payload)
         resp.raise_for_status()
         return resp.json()
 
 
-async def call_plan(channel_id: int, transcript: str) -> dict:
+async def call_plan(channel_id: int, transcript: str, guild_id: str = "") -> dict:
     """Ask the recommend service to synthesize the group's request + a shortlist."""
-    payload = {"channel_id": str(channel_id), "transcript": transcript}
+    payload = {"channel_id": str(channel_id), "transcript": transcript, "guild_id": guild_id}
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(f"{RECOMMEND_URL}/plan", json=payload)
         resp.raise_for_status()

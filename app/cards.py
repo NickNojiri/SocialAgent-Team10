@@ -23,6 +23,19 @@ import httpx
 ADMIN_URL = os.getenv("ADMIN_URL", os.getenv("INGEST_URL", "http://host.docker.internal:8010"))
 RECOMMEND_URL = os.getenv("RECOMMEND_URL", "http://recommend:8003")
 
+def guild_key(source) -> str:
+    """Catalog tenant key: the server's guild id, or a per-user stash in DMs.
+
+    Works for both Messages (.author) and Interactions (.user); "" falls back to
+    the legacy single-tenant catalog.
+    """
+    guild = getattr(source, "guild", None)
+    if guild is not None:
+        return str(guild.id)
+    user = getattr(source, "user", None) or getattr(source, "author", None)
+    return f"dm-{user.id}" if user is not None else ""
+
+
 # Mirrors src/ingestion/serving/discord_format.py::_CATEGORY_EMOJI.
 CATEGORY_EMOJI = {
     "food_drink": "🍽️",
@@ -150,7 +163,9 @@ class VoteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:vote
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
-                    f"{ADMIN_URL}/api/events/{self.event_id}/vote", json={"delta": self.delta}
+                    f"{ADMIN_URL}/api/events/{self.event_id}/vote",
+                    params={"guild_id": guild_key(interaction)},
+                    json={"delta": self.delta},
                 )
                 resp.raise_for_status()
                 votes = int(resp.json().get("votes", 0))
@@ -183,12 +198,13 @@ class AddSuggestionsButton(
     async def callback(self, interaction: discord.Interaction):
         """Find spots similar to this one and post each as its own votable card."""
         await interaction.response.defer(thinking=True)
-        query = await _event_query(self.event_id)
+        guild = guild_key(interaction)
+        query = await _event_query(self.event_id, guild)
         if not query:
             await interaction.followup.send("⚠️ I can't find that spot anymore.")
             return
         suggestions = await _suggest_events(
-            interaction.channel_id, query, exclude_id=self.event_id
+            interaction.channel_id, query, guild, exclude_id=self.event_id
         )
         if not suggestions:
             await interaction.followup.send(
@@ -231,7 +247,10 @@ class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:re
             return
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.delete(f"{ADMIN_URL}/api/events/{self.event_id}")
+                resp = await client.delete(
+                    f"{ADMIN_URL}/api/events/{self.event_id}",
+                    params={"guild_id": guild_key(interaction)},
+                )
                 resp.raise_for_status()
         except Exception:
             await interaction.response.send_message(
@@ -259,26 +278,26 @@ def register_dynamic_items(client: discord.Client) -> None:
 # ── helpers for the Add-suggestions button ───────────────────────────────────
 
 
-async def _events_by_id() -> dict:
-    """Snapshot the catalog as {event_id: event_dict} for enriching suggestions."""
+async def _events_by_id(guild: str = "") -> dict:
+    """Snapshot the guild's catalog as {event_id: event_dict} for enriching suggestions."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{ADMIN_URL}/api/events")
+            resp = await client.get(f"{ADMIN_URL}/api/events", params={"guild_id": guild})
             resp.raise_for_status()
             return {e["id"]: e for e in resp.json().get("events", []) if e.get("id")}
     except Exception:
         return {}
 
 
-async def _event_query(event_id: str) -> str:
+async def _event_query(event_id: str, guild: str = "") -> str:
     """Look an event up in the catalog and build a vibe query (venue + theme)."""
-    ev = (await _events_by_id()).get(event_id)
+    ev = (await _events_by_id(guild)).get(event_id)
     if not ev:
         return ""
     return " ".join(p for p in (ev.get("venue"), ev.get("theme")) if p).strip()
 
 
-async def _suggest_events(channel_id, message: str, *, exclude_id: str = "", limit: int = 3) -> list[dict]:
+async def _suggest_events(channel_id, message: str, guild: str = "", *, exclude_id: str = "", limit: int = 3) -> list[dict]:
     """Query similar spots and return them as catalog event dicts ready for cards.
 
     The recommender surfaces spots already in the catalog (their Chroma id is the
@@ -289,14 +308,19 @@ async def _suggest_events(channel_id, message: str, *, exclude_id: str = "", lim
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{RECOMMEND_URL}/recommend",
-                json={"channel_id": str(channel_id), "message": message, "mode": "command"},
+                json={
+                    "channel_id": str(channel_id),
+                    "message": message,
+                    "mode": "command",
+                    "guild_id": guild,
+                },
             )
             resp.raise_for_status()
             recs = resp.json().get("recommendations", [])
     except Exception:
         return []
 
-    catalog = await _events_by_id()
+    catalog = await _events_by_id(guild)
     out: list[dict] = []
     seen: set[str] = {exclude_id}
     for rec in recs:

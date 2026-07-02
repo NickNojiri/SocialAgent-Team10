@@ -24,12 +24,24 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
-from src.ingestion.sinks.chroma_sink import ChromaSink
+from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
 app = FastAPI(title="SocialAgent Admin")
 _settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False)
-_sink = ChromaSink(_settings)
+
+# One catalog per Discord guild (or DM stash). "" is the legacy/single-tenant
+# collection, so existing data and the web UI keep working unchanged.
+_sinks: dict[str, ChromaSink] = {}
+
+
+def _sink_for(guild_id: str = "") -> ChromaSink:
+    key = str(guild_id or "")
+    if key not in _sinks:
+        _sinks[key] = ChromaSink(
+            _settings, collection_name=collection_for_guild(_settings, key)
+        )
+    return _sinks[key]
 
 # Route host TLS through the Windows cert store so the reel video download works on
 # TLS-intercepting networks (see the transcriber). Best-effort.
@@ -68,6 +80,7 @@ _transcriber = _build_transcriber()
 
 class IngestBody(BaseModel):
     urls: list[str]
+    guild_id: str = ""      # "" → the legacy/single-tenant catalog
 
 
 class VoteBody(BaseModel):
@@ -78,8 +91,8 @@ class VoteBody(BaseModel):
 
 
 @app.get("/api/events")
-def list_events():
-    res = _sink.collection.get(include=["metadatas"])
+def list_events(guild_id: str = ""):
+    res = _sink_for(guild_id).collection.get(include=["metadatas"])
     events = []
     for event_id, m in zip(res["ids"], res["metadatas"]):
         m = m or {}
@@ -108,7 +121,8 @@ async def ingest(body: IngestBody):
     urls = [u.strip() for u in body.urls if u.strip()]
     if not urls:
         raise HTTPException(400, "no urls given")
-    existing_ids = set(_sink.collection.get(include=[])["ids"])  # snapshot before the run
+    sink = _sink_for(body.guild_id)
+    existing_ids = set(sink.collection.get(include=[])["ids"])  # snapshot before the run
     pipeline = IngestionPipeline(
         _settings,
         extractor=build_extractor(_settings),
@@ -117,7 +131,7 @@ async def ingest(body: IngestBody):
         geo_enricher=None,  # geocoding off here (fast; Nominatim often blocked)
         temporal_resolver=build_temporal_resolver(_settings),
         jsonl_sink=JsonlSink(Path("data/inspirations.jsonl")),
-        chroma_sink=_sink,
+        chroma_sink=sink,
     )
     report = await pipeline.run(urls)
     return {
@@ -125,19 +139,19 @@ async def ingest(body: IngestBody):
         "rejected": len(report.rejected),
         "unreadable": len(report.connectivity_failures),
         # Per-event detail the Discord bot needs to build cards + vote buttons.
-        "events": [_event_summary(r, existing_ids) for r in report.validated],
+        "events": [_event_summary(r, existing_ids, sink) for r in report.validated],
         "log": [result_line(r) for r in report.results],
     }
 
 
-def _event_summary(result, existing_ids: set) -> dict:
+def _event_summary(result, existing_ids: set, sink: ChromaSink) -> dict:
     """Shape one validated record for the bot: id + display fields + live vote count.
 
     `new` distinguishes a first-time add from re-sharing an already-cataloged reel
     (the Chroma id is the content hash, so re-ingest upserts rather than duplicates).
     """
     cid = result.record.provenance.content_hash
-    got = _sink.collection.get(ids=[cid], include=["metadatas"])
+    got = sink.collection.get(ids=[cid], include=["metadatas"])
     meta = (got["metadatas"][0] if got["ids"] else {}) or {}
     return {
         "id": cid,
@@ -158,19 +172,20 @@ def _event_summary(result, existing_ids: set) -> dict:
 
 
 @app.delete("/api/events/{event_id}")
-def delete_event(event_id: str):
-    _sink.collection.delete(ids=[event_id])
+def delete_event(event_id: str, guild_id: str = ""):
+    _sink_for(guild_id).collection.delete(ids=[event_id])
     return {"deleted": event_id}
 
 
 @app.post("/api/events/{event_id}/vote")
-def vote(event_id: str, body: VoteBody):
-    res = _sink.collection.get(ids=[event_id], include=["metadatas"])
+def vote(event_id: str, body: VoteBody, guild_id: str = ""):
+    sink = _sink_for(guild_id)
+    res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")
     meta = res["metadatas"][0] or {}
     meta["votes"] = int(meta.get("votes", 0)) + body.delta
-    _sink.collection.update(ids=[event_id], metadatas=[meta])
+    sink.collection.update(ids=[event_id], metadatas=[meta])
     return {"id": event_id, "votes": meta["votes"]}
 
 

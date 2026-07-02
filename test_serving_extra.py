@@ -89,3 +89,25 @@ def test_recommend_spam_guard_cooldown_and_dedup():
     settings.rec_dedup_window_s = 60
     res = service.recommend("ch1", "food", mode="command", now=200.0)
     assert not res.suppressed
+
+
+def test_recommend_routes_by_guild(monkeypatch):
+    """Each guild_id gets its own service/collection; '' reuses the legacy one."""
+    built = []
+    settings = IngestionSettings(rec_max_distance=0.5)
+
+    def fake_build(guild_id=""):
+        built.append(guild_id)
+        return RecommendationService(StubChromaSink(), settings)
+
+    monkeypatch.setattr(serving_app, "_build_service", fake_build)
+    monkeypatch.setattr(serving_app, "_service", None)
+    monkeypatch.setattr(serving_app, "_services", {})
+
+    client = TestClient(app)
+    base = {"channel_id": "ch1", "message": "tacos", "mode": "command"}
+    client.post("/recommend", json={**base, "guild_id": "g1"})
+    client.post("/recommend", json={**base, "guild_id": "g1"})   # cached, not rebuilt
+    client.post("/recommend", json={**base, "guild_id": "g2"})
+    client.post("/recommend", json=base)                          # legacy catalog
+    assert built == ["g1", "g2", ""]
