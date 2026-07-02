@@ -56,7 +56,9 @@ def test_build_spot_embed_scheduled():
     fields = {f.name: f.value for f in embed.fields}
     assert fields["Category"] == "food drink"
     assert "<t:1781000000:F>" in fields["When"]
-    assert fields["Where"] == "[Open map](https://www.google.com/maps?q=35.17,136.91)"
+    assert fields["Where"] == (
+        "[Open map](https://www.openstreetmap.org/?mlat=35.17&mlon=136.91#map=17/35.17/136.91)"
+    )
     assert "shared by nick" in embed.footer.text
 
 

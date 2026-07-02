@@ -104,9 +104,11 @@ def build_spot_embed(event: dict) -> discord.Embed:
 
     lat, lng = event.get("lat"), event.get("lng")
     if lat is not None and lng is not None:
+        # OpenStreetMap, matching the repo's no-paid-APIs ethos (a plain link
+        # either way — no API key — but OSM keeps us off Google entirely).
         embed.add_field(
             name="Where",
-            value=f"[Open map](https://www.google.com/maps?q={lat},{lng})",
+            value=f"[Open map](https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=17/{lat}/{lng})",
             inline=True,
         )
 
