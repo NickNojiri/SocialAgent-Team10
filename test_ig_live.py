@@ -132,6 +132,70 @@ def test_ig_caption_pass_rate():
     )
 
 
+# ── Authed path (docs/IG_AUTH_INGESTION_PLAN.md Task 5 live mode) ────────────
+
+AUTHED_PASS_RATE_TARGET = 0.95   # the go/no-go bar for the hosted product
+
+
+def _authed_ready() -> bool:
+    if not (os.getenv("IG_USERNAME") and os.getenv("IG_PASSWORD")):
+        return False
+    try:
+        import instagrapi  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not IG_URLS, reason="No IG_URLS defined — add real URLs to test_ig_live.py")
+@pytest.mark.skipif(
+    not _authed_ready(),
+    reason="Authed run needs IG_USERNAME/IG_PASSWORD in the env + pip install instagrapi",
+)
+def test_authed_pass_rate():
+    """Measure the authenticated fetch path against the same URL set.
+
+    This is THE number that decides the hosted product (target ≥95%). Record
+    the result in docs/IG_AUTH_INGESTION_PLAN.md either way.
+    """
+    import time
+
+    from src.ingestion.sources.ig_authed import AuthedInstagramSource
+
+    source = AuthedInstagramSource(IngestionSettings())
+    total = len(IG_URLS)
+    got_caption = 0
+    got_coords = 0
+    print(f"\nAuthed fetch of {total} URLs (target: {AUTHED_PASS_RATE_TARGET*100:.0f}%)\n")
+    for url in IG_URLS:
+        raw = source.fetch_url(url)
+        ok = raw is not None and bool(raw.caption)
+        got_caption += ok
+        got_coords += raw is not None and raw.lat is not None
+        preview = (raw.caption or "")[:80].replace("\n", " ") if raw else ""
+        print(f"  [{'ok' if ok else 'FAIL'}] {url}")
+        if preview:
+            print(f"    caption: {preview!r}")
+        if raw is not None and raw.location_text:
+            print(f"    location: {raw.location_text!r} coords={'yes' if raw.lat is not None else 'no'}")
+        time.sleep(2.0)   # polite spacing — protect the burner account
+
+    rate = got_caption / total if total else 0.0
+    print("\n" + "═" * 60)
+    print(" IG AUTHED RELIABILITY REPORT")
+    print("═" * 60)
+    print(f"  URLs tested      : {total}")
+    print(f"  Caption obtained : {got_caption}  ({rate*100:.0f}%)")
+    print(f"  Explicit coords  : {got_coords}   (skip geocoding entirely)")
+    print("═" * 60)
+
+    assert rate >= AUTHED_PASS_RATE_TARGET, (
+        f"Authed pass rate {rate*100:.1f}% is below the {AUTHED_PASS_RATE_TARGET*100:.0f}% bar. "
+        "Record the measured number in docs/IG_AUTH_INGESTION_PLAN.md and consider "
+        "the paid-resolver fallback (same module boundary)."
+    )
+
+
 @pytest.mark.skipif(not IG_URLS, reason="No IG_URLS defined — add real URLs to test_ig_live.py")
 def test_embed_fallback_improves_rate():
     """Confirm the embed fallback recovers at least one login-walled URL."""
