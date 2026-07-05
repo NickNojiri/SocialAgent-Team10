@@ -1,10 +1,12 @@
 # Plan: Authenticated Instagram Ingestion → API → Discord
 
-> **Status:** Tasks 1 + 4 + 5(offline) are built — `src/ingestion/sources/ig_authed.py`
-> (injectable client, lazy instagrapi import), config/env plumbing, and
-> `test_ig_authed.py` (7 offline tests). Next: on a real network with a burner
-> account, `pip install instagrapi`, set `IG_USERNAME`/`IG_PASSWORD`, and run the
-> live measurement (Task 5 live mode) to replace the estimates below.
+> **Status:** ✅ **MEASURED — authed path hit 100% caption rate** on the 13-URL
+> live set (`test_ig_live.py::test_authed_pass_rate`, 2026-07-05, burner account).
+> This clears the ≥95% go/no-go bar → the authenticated fetch source is the
+> chosen path and the hosted product is viable on reliability grounds.
+> Source built and shipped: `src/ingestion/sources/ig_authed.py` + config/env
+> plumbing + 7 offline tests. Next: widen the URL set over time to keep the
+> number honest, and wire the source into the live `/api/ingest` path (Task 3).
 
 ## Why this plan exists
 
@@ -17,9 +19,10 @@ ceiling for the unauthenticated path: **~40–70%**.
 the fetch stage. Everything downstream (LLM extraction → geo enrich → temporal
 resolve → ChromaDB → Discord recommendations) stays identical.
 
-> Note: the live pass rate was never measured in the dev container — its network
-> policy blocks `instagram.com`. All numbers below are field estimates; the first
-> task on a real network is to replace them with measured values.
+> Update (2026-07-05): first real-network measurement is in — the authed path
+> returned a caption for **13/13 URLs (100%)**. Sample is small; treat 100% as
+> "comfortably above the 95% bar" rather than a literal guarantee, and re-measure
+> as the URL set grows. The unauthenticated ceiling below (~40–70%) stands.
 
 ---
 
