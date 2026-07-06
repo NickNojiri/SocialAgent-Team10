@@ -23,5 +23,5 @@ jobs:
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
         
-      - name: Run offline tests
-        run: python -m pytest test_ingestion.py -k "not live" -q
+      - name: Run offline tests (full suite)
+        run: python -m pytest -k "not live" -q

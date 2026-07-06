@@ -2,17 +2,15 @@ version: "3.8"
 
 services:
 
-  # Container 1: Discord Bot
+  # The Discord bot (thin client — capture/votes go to the admin app on the host)
   discord-bot:
     build: ./app
     container_name: event-bot
     env_file: .env
     environment:
-      # Reel capture posts to the host admin app (ingest + shared votes).
       - INGEST_URL=${INGEST_URL:-http://host.docker.internal:8010}
       - ADMIN_URL=${ADMIN_URL:-http://host.docker.internal:8010}
     depends_on:
-      - llm
       - recommend
     networks:
       - event-net
@@ -20,36 +18,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # reach Ollama + admin app on host
 
-  # Container 2: LLM
-  llm:
-    build: ./llm
-    container_name: event-llm
-    env_file: .env
-    depends_on:
-      - db
-    networks:
-      - event-net
-    ports:
-      - "8001:8001"
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"   # reach Ollama on host
-
-  # Container 3: Memory/DB─
-  db:
-    build: ./db
-    container_name: event-db
-    networks:
-      - event-net
-    ports:
-      - "8002:8002"
-    volumes:
-      - db-data:/data # persists SQLite file across restarts
-    restart: unless-stopped
-
-  # Container 4: Event recommendation service (Phase 6)
-  # Reads the event_inspirations Chroma collection the ingestion CLI writes to ./data
-  # and answers the bot's /events queries. Embeddings come from Ollama on the host.
+  # Recommendation service: /recommend + /plan over the per-guild Chroma catalogs
   recommend:
     build:
       context: .
@@ -61,7 +30,7 @@ services:
     ports:
       - "8003:8003"
     volumes:
-      - ./data:/app/data   # same Chroma store the ingestion CLI populates
+      - ./data:/app/data   # same Chroma store the admin app populates
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"   # reach Ollama on host
@@ -75,6 +44,3 @@ services:
 networks:
   event-net:
     driver: bridge
-
-volumes:
-  db-data:
