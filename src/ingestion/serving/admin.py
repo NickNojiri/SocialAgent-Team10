@@ -13,6 +13,7 @@ can later rank by popularity.
 
 import json
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -331,6 +332,106 @@ def add_manual(body: ManualBody):
         "votes": 0,
         "new": True,
     }
+
+
+# ── The went-there loop (the "100 Nights Out" counter) ──────────────────────
+# lock → (time passes) → followup prompt → two "we went" confirmations →
+# an attended night. Everything lives in the event's metadata, so the counter
+# is exactly as multi-tenant as the catalog.
+
+_FOLLOWUP_DELAY_S = 8 * 3600   # ask the morning after, not the second it ends
+
+
+class LockBody(BaseModel):
+    guild_id: str = ""
+    channel_id: str = ""
+    end_epoch: int
+    discord_event_id: str = ""
+
+
+@app.post("/api/events/{event_id}/lock")
+def lock_event(event_id: str, body: LockBody):
+    """Record that this spot became a real scheduled event (LockInButton)."""
+    sink = _sink_for(body.guild_id)
+    res = sink.collection.get(ids=[event_id], include=["metadatas"])
+    if not res["ids"]:
+        raise HTTPException(404, "event not found")
+    meta = res["metadatas"][0] or {}
+    meta["locked_end_epoch"] = int(body.end_epoch)
+    meta["locked_channel_id"] = body.channel_id
+    if body.discord_event_id:
+        meta["discord_event_id"] = body.discord_event_id
+    meta["went_prompted"] = False
+    sink.collection.update(ids=[event_id], metadatas=[meta])
+    return {"id": event_id, "locked": True}
+
+
+@app.get("/api/followups")
+def followups(guild_id: str = "", now: int = 0):
+    """Locked events whose night has passed and haven't been asked about yet.
+    Each is returned exactly once (marked prompted here)."""
+    now = now or int(time.time())
+    sink = _sink_for(guild_id)
+    res = sink.collection.get(include=["metadatas"])
+    due = []
+    for event_id, m in zip(res["ids"], res["metadatas"]):
+        m = m or {}
+        end = m.get("locked_end_epoch")
+        if not end or m.get("went_prompted") or now < int(end) + _FOLLOWUP_DELAY_S:
+            continue
+        m["went_prompted"] = True
+        sink.collection.update(ids=[event_id], metadatas=[m])
+        due.append(
+            {
+                "id": event_id,
+                "venue": m.get("venue_name", "that spot"),
+                "channel_id": m.get("locked_channel_id", ""),
+            }
+        )
+    return {"due": due}
+
+
+class WentBody(BaseModel):
+    user_id: str
+    user_name: str = ""
+    happened: bool = True
+
+
+@app.post("/api/events/{event_id}/went")
+def went(event_id: str, body: WentBody, guild_id: str = ""):
+    """A 'we went' confirmation. Two distinct users → an official attended night."""
+    sink = _sink_for(guild_id)
+    res = sink.collection.get(ids=[event_id], include=["metadatas"])
+    if not res["ids"]:
+        raise HTTPException(404, "event not found")
+    meta = res["metadatas"][0] or {}
+    if body.happened:
+        went_map = _voters({"voters": meta.get("went")})   # same JSON-map shape as votes
+        went_map[body.user_id] = body.user_name or body.user_id
+        meta["went"] = json.dumps(went_map)
+        meta["attended"] = len(went_map) >= 2
+    else:
+        meta["went_dismissed"] = True
+    sink.collection.update(ids=[event_id], metadatas=[meta])
+    confirmations = len(_voters({"voters": meta.get("went")}))
+    return {
+        "id": event_id,
+        "venue": meta.get("venue_name", ""),
+        "confirmations": confirmations,
+        "attended": bool(meta.get("attended")),
+        "nights": _count_nights(sink),
+    }
+
+
+def _count_nights(sink: ChromaSink) -> int:
+    res = sink.collection.get(include=["metadatas"])
+    return sum(1 for m in res["metadatas"] if (m or {}).get("attended"))
+
+
+@app.get("/api/nights")
+def nights(guild_id: str = ""):
+    """The counter that matters: confirmed real-world nights out."""
+    return {"nights": _count_nights(_sink_for(guild_id))}
 
 
 @app.delete("/api/events/{event_id}")

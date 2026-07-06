@@ -36,6 +36,7 @@ from typing import Literal
 import discord
 import httpx
 from discord import app_commands
+from discord.ext import tasks
 
 import cards
 
@@ -97,6 +98,44 @@ async def on_ready():
         f"Capture: everywhere except {len(MUTED_CHANNELS)} muted channel(s) · "
         f"suggestions in {len(SUGGESTION_CHANNELS)} channel(s)"
     )
+
+    if not followup_loop.is_running():
+        followup_loop.start()
+
+
+@tasks.loop(hours=1)
+async def followup_loop():
+    """The went-there loop: the morning after a locked-in event, ask the channel
+    whether it happened. Two 🎉 confirmations = one official night out."""
+    for guild in bot.guilds:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"{INGEST_URL}/api/followups", params={"guild_id": str(guild.id)}
+                )
+                resp.raise_for_status()
+                due = resp.json().get("due", [])
+        except Exception as exc:
+            log.debug(f"[went] followup check skipped for {guild.id}: {exc}")
+            continue
+        for item in due:
+            channel = bot.get_channel(int(item["channel_id"])) if item.get("channel_id") else None
+            if channel is None:
+                continue
+            try:
+                await channel.send(
+                    f"🌟 So… did **{item.get('venue', 'it')}** happen? "
+                    "Two of you saying yes makes it official.",
+                    view=cards.build_went_view(item["id"]),
+                )
+                log.info(f"[went] followup asked for {item.get('venue')!r} in #{channel}")
+            except Exception as exc:
+                log.debug(f"[went] couldn't post followup: {exc}")
+
+
+@followup_loop.before_loop
+async def _wait_ready():
+    await bot.wait_until_ready()
 
 
 @bot.event

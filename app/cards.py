@@ -302,9 +302,116 @@ class LockInButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:lo
             await interaction.followup.send(f"⚠️ Couldn't create the event: {exc}")
             return
 
+        # Register the lock so the went-there loop can follow up the morning
+        # after — this is what feeds the 100 Nights Out counter. Best-effort.
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"{ADMIN_URL}/api/events/{self.event_id}/lock",
+                    json={
+                        "guild_id": guild_key(interaction),
+                        "channel_id": str(interaction.channel_id),
+                        "end_epoch": int(end.timestamp()),
+                        "discord_event_id": str(devent.id),
+                    },
+                )
+        except Exception:
+            pass
+
         await interaction.followup.send(
             f"📅 **Locked in!** {devent.name} — <t:{int(start.timestamp())}:F>\n{devent.url}"
         )
+
+
+class WentButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:went:(?P<eid>[^:]+)"):
+    """'We went!' — two distinct confirmations make it an official night out."""
+
+    def __init__(self, event_id: str):
+        self.event_id = event_id
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.success,
+                label="We went!",
+                emoji="🎉",
+                custom_id=f"spot:went:{event_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["eid"])
+
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/events/{self.event_id}/went",
+                    params={"guild_id": guild_key(interaction)},
+                    json={
+                        "user_id": str(interaction.user.id),
+                        "user_name": interaction.user.display_name,
+                        "happened": True,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            await interaction.response.send_message(
+                "⚠️ Couldn't record that — try again in a moment.", ephemeral=True
+            )
+            return
+
+        if data.get("attended") and data.get("confirmations") == 2:
+            # The moment it becomes official — celebrate in the channel.
+            await interaction.response.send_message(
+                f"🌃 **{data.get('venue') or 'That'} is officially in the books** — "
+                f"night out **#{data.get('nights', '?')}** for this crew! 🥂"
+            )
+        else:
+            await interaction.response.send_message(
+                f"🎉 Logged! {data.get('confirmations', 1)}/2 confirmations — "
+                "one more friend makes it official.",
+                ephemeral=True,
+            )
+
+
+class NopeButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:nope:(?P<eid>[^:]+)"):
+    def __init__(self, event_id: str):
+        self.event_id = event_id
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.secondary,
+                label="Didn't happen",
+                emoji="😴",
+                custom_id=f"spot:nope:{event_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["eid"])
+
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"{ADMIN_URL}/api/events/{self.event_id}/went",
+                    params={"guild_id": guild_key(interaction)},
+                    json={"user_id": str(interaction.user.id), "happened": False},
+                )
+        except Exception:
+            pass
+        await interaction.response.edit_message(
+            content="😴 No worries — the spot stays in the catalog for next time.",
+            view=None,
+        )
+
+
+def build_went_view(event_id: str) -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(WentButton(event_id))
+    view.add_item(NopeButton(event_id))
+    return view
 
 
 class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:retry:(?P<url>.+)"):
@@ -514,7 +621,7 @@ def register_dynamic_items(client: discord.Client) -> None:
     """Call once in on_ready so buttons keep working after a restart."""
     client.add_dynamic_items(
         VoteButton, AddSuggestionsButton, RemoveButton, LockInButton,
-        RetryButton, ManualAddButton,
+        RetryButton, ManualAddButton, WentButton, NopeButton,
     )
 
 
