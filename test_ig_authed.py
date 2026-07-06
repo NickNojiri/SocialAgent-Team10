@@ -80,6 +80,21 @@ class TestAuthedSource:
         source = make_source(FakeClient(exc=RuntimeError("login_required")))
         assert source.fetch_shortcode("ABC") is None
 
+    def test_login_failure_is_sticky(self):
+        """A failed login must not be retried per-URL (that blacklists the IP)."""
+        calls = {"n": 0}
+
+        class FailingLoginSource(AuthedInstagramSource):
+            def _get_client(self):
+                calls["n"] += 1
+                raise RuntimeError("BadPassword")
+
+        source = FailingLoginSource(IngestionSettings())
+        assert source.fetch_shortcode("A") is None
+        assert source.fetch_shortcode("B") is None
+        assert source.fetch_shortcode("C") is None
+        assert calls["n"] == 1   # only one login attempt for the whole run
+
     def test_fetch_url_resolves_shortcode(self):
         client = FakeClient(media=fake_media())
         raw = make_source(client).fetch_url("https://www.instagram.com/reel/DU3evm2Ewhn/?igsh=zz")

@@ -1,21 +1,28 @@
 # Plan: Authenticated Instagram Ingestion → API → Discord
 
-> **Status:** ⏳ **Still unmeasured — first authed login attempt FAILED**
-> (burner account, 2026-07-05). The instagrapi login did not complete (challenge
-> / verification / auth error), so no reliability number exists yet. The go/no-go
-> bar is NOT cleared. Built and shipped regardless: `src/ingestion/sources/ig_authed.py`
-> + config/env plumbing + offline tests, and the source is wired into the live
-> `/api/ingest` path (Task 3) so it takes over automatically once login works —
-> until then the pipeline uses the Playwright path unchanged.
-> **Next: get the burner login past IG's challenge, then re-run
-> `test_ig_live.py::test_authed_pass_rate` for the real number.**
+> **Status (measured 2026-07-05, 13-URL live set):**
+> - ✅ **Unauthenticated path: 100% (13/13)** caption rate via Playwright + the
+>   `/embed/` fallback — *far above* the ~40–70% estimate this doc was written
+>   around. On this sample the free path already meets the bar, so the bot is
+>   usable today with **no Instagram account at all**.
+> - ⏳ **Authenticated path: unmeasured** — the first burner login failed at IG's
+>   challenge/verification step. Still worth finishing as reliability insurance
+>   (walled accounts, if the unauth rate drops on a wider set), but no longer a
+>   launch blocker.
+>
+> Sample caveat: 13 curated URLs is a small set — treat 100% as "the free path is
+> much stronger than assumed," not a guarantee across all reels. Re-measure as the
+> URL set grows. The authed source is built and wired into `/api/ingest` (Task 3);
+> it stays dormant (Playwright path used) until a login succeeds.
 
 ## Why this plan exists
 
-Unauthenticated scraping (Playwright + `/embed/` fallback) cannot reach the 99%
-reliability goal. Instagram walls unauthenticated traffic aggressively in 2026,
-and `igsh=` share links are flagged as app-referred and walled hardest. Measured
-ceiling for the unauthenticated path: **~40–70%**.
+Unauthenticated scraping (Playwright + `/embed/` fallback) was *assumed* to top
+out at ~40–70%. **A first real measurement contradicts that: 100% (13/13) on the
+live test set** (2026-07-05) — the embed fallback recovers login-walled reels far
+better than expected. This may not hold across a much larger/random URL set, so
+the authed path below stays on the roadmap as insurance, but it is no longer a
+launch blocker on the evidence so far.
 
 **An authenticated session is the only path to 99%.** This plan replaces *only*
 the fetch stage. Everything downstream (LLM extraction → geo enrich → temporal

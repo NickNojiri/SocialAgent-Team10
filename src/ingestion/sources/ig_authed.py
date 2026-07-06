@@ -48,6 +48,7 @@ class AuthedInstagramSource:
     def __init__(self, settings: Optional[IngestionSettings] = None, client: Any = None):
         self.settings = settings or IngestionSettings()
         self._client = client  # injectable for tests; real one built lazily
+        self._login_failed = False  # sticky: one failed login disables the rest of the run
 
     # ── public API ───────────────────────────────────────────────────────────
 
@@ -59,11 +60,22 @@ class AuthedInstagramSource:
         return self.fetch_shortcode(code)
 
     def fetch_shortcode(self, shortcode: str) -> Optional[RawPostSnapshot]:
+        # A login that already failed stays failed for the whole run: retrying it
+        # per-URL hammers IG and gets the IP rate-limited/blacklisted.
+        if self._login_failed:
+            return None
         try:
             client = self._get_client()
             media = client.media_info_by_shortcode(shortcode)
         except Exception as exc:  # LoginRequired/ClientError/network — degrade
-            log.warning(f"[ig-authed] fetch failed for {shortcode!r}: {type(exc).__name__}: {exc}")
+            if self._client is None:  # never logged in → the failure was the login itself
+                self._login_failed = True
+                log.error(
+                    f"[ig-authed] login failed — authed fetch disabled for this run "
+                    f"(falling back to the public path): {type(exc).__name__}: {exc}"
+                )
+            else:
+                log.warning(f"[ig-authed] fetch failed for {shortcode!r}: {type(exc).__name__}: {exc}")
             return None
         return self._to_snapshot(shortcode, media)
 
