@@ -35,9 +35,22 @@ from src.ingestion.sinks.jsonl_sink import JsonlSink
 
 if TYPE_CHECKING:
     from src.ingestion.sinks.chroma_sink import ChromaSink
+    from src.ingestion.pipeline.ocr import ImageTextReader
     from src.ingestion.pipeline.transcriber import Transcriber
 
 log = logging.getLogger("ingestion.orchestrator")
+
+
+def _ollama_reachable(settings: IngestionSettings) -> bool:
+    """2-second pre-flight so a down/hung Ollama costs one probe per run, not a
+    90s timeout per stage per URL. Import-light on purpose."""
+    import httpx
+
+    try:
+        httpx.get(f"{settings.ollama_url}/api/tags", timeout=2.0)
+        return True
+    except Exception:
+        return False
 
 # Fetch outcomes that mean "we couldn't read the page" (the connectivity/access bucket).
 _CONNECTIVITY_STATUSES = {
@@ -65,12 +78,17 @@ class IngestionPipeline:
         jsonl_sink: Optional[JsonlSink] = None,
         chroma_sink: Optional["ChromaSink"] = None,
         authed_source: Optional[Any] = None,
+        ocr_reader: Optional["ImageTextReader"] = None,
         on_result: Optional[Callable[[IngestionResult], None]] = None,
     ):
         self.settings = settings
         self.extractor = extractor
         self.transcriber = transcriber
         self.summarizer = summarizer
+        self.ocr_reader = ocr_reader
+        # Flipped to False by the per-run Ollama pre-flight; direct _process
+        # calls (tests, CLI internals) keep LLM stages enabled by default.
+        self._llm_ok = True
         self.geo_enricher = geo_enricher
         self.temporal_resolver = temporal_resolver
         self.jsonl_sink = jsonl_sink
@@ -86,6 +104,20 @@ class IngestionPipeline:
         t0 = perf_counter()
         results: list[IngestionResult] = []
 
+        # Fail-fast pre-flight: one 2s probe decides the whole run's LLM usage,
+        # so a down Ollama degrades to heuristics instantly instead of hitting
+        # a 90s timeout on every URL.
+        self._llm_ok = True
+        if self.extractor is not None or self.summarizer is not None:
+            if not _ollama_reachable(self.settings):
+                self._llm_ok = False
+                log.warning(
+                    "[fail-fast] Ollama unreachable — running heuristics-only "
+                    "(no LLM extraction or audio summaries this run)"
+                )
+
+        budget = self.settings.capture_budget_s
+
         # The browser is opened lazily — a run where every URL is served by the
         # authed source never launches Chromium at all.
         session: Optional[SocialSessionManager] = None
@@ -98,7 +130,13 @@ class IngestionPipeline:
                         raw = await asyncio.to_thread(self.authed_source.fetch_url, url)
 
                     if raw is not None:
-                        result = self._process_raw(raw, url, FetchStatus.OK)
+                        # Post-fetch stages run in a thread under a hard budget:
+                        # a hung backend fails this one URL with a clear reason.
+                        # (The worker thread can outlive the timeout — logged, accepted.)
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(self._process_raw, raw, url, FetchStatus.OK),
+                            timeout=budget,
+                        )
                     else:
                         if session is None:
                             session = await SocialSessionManager(self.settings).__aenter__()
@@ -109,7 +147,16 @@ class IngestionPipeline:
                             recovered = await try_embed_fallback(url)
                             if recovered is not None:
                                 snapshot = recovered
-                        result = self._process(snapshot)
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(self._process, snapshot), timeout=budget
+                        )
+                except asyncio.TimeoutError:
+                    log.error(f"[fail-fast] {url} exceeded the {budget:.0f}s capture budget")
+                    result = IngestionResult(
+                        url=url,
+                        fetch_status=FetchStatus.ERROR,
+                        rejection_reason=f"capture exceeded the {budget:.0f}s budget",
+                    )
                 except Exception as exc:  # last-ditch guard: one URL never kills the run
                     log.exception(f"[pipeline] unexpected error on {url}: {exc}")
                     result = IngestionResult(
@@ -175,13 +222,20 @@ class IngestionPipeline:
             if transcript:
                 raw.transcript = transcript
 
-        record, reason = build_record(raw, extractor=self.extractor)
+        # Phase 2.6: read burned-in on-screen text from the cover image — info
+        # that is *typed over the video*, never spoken and never in the caption.
+        if self.ocr_reader is not None and not getattr(raw, "frame_text", None):
+            frame_text = self.ocr_reader.read_url(getattr(raw, "image_url", None))
+            if frame_text:
+                raw.frame_text = frame_text
+
+        record, reason = build_record(raw, extractor=self.extractor if self._llm_ok else None)
         if record is None:
             return IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
 
         # Phase 2.5: a user-facing "quick description" from the audio. Only when we
         # actually transcribed something — no transcript → no summary → card shows "No info".
-        if self.summarizer is not None and getattr(raw, "transcript", None):
+        if self.summarizer is not None and self._llm_ok and getattr(raw, "transcript", None):
             try:
                 record.summary = self.summarizer(getattr(raw, "caption", None), raw.transcript)
             except Exception as exc:

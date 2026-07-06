@@ -296,6 +296,13 @@ class TestNormalizer:
         assert normalize(make_raw(caption=IG_CAPTION, image_url="blob:notaurl"))["image_url"] is None
         assert normalize(make_raw(caption=IG_CAPTION))["image_url"] is None
 
+    def test_frame_text_feeds_payload_and_heuristics(self):
+        raw = make_raw(caption="at Casa Loma tonight", frame_text="best matcha latte in town")
+        payload = build_llm_payload(raw)
+        assert payload["on_screen_text"] == "best matcha latte in town"
+        # burned-in text participates in categorization like any other text
+        assert normalize(raw)["category"] is EventCategory.CAFE_DESSERT
+
 
 # ── Validator pipeline ──────────────────────────────────────────────────────
 
@@ -1264,6 +1271,7 @@ class TestPipelineGuard:
                 raise RuntimeError("llm exploded")
 
         monkeypatch.setattr(orchestrator, "SocialSessionManager", FakeSession)
+        monkeypatch.setattr(orchestrator, "_ollama_reachable", lambda s: True)
         pipeline = IngestionPipeline(IngestionSettings(), extractor=ExplodingExtractor())
 
         report = await pipeline.run(["https://example.test/post"])
@@ -1340,6 +1348,73 @@ class TestAuthedSourcePipeline:
         report = await pipeline.run(["https://example.test/post"])
         assert report.results[0].record is not None
         assert report.results[0].record.venue_name == "Casa Loma"
+
+
+class TestFailFast:
+    @pytest.mark.asyncio
+    async def test_down_ollama_degrades_run_to_heuristics(self, monkeypatch):
+        """One 2s probe replaces N x 90s LLM timeouts: the exploding extractor is
+        never even called when the pre-flight says Ollama is down."""
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        class ExplodingExtractor:
+            model = "boom"
+
+            def extract(self, payload):
+                raise AssertionError("LLM must not be called when the probe fails")
+
+        class FakeAuthedSource:
+            def fetch_url(self, url):
+                return make_raw(caption=IG_CAPTION)
+
+        monkeypatch.setattr(orchestrator, "_ollama_reachable", lambda s: False)
+        pipeline = IngestionPipeline(
+            IngestionSettings(), extractor=ExplodingExtractor(), authed_source=FakeAuthedSource()
+        )
+        report = await pipeline.run(["https://www.instagram.com/reel/X/"])
+        rec = report.results[0].record
+        assert rec is not None                      # heuristics still produced a record
+        assert rec.venue_name == "Casa Loma"
+
+    @pytest.mark.asyncio
+    async def test_capture_budget_fails_fast_with_clear_reason(self):
+        """A hung stage errors this one URL at the budget instead of riding the
+        caller's HTTP timeout."""
+        import time
+
+        class SlowSource:
+            def fetch_url(self, url):
+                return make_raw(caption=IG_CAPTION)
+
+        pipeline = IngestionPipeline(
+            IngestionSettings(capture_budget_s=0.2), authed_source=SlowSource()
+        )
+        pipeline._process_raw = lambda raw, url, status: time.sleep(5)   # hang the stage
+
+        report = await pipeline.run(["https://www.instagram.com/reel/X/"])
+        result = report.results[0]
+        assert result.record is None
+        assert "budget" in (result.rejection_reason or "")
+
+    @pytest.mark.asyncio
+    async def test_ocr_reader_feeds_frame_text(self):
+        """A reel whose info lives in on-screen text gets categorized from it."""
+
+        class Source:
+            def fetch_url(self, url):
+                return make_raw(caption="at Casa Loma tonight", image_url="https://cdn.ig/c.jpg")
+
+        class FakeReader:
+            def read_url(self, image_url):
+                return "best matcha latte in town" if image_url else None
+
+        pipeline = IngestionPipeline(
+            IngestionSettings(), authed_source=Source(), ocr_reader=FakeReader()
+        )
+        report = await pipeline.run(["https://www.instagram.com/reel/X/"])
+        rec = report.results[0].record
+        assert rec is not None
+        assert rec.category is EventCategory.CAFE_DESSERT   # came from frame_text
 
 
 class TestRunReportBuckets:

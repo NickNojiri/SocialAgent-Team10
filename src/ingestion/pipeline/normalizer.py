@@ -65,6 +65,9 @@ def build_llm_payload(raw: RawPostSnapshot) -> dict:
     transcript = _clean(raw.transcript)
     if transcript:  # spoken venue/location the caption may omit (Phase 2.5)
         payload["transcript"] = transcript[:_MAX_TRANSCRIPT]
+    frame_text = _clean(getattr(raw, "frame_text", None))
+    if frame_text:  # burned-in on-screen text the caption may omit (Phase 2.6)
+        payload["on_screen_text"] = frame_text[:_MAX_DESC]
     if raw.location_text:
         payload["location_text"] = raw.location_text.strip()
     if raw.hashtags:
@@ -78,7 +81,9 @@ def build_llm_payload(raw: RawPostSnapshot) -> dict:
 def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = None) -> dict:
     """Return candidate kwargs for EventInspiration (validation happens later)."""
     caption = raw.caption or ""
-    searchable = " ".join(filter(None, [raw.caption, raw.transcript, raw.title, raw.description]))
+    searchable = " ".join(
+        filter(None, [raw.caption, raw.transcript, raw.frame_text, raw.title, raw.description])
+    )
 
     # 1. Heuristic baseline — always computed, deterministic, cheap.
     venue = _venue_candidate(raw, caption)

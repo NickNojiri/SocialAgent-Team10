@@ -71,6 +71,10 @@ This is the retention feature. Today `/plan` posts picks; nothing happens after.
 1. **TikTok** — the other half of "food reel" culture; same og:-tag + embedded-JSON patterns the IG extractor uses (`extractors/instagram.py` is the template; `extractors/base.select_extractor` already routes by domain).
 2. **YouTube Shorts** and plain URLs (blogs, Eater lists, Google Maps share links — `extractors/generic.py` already handles JSON-LD pages).
 3. **Screenshots** — OCR (tesseract or vision LLM) for "my friend texted me this" images pasted into Discord.
+4. **On-screen text, full-video** — cover-image OCR shipped (opt-in `OCR_ENABLED=1`;
+   catches burned-in venue text on the reel's cover). The upgrade is sampling
+   *video frames* and OCRing each — catches text that only appears mid-reel, at a
+   real speed cost; run it as an async enrichment pass, not in the capture path.
 
 ### 2.2 Taste-aware suggestions
 - The "Add suggestions" button (just shipped) currently does similarity search. Evolve to a per-guild **taste profile**: weight by votes and *attended* events (1.3's went-there data), decay stale spots, diversify categories.

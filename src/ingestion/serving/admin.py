@@ -41,6 +41,7 @@ for _env, _field, _cast in (
     ("OLLAMA_MODEL", "ollama_model", str),
     ("WHISPER_MODEL", "whisper_model", str),
     ("SETTLE_TIMEOUT_MS", "settle_timeout_ms", int),
+    ("CAPTURE_BUDGET_S", "capture_budget_s", float),
 ):
     _val = os.getenv(_env, "").strip()
     if _val:
@@ -128,6 +129,23 @@ def _build_ig_source():
 _ig_source = _build_ig_source()
 
 
+def _build_ocr():
+    """Cover-image OCR (on-screen text), opt-in via OCR_ENABLED=1. The reader
+    degrades to no-text when rapidocr isn't installed, so this never fails."""
+    if os.getenv("OCR_ENABLED", "").strip().lower() not in ("1", "true", "on", "yes"):
+        return None
+    from src.ingestion.pipeline.ocr import ImageTextReader
+
+    return ImageTextReader(_settings)
+
+
+_ocr_reader = _build_ocr()
+
+# /api/ingest input guardrails — reject garbage instantly instead of feeding it
+# a 30s browser cycle.
+_MAX_URLS_PER_INGEST = 10
+
+
 class IngestBody(BaseModel):
     urls: list[str]
     guild_id: str = ""      # "" → the legacy/single-tenant catalog
@@ -200,6 +218,11 @@ async def ingest(body: IngestBody):
     urls = [u.strip() for u in body.urls if u.strip()]
     if not urls:
         raise HTTPException(400, "no urls given")
+    if len(urls) > _MAX_URLS_PER_INGEST:
+        raise HTTPException(400, f"too many links — max {_MAX_URLS_PER_INGEST} per request")
+    bad = [u for u in urls if not u.lower().startswith(("http://", "https://"))]
+    if bad:
+        raise HTTPException(400, f"only http(s) URLs are ingestible, got: {bad[0][:80]!r}")
     sink = _sink_for(body.guild_id)
     existing_ids = set(sink.collection.get(include=[])["ids"])  # snapshot before the run
     pipeline = IngestionPipeline(
@@ -212,6 +235,7 @@ async def ingest(body: IngestBody):
         jsonl_sink=JsonlSink(Path("data/inspirations.jsonl")),
         chroma_sink=sink,
         authed_source=_ig_source,
+        ocr_reader=_ocr_reader,
     )
     report = await pipeline.run(urls)
     return {

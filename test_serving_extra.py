@@ -101,6 +101,23 @@ def test_share_page_is_served_and_read_only():
         assert write_marker not in resp.text          # no write controls on the public page
 
 
+def test_ingest_rejects_garbage_urls_instantly():
+    """Bad input gets a 400 in milliseconds, never a 30s browser cycle."""
+    from src.ingestion.serving.admin import app as admin_app
+
+    client = TestClient(admin_app)
+    resp = client.post("/api/ingest", json={"urls": ["ftp://nope.example/x"]})
+    assert resp.status_code == 400
+    assert "http" in resp.json()["detail"]
+
+    resp = client.post("/api/ingest", json={"urls": [f"https://x.test/{i}" for i in range(11)]})
+    assert resp.status_code == 400
+    assert "too many" in resp.json()["detail"]
+
+    resp = client.post("/api/ingest", json={"urls": ["   "]})
+    assert resp.status_code == 400
+
+
 def test_manual_record_builder():
     from src.ingestion.serving.admin import _manual_record
 

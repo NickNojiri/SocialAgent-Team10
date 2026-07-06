@@ -89,6 +89,19 @@ class IngestionSettings(BaseModel):
     transcribe_enabled: bool = False        # opt-in; needs faster-whisper + ffmpeg installed
     whisper_model: str = "base"             # tiny | base | small — accuracy vs speed on CPU
 
+    # ── On-screen text OCR (Phase 2.6) ───────────────────────────────────────
+    # Some reels carry their info as burned-in text in the video, never spoken
+    # and never in the caption. Reading the *cover image* (og:image) catches
+    # most of these cheaply; full video-frame OCR is a noted future upgrade
+    # (much slower). Opt-in; needs rapidocr-onnxruntime. Degrades to None.
+    ocr_enabled: bool = False
+
+    # ── Fail-fast guardrails ─────────────────────────────────────────────────
+    # Hard wall-clock budget per URL for the post-fetch stages (transcribe +
+    # LLM + resolve). A hung backend fails the one URL fast with a clear
+    # reason instead of riding the caller's HTTP timeout.
+    capture_budget_s: float = Field(180.0, gt=0)
+
     # ── Geographic enrichment (Phase 3) ──────────────────────────────────────
     # Resolves GeoContext location clues to coordinates via the repo's existing
     # Nominatim helper. Degrades to "unresolved" (never crashes) when the geocoder
