@@ -453,6 +453,8 @@ def _what_i_heard_embed(request: dict) -> discord.Embed:
     fields = [
         ("🍽️ vibe", request.get("vibe")),
         ("📍 area", request.get("area")),
+        ("🧭 midpoint of", request.get("midpoint_of")),
+        ("📍 near", request.get("near")),
         ("💸 budget", request.get("budget")),
         ("🕗 when", request.get("time")),
     ]

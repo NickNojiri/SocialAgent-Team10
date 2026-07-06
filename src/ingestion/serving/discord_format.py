@@ -36,6 +36,8 @@ def format_recommendation(rec: Recommendation) -> str:
     if rec.core_theme:
         lines.append(rec.core_theme)
     lines.append(_time_line(rec))
+    if rec.distance_km is not None:
+        lines.append(f"📏 {rec.distance_km:g} km away")
     if rec.source_url:
         lines.append(f"🔗 <{rec.source_url}>")
     return "\n".join(lines)

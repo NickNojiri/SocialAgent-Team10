@@ -60,6 +60,67 @@ def looks_like_request(text: str) -> bool:
     return bool(tokens & _TRIGGERS)
 
 
+# ── Location awareness ───────────────────────────────────────────────────────
+# "i'm at 2nd street", "we're in downtown LB", "near the pike" → an origin
+# point; suggestions are then ranked by real distance. In /plan, several
+# people saying where they are → the midpoint (the heritage negotiator's
+# fairness trick, src/services/location_service.py::get_midpoint).
+
+_PLACE = r"[A-Za-z0-9' .&-]{3,40}"
+_ORIGIN_RE = re.compile(
+    rf"(?i)\b(?:i'?m|im|we'?re|were)\s+(?:at|in|near|around)\s+(?P<place>{_PLACE})"
+    rf"|\b(?:near|around)\s+(?P<place2>{_PLACE})"
+)
+_USER_LOC_RE = re.compile(
+    rf"(?im)^\s*(?P<name>[^:\n]{{1,40}}?)\s*:\s*.*?\b(?:i'?m|im|we'?re)\s+(?:at|in|near)\s+(?P<place>{_PLACE})"
+)
+_TRAILING_NOISE = {
+    "tonight", "today", "tomorrow", "rn", "now", "later", "tho", "though",
+    "pls", "please", "btw", "lol", "haha", "so", "and",
+}
+
+
+def _clean_place(raw: Optional[str]) -> Optional[str]:
+    tokens = (raw or "").strip().split()
+    while tokens and tokens[-1].lower().strip(".!?,") in _TRAILING_NOISE:
+        tokens.pop()
+    place = " ".join(tokens[:5]).strip(" .")
+    return place if len(place) >= 3 else None
+
+
+def extract_origin_text(text: str) -> Optional[str]:
+    """The place phrase in a request, or None ("im at X", "near X")."""
+    match = _ORIGIN_RE.search(text or "")
+    if not match:
+        return None
+    return _clean_place(match.group("place") or match.group("place2"))
+
+
+def user_locations(transcript: str) -> dict[str, str]:
+    """{speaker: place} for every 'name: … i'm at X' transcript line."""
+    out: dict[str, str] = {}
+    for match in _USER_LOC_RE.finditer(transcript or ""):
+        place = _clean_place(match.group("place"))
+        if place:
+            out[match.group("name").strip()] = place
+    return out
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    rlat1, rlng1, rlat2, rlng2 = map(radians, (lat1, lng1, lat2, lng2))
+    a = sin((rlat2 - rlat1) / 2) ** 2 + cos(rlat1) * cos(rlat2) * sin((rlng2 - rlng1) / 2) ** 2
+    return 2 * 6371.0 * asin(sqrt(a))
+
+
+def _default_geocode(place: str):
+    """Nominatim via the repo's existing helper (1s politeness delay built in)."""
+    from src.services.location_service import address_to_coords
+
+    return address_to_coords(place)
+
+
 def synthesize_request(transcript: str, settings: IngestionSettings) -> dict:
     """LLM-synthesize a group's collective request from a chat transcript.
 
@@ -110,6 +171,9 @@ class Recommendation:
     start_epoch: Optional[int] = None
     end_epoch: Optional[int] = None
     schedule_status: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    distance_km: Optional[float] = None    # real-world distance from the user's origin
 
 
 @dataclass
@@ -127,11 +191,28 @@ class PlanResult:
 
 
 class RecommendationService:
-    def __init__(self, sink, settings: Optional[IngestionSettings] = None):
+    def __init__(self, sink, settings: Optional[IngestionSettings] = None, geocode_fn=None):
         self.sink = sink
         self.settings = settings or IngestionSettings()
+        # Injectable geocoder for offline tests; defaults to Nominatim lazily.
+        self.geocode_fn = geocode_fn
+        self._geo_cache: dict[str, Optional[tuple[float, float]]] = {}
         self._last_post: dict[str, float] = {}            # channel_id -> ts of last suggestion
         self._recent: dict[str, dict[str, float]] = {}    # channel_id -> {content_hash: ts}
+
+    def _geocode(self, place: Optional[str]) -> Optional[tuple[float, float]]:
+        if not place:
+            return None
+        key = place.lower().strip()
+        if key not in self._geo_cache:
+            try:
+                lat, lng = (self.geocode_fn or _default_geocode)(place)
+            except Exception:
+                lat = lng = None
+            self._geo_cache[key] = (
+                (float(lat), float(lng)) if lat is not None and lng is not None else None
+            )
+        return self._geo_cache[key]
 
     def recommend(
         self,
@@ -141,9 +222,14 @@ class RecommendationService:
         mode: str = "command",
         category: Optional[str] = None,
         now: Optional[float] = None,
+        origin: Optional[tuple[float, float]] = None,
     ) -> RecommendationResult:
         now = time.monotonic() if now is None else now
         auto = mode == "auto"
+
+        # Location awareness: "im near X" in the request → rank by real distance.
+        if origin is None:
+            origin = self._geocode(extract_origin_text(text))
 
         # 1. Intent gate (auto only) — explicit /events always passes.
         if auto and not looks_like_request(text):
@@ -179,6 +265,17 @@ class RecommendationService:
         if not picked:
             return RecommendationResult(suppressed=True, reason="no relevant match")
 
+        # 5.5 Distance annotation + nearest-first (spots without coords sink last).
+        if origin is not None:
+            for rec in picked:
+                if rec.lat is not None and rec.lng is not None:
+                    rec.distance_km = round(
+                        _haversine_km(origin[0], origin[1], rec.lat, rec.lng), 1
+                    )
+            picked.sort(
+                key=lambda r: (r.distance_km is None, r.distance_km or 0.0, r.distance)
+            )
+
         # 6. Commit spam-control state.
         self._last_post[channel_id] = now
         for rec in picked:
@@ -192,7 +289,32 @@ class RecommendationService:
         query = " ".join(v for v in (request.get("vibe"), request.get("area")) if v).strip()
         if not query:
             query = extract_query(transcript)        # fallback: keyword vibe over the whole thread
-        result = self.recommend(channel_id, query, mode="command", now=now)
+
+        # Fairness: people who said where they are pull the results toward their
+        # midpoint; one person → near them; else the group's stated area.
+        origin: Optional[tuple[float, float]] = None
+        located: dict[str, tuple[tuple[float, float], str]] = {}
+        for name, place in user_locations(transcript).items():
+            point = self._geocode(place)
+            if point is not None:
+                located[name] = (point, place)
+        if len(located) >= 2:
+            points = [entry[0] for entry in located.values()]
+            origin = (
+                sum(p[0] for p in points) / len(points),
+                sum(p[1] for p in points) / len(points),
+            )
+            request["midpoint_of"] = " + ".join(
+                f"{name} ({entry[1]})" for name, entry in located.items()
+            )
+        elif len(located) == 1:
+            ((point, place),) = located.values()
+            origin = point
+            request["near"] = place
+        elif request.get("area"):
+            origin = self._geocode(request["area"])
+
+        result = self.recommend(channel_id, query, mode="command", now=now, origin=origin)
         return PlanResult(request=request, recommendations=result.recommendations, query=query)
 
     def _expire_recent(self, recent: dict[str, float], now: float) -> None:
@@ -213,4 +335,6 @@ def _to_recommendation(hit: dict) -> Recommendation:
         start_epoch=m.get("start_epoch"),
         end_epoch=m.get("end_epoch"),
         schedule_status=m.get("schedule_status"),
+        lat=m.get("lat"),
+        lng=m.get("lng"),
     )
