@@ -1,12 +1,14 @@
 # Plan: Authenticated Instagram Ingestion → API → Discord
 
-> **Status:** ✅ **MEASURED — authed path hit 100% caption rate** on the 13-URL
-> live set (`test_ig_live.py::test_authed_pass_rate`, 2026-07-05, burner account).
-> This clears the ≥95% go/no-go bar → the authenticated fetch source is the
-> chosen path and the hosted product is viable on reliability grounds.
-> Source built and shipped: `src/ingestion/sources/ig_authed.py` + config/env
-> plumbing + 7 offline tests. Next: widen the URL set over time to keep the
-> number honest, and wire the source into the live `/api/ingest` path (Task 3).
+> **Status:** ⏳ **Still unmeasured — first authed login attempt FAILED**
+> (burner account, 2026-07-05). The instagrapi login did not complete (challenge
+> / verification / auth error), so no reliability number exists yet. The go/no-go
+> bar is NOT cleared. Built and shipped regardless: `src/ingestion/sources/ig_authed.py`
+> + config/env plumbing + offline tests, and the source is wired into the live
+> `/api/ingest` path (Task 3) so it takes over automatically once login works —
+> until then the pipeline uses the Playwright path unchanged.
+> **Next: get the burner login past IG's challenge, then re-run
+> `test_ig_live.py::test_authed_pass_rate` for the real number.**
 
 ## Why this plan exists
 
@@ -19,10 +21,10 @@ ceiling for the unauthenticated path: **~40–70%**.
 the fetch stage. Everything downstream (LLM extraction → geo enrich → temporal
 resolve → ChromaDB → Discord recommendations) stays identical.
 
-> Update (2026-07-05): first real-network measurement is in — the authed path
-> returned a caption for **13/13 URLs (100%)**. Sample is small; treat 100% as
-> "comfortably above the 95% bar" rather than a literal guarantee, and re-measure
-> as the URL set grows. The unauthenticated ceiling below (~40–70%) stands.
+> Update (2026-07-05): the authed path is not yet measured — the first burner
+> login failed at IG's challenge/verification step, so the numbers below remain
+> field estimates. The unauthenticated ceiling (~40–70%) is the only measured
+> figure so far.
 
 ---
 
