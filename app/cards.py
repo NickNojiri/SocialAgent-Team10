@@ -74,23 +74,34 @@ _IG_URL_RE = re.compile(
     r"https?://(?:www\.)?instagram\.com/(?:reels?|p|tv)/[A-Za-z0-9_-]+",
     re.IGNORECASE,
 )
+_TIKTOK_URL_RE = re.compile(
+    r"https?://(?:www\.)?tiktok\.com/(?:@[\w.]+/video/\d+|t/[\w]+)"
+    r"|https?://(?:vm|vt)\.tiktok\.com/[\w]+",
+    re.IGNORECASE,
+)
 
 
 def emoji_for(category: str) -> str:
     return CATEGORY_EMOJI.get(category, "📍")
 
 
-def extract_ig_urls(text: str) -> list[str]:
-    """Return de-duplicated, normalized Instagram post/reel URLs found in text."""
+def extract_capture_urls(text: str) -> list[str]:
+    """De-duplicated, normalized capturable URLs (Instagram + TikTok) in text."""
     seen: set[str] = set()
     out: list[str] = []
-    for match in _IG_URL_RE.finditer(text or ""):
-        url = match.group(0).rstrip("/")
-        key = url.lower()
-        if key not in seen:
-            seen.add(key)
-            out.append(url + "/")  # canonical trailing slash
+    for regex in (_IG_URL_RE, _TIKTOK_URL_RE):
+        for match in regex.finditer(text or ""):
+            url = match.group(0).rstrip("/")
+            key = url.lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(url + "/")  # canonical trailing slash
     return out
+
+
+def extract_ig_urls(text: str) -> list[str]:
+    """Instagram-only subset (kept for existing callers/tests)."""
+    return [u for u in extract_capture_urls(text) if "instagram.com" in u.lower()]
 
 
 def _platform_label(source_url: str) -> str:

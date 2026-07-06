@@ -39,6 +39,20 @@ def test_extract_ig_urls_variants_and_dedup():
     ]
 
 
+def test_extract_capture_urls_includes_tiktok():
+    text = (
+        "https://www.tiktok.com/@user/video/7301234567890123456?_t=8k "
+        "https://vm.tiktok.com/ZMabcDEF/ "
+        "https://www.instagram.com/reel/DZXT8n7p8ME/"
+    )
+    urls = cards.extract_capture_urls(text)
+    assert "https://www.instagram.com/reel/DZXT8n7p8ME/" in urls
+    assert "https://www.tiktok.com/@user/video/7301234567890123456/" in urls
+    assert "https://vm.tiktok.com/ZMabcDEF/" in urls
+    # the IG-only helper still filters correctly
+    assert cards.extract_ig_urls(text) == ["https://www.instagram.com/reel/DZXT8n7p8ME/"]
+
+
 def test_extract_ig_urls_ignores_non_posts():
     assert cards.extract_ig_urls("no links here") == []
     assert cards.extract_ig_urls("https://example.com/reel/abc/") == []

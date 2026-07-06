@@ -143,9 +143,9 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    urls = cards.extract_ig_urls(message.content or "")
+    urls = cards.extract_capture_urls(message.content or "")
 
-    # ── Capture: any IG link, anywhere we can read — unless the channel is muted.
+    # ── Capture: any IG/TikTok link, anywhere we can read — unless muted here.
     if urls:
         if message.channel.id in MUTED_CHANNELS:
             return

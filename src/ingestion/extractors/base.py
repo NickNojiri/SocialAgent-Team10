@@ -27,8 +27,9 @@ def select_extractor(url: str) -> BaseExtractor:
     # Imported here to avoid a circular import at module load.
     from src.ingestion.extractors.generic import GenericExtractor
     from src.ingestion.extractors.instagram import InstagramExtractor
+    from src.ingestion.extractors.tiktok import TikTokExtractor
 
-    for extractor in (InstagramExtractor(), GenericExtractor()):
+    for extractor in (InstagramExtractor(), TikTokExtractor(), GenericExtractor()):
         if extractor.claims(url):
             return extractor
     return GenericExtractor()

@@ -46,7 +46,7 @@ def build_record(
     else:
         extractor_tag = f"{raw.extractor}+heuristic"        # LLM attempted, fell back
 
-    platform = raw.platform if raw.platform in ("instagram", "generic") else "generic"
+    platform = raw.platform if raw.platform in ("instagram", "tiktok", "generic") else "generic"
     provenance = {
         "source_url": raw.source_url,
         "platform": platform,

@@ -77,7 +77,7 @@ class SourceProvenance(BaseModel):
     # AnyUrl (not HttpUrl) so offline file:// fixtures can flow the full
     # pipeline; SocialSessionManager enforces public http(s) for real runs.
     source_url: AnyUrl
-    platform: Literal["instagram", "generic"]
+    platform: Literal["instagram", "tiktok", "generic"]
     fetched_at: datetime
     content_hash: str = Field(min_length=64, max_length=64)  # sha256 hex — dedupe key
     extractor: str                                           # adapter name/version
