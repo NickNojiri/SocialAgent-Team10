@@ -84,6 +84,10 @@ hard-fails a run. Full architecture: **[docs/PIPELINE.md](docs/PIPELINE.md)**.
 
 ## Quick start
 
+> 📗 **Step-by-step with troubleshooting:** [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)
+> — from `git clone` to your first spot card, every step with a "how do I know it
+> worked?" check. For server members, hand out **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
+
 ### Prerequisites
 
 - **Python 3.12**
