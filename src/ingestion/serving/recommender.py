@@ -174,6 +174,8 @@ class Recommendation:
     lat: Optional[float] = None
     lng: Optional[float] = None
     distance_km: Optional[float] = None    # real-world distance from the user's origin
+    pinned: bool = False                   # the chat mentioned this spot by name
+    attended: bool = False                 # the group actually went (went-there loop)
 
 
 @dataclass
@@ -315,7 +317,36 @@ class RecommendationService:
             origin = self._geocode(request["area"])
 
         result = self.recommend(channel_id, query, mode="command", now=now, origin=origin)
-        return PlanResult(request=request, recommendations=result.recommendations, query=query)
+
+        # Name pinning: a saved spot mentioned by name in the chat ("casa loma
+        # was so nice") leads the shortlist, marked as the group's own pick.
+        pinned = self._pin_mentions(transcript)
+        pinned_ids = {rec.content_hash for rec in pinned}
+        others = [rec for rec in result.recommendations if rec.content_hash not in pinned_ids]
+        # Places the group actually went (went-there loop) outrank never-tried
+        # ones — "that place was nice" energy, without needing the name.
+        others.sort(key=lambda r: not r.attended)
+        return PlanResult(request=request, recommendations=pinned + others, query=query)
+
+    def _pin_mentions(self, transcript: str) -> list[Recommendation]:
+        """Catalog spots whose venue name literally appears in the chat."""
+        collection = getattr(self.sink, "collection", None)
+        if collection is None:
+            return []
+        try:
+            res = collection.get(include=["metadatas"])
+        except Exception:
+            return []
+        text = (transcript or "").lower()
+        pinned: list[Recommendation] = []
+        for meta in res.get("metadatas") or []:
+            meta = meta or {}
+            name = str(meta.get("venue_name", "")).strip()
+            if len(name) >= 4 and name.lower() in text:
+                rec = _to_recommendation({"metadata": meta, "distance": 0.0})
+                rec.pinned = True
+                pinned.append(rec)
+        return pinned[: self.settings.rec_max_results]
 
     def _expire_recent(self, recent: dict[str, float], now: float) -> None:
         window = self.settings.rec_dedup_window_s
@@ -337,4 +368,5 @@ def _to_recommendation(hit: dict) -> Recommendation:
         schedule_status=m.get("schedule_status"),
         lat=m.get("lat"),
         lng=m.get("lng"),
+        attended=bool(m.get("attended")),
     )

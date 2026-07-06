@@ -32,6 +32,17 @@ def fake_geocode(place: str):
     return GEO.get(place.lower().strip(), (None, None))
 
 
+class _FakeCollection:
+    def __init__(self, results):
+        self._results = results
+
+    def get(self, include=None):
+        return {
+            "ids": [r["metadata"]["content_hash"] for r in self._results],
+            "metadatas": [r["metadata"] for r in self._results],
+        }
+
+
 class MappedSink:
     """Returns canned hits: one spot per anchor + one with no coordinates."""
 
@@ -42,9 +53,10 @@ class MappedSink:
             {"metadata": {"content_hash": "lb", "venue_name": "LB Birria",
                           "lat": LB[0], "lng": LB[1]}, "distance": 0.2},
             {"metadata": {"content_hash": "ana", "venue_name": "Anaheim Mazesoba",
-                          "lat": ANAHEIM[0], "lng": ANAHEIM[1]}, "distance": 0.3},
+                          "lat": ANAHEIM[0], "lng": ANAHEIM[1], "attended": True}, "distance": 0.3},
             {"metadata": {"content_hash": "noc", "venue_name": "Mystery Spot"}, "distance": 0.25},
         ]
+        self.collection = _FakeCollection(self._results)
 
     def query(self, text, k, where=None):
         return self._results
@@ -145,3 +157,30 @@ class TestMidpointPlan:
         plan = self._plan("jo: tacos??\nnick: yes", monkeypatch)
         assert "midpoint_of" not in plan.request
         assert "near" not in plan.request
+
+
+class TestNamePinning:
+    def _plan(self, transcript, monkeypatch):
+        import src.ingestion.serving.recommender as rec_mod
+
+        monkeypatch.setattr(rec_mod, "synthesize_request", lambda t, s: {"vibe": "tacos"})
+        return make_service().plan("ch1", transcript)
+
+    def test_mentioned_venue_is_pinned_first(self, monkeypatch):
+        plan = self._plan("nick: LB Birria was so nice last time\njo: down, tacos", monkeypatch)
+        first = plan.recommendations[0]
+        assert first.venue_name == "LB Birria"
+        assert first.pinned is True
+        # no duplicate of the pinned spot later in the list
+        assert [r.venue_name for r in plan.recommendations].count("LB Birria") == 1
+
+    def test_attended_spots_outrank_untried_ones(self, monkeypatch):
+        plan = self._plan("jo: tacos tonight??", monkeypatch)
+        names = [r.venue_name for r in plan.recommendations]
+        # Anaheim Mazesoba is attended=True → leads the unpinned picks
+        assert names[0] == "Anaheim Mazesoba"
+        assert plan.recommendations[0].attended is True
+
+    def test_no_mention_no_pins(self, monkeypatch):
+        plan = self._plan("jo: tacos tonight??", monkeypatch)
+        assert all(not r.pinned for r in plan.recommendations)

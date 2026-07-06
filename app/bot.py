@@ -548,6 +548,13 @@ async def plan_command(interaction: discord.Interaction):
                 "end_epoch": rec.get("end_epoch"),
                 "votes": 0,
             }
+            note = None
+            if rec.get("pinned"):
+                note = "📌 *You mentioned this one:*"
+            elif rec.get("attended"):
+                note = "🌃 *You've been — and went through with it:*"
+            if note:
+                await target.send(note)
             await target.send(
                 embed=cards.build_spot_embed(event),
                 view=cards.build_spot_view(event["id"], 0),

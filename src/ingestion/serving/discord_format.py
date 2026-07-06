@@ -32,7 +32,8 @@ def _time_line(rec: Recommendation) -> str:
 def format_recommendation(rec: Recommendation) -> str:
     emoji = _CATEGORY_EMOJI.get(rec.category, "📍")
     category = rec.category.replace("_", " ")
-    lines = [f"**{emoji} {rec.venue_name}** — *{category}*"]
+    prefix = "📌 " if rec.pinned else ""
+    lines = [f"{prefix}**{emoji} {rec.venue_name}** — *{category}*"]
     if rec.core_theme:
         lines.append(rec.core_theme)
     lines.append(_time_line(rec))
