@@ -127,6 +127,33 @@ class TestWentLoop:
         assert due == []
 
 
+class TestEdit:
+    def test_edit_updates_venue_theme_and_document(self, client):
+        tc, eid = client
+        resp = tc.post(
+            f"/api/events/{eid}/edit",
+            json={"venue": "Casa Loma Tacos", "theme": "birria, cash only", "guild_id": GUILD},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["venue"] == "Casa Loma Tacos"
+        assert data["theme"] == "birria, cash only"
+
+        listed = tc.get("/api/events", params={"guild_id": GUILD}).json()["events"][0]
+        assert listed["venue"] == "Casa Loma Tacos"
+        # similarity document re-embedded with the new text
+        sink = admin._sinks[GUILD]
+        doc = sink.collection.get(ids=[eid], include=["documents"])["documents"][0]
+        assert "Casa Loma Tacos" in doc
+
+    def test_edit_validates_input(self, client):
+        tc, eid = client
+        assert tc.post(f"/api/events/{eid}/edit",
+                       json={"venue": " ", "theme": "ok ok", "guild_id": GUILD}).status_code == 400
+        assert tc.post(f"/api/events/does-not-exist/edit",
+                       json={"venue": "X", "theme": "vibe here", "guild_id": GUILD}).status_code == 404
+
+
 class TestDashboard:
     def test_stats_reports_tenants_and_totals(self, client, monkeypatch):
         tc, eid = client

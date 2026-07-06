@@ -93,8 +93,21 @@ def extract_ig_urls(text: str) -> list[str]:
     return out
 
 
+def _platform_label(source_url: str) -> str:
+    url = (source_url or "").lower()
+    if "tiktok" in url:
+        return "via TikTok"
+    if "instagram" in url or "instagr.am" in url:
+        return "via Instagram"
+    return "added manually" if not url else "via the web"
+
+
 def build_spot_embed(event: dict) -> discord.Embed:
-    """Render one catalog event as a Discord embed card."""
+    """Render one catalog event as a Discord embed card (v3 layout).
+
+    Quiet by design: the category lives in the title emoji + footer (no
+    redundant field), unscheduled spots don't advertise their missing date,
+    and fields only appear when they carry real information."""
     category = event.get("category", "other")
     embed = discord.Embed(
         title=f"{emoji_for(category)} {event.get('venue') or 'Unknown spot'}",
@@ -103,8 +116,8 @@ def build_spot_embed(event: dict) -> discord.Embed:
     )
     desc_parts: list[str] = []
     blurb = event.get("blurb")
-    if blurb is not None:                       # capture flow: video-based quick description
-        desc_parts.append(f"📝 {blurb}" if blurb else "📝 No info")
+    if blurb:                                   # capture flow: video-based quick description
+        desc_parts.append(f"📝 {blurb}")
     elif event.get("theme"):
         desc_parts.append(str(event["theme"])[:300])
     if event.get("source_url"):
@@ -113,26 +126,26 @@ def build_spot_embed(event: dict) -> discord.Embed:
         embed.description = "\n\n".join(desc_parts)
     if event.get("image"):
         embed.set_thumbnail(url=event["image"])
-    embed.add_field(name="Category", value=category.replace("_", " "), inline=True)
 
     start_epoch = event.get("start_epoch")
-    if start_epoch:
+    if start_epoch:                             # only real dates earn a field
         when = f"<t:{int(start_epoch)}:F>"
         if event.get("end_epoch"):
             when += f" – <t:{int(event['end_epoch'])}:t>"
-    else:
-        when = "no fixed date"
-    embed.add_field(name="When", value=when, inline=True)
+        embed.add_field(name="When", value=when, inline=True)
 
     lat, lng = event.get("lat"), event.get("lng")
     if lat is not None and lng is not None:
-        # OpenStreetMap, matching the repo's no-paid-APIs ethos (a plain link
-        # either way — no API key — but OSM keeps us off Google entirely).
+        # OpenStreetMap, matching the repo's no-paid-APIs ethos.
         embed.add_field(
             name="Where",
             value=f"[Open map](https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=17/{lat}/{lng})",
             inline=True,
         )
+
+    voters = event.get("voters") or []
+    if voters:
+        embed.add_field(name="Who's in", value=", ".join(voters[:12]), inline=False)
 
     if event.get("already"):
         embed.add_field(
@@ -141,10 +154,11 @@ def build_spot_embed(event: dict) -> discord.Embed:
             inline=False,
         )
 
-    footer = "via Instagram"
+    parts = [category.replace("_", " ")]
     if event.get("sharer"):
-        footer = f"shared by {event['sharer']} · {footer}"
-    embed.set_footer(text=footer)
+        parts.append(f"shared by {event['sharer']}")
+    parts.append(_platform_label(event.get("source_url", "")))
+    embed.set_footer(text=" · ".join(parts))
     return embed
 
 
@@ -320,6 +334,80 @@ class LockInButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:lo
 
         await interaction.followup.send(
             f"📅 **Locked in!** {devent.name} — <t:{int(start.timestamp())}:F>\n{devent.url}"
+        )
+
+
+class EditSpotModal(discord.ui.Modal, title="Edit this spot"):
+    """Pre-filled fix-it form — anyone can correct a wrong venue name or vibe."""
+
+    def __init__(self, event_id: str, venue: str, theme: str):
+        super().__init__()
+        self.event_id = event_id
+        self.venue = discord.ui.TextInput(label="Place name", default=venue[:100], max_length=100)
+        self.vibe = discord.ui.TextInput(
+            label="What's the vibe?",
+            style=discord.TextStyle.paragraph,
+            default=theme[:280],
+            min_length=3,
+            max_length=280,
+        )
+        self.add_item(self.venue)
+        self.add_item(self.vibe)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/events/{self.event_id}/edit",
+                    json={
+                        "venue": str(self.venue),
+                        "theme": str(self.vibe),
+                        "guild_id": guild_key(interaction),
+                    },
+                )
+                resp.raise_for_status()
+                ev = resp.json()
+        except Exception:
+            await interaction.response.send_message(
+                "⚠️ Couldn't save the edit — try again in a moment.", ephemeral=True
+            )
+            return
+        # Re-render the card in place when we can see it; else post the fixed card.
+        if interaction.message is not None:
+            await interaction.response.edit_message(
+                embed=build_spot_embed(ev),
+                view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
+            )
+        else:
+            await interaction.response.send_message(
+                embed=build_spot_embed(ev),
+                view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
+            )
+
+
+class EditButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:edit:(?P<eid>[^:]+)"):
+    def __init__(self, event_id: str):
+        self.event_id = event_id
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.secondary,
+                label="Edit",
+                emoji="✏️",
+                custom_id=f"spot:edit:{event_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["eid"])
+
+    async def callback(self, interaction: discord.Interaction):
+        ev = (await _events_by_id(guild_key(interaction))).get(self.event_id)
+        if not ev:
+            await interaction.response.send_message("⚠️ I can't find that spot anymore.", ephemeral=True)
+            return
+        await interaction.response.send_modal(
+            EditSpotModal(self.event_id, ev.get("venue") or "", ev.get("theme") or ev.get("blurb") or "")
         )
 
 
@@ -608,11 +696,12 @@ class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:re
 
 
 def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
-    """The action row attached to a spot card: vote up/down, add suggestions, remove."""
+    """The action row on a spot card: vote up/down, suggest, edit, remove (5 max)."""
     view = discord.ui.View(timeout=None)
     view.add_item(VoteButton(event_id, 1, votes))
     view.add_item(VoteButton(event_id, -1))
     view.add_item(AddSuggestionsButton(event_id))
+    view.add_item(EditButton(event_id))
     view.add_item(RemoveButton(event_id))
     return view
 
@@ -621,7 +710,7 @@ def register_dynamic_items(client: discord.Client) -> None:
     """Call once in on_ready so buttons keep working after a restart."""
     client.add_dynamic_items(
         VoteButton, AddSuggestionsButton, RemoveButton, LockInButton,
-        RetryButton, ManualAddButton, WentButton, NopeButton,
+        RetryButton, ManualAddButton, WentButton, NopeButton, EditButton,
     )
 
 

@@ -351,6 +351,57 @@ def add_manual(body: ManualBody):
     }
 
 
+class EditBody(BaseModel):
+    venue: str
+    theme: str
+    guild_id: str = ""
+
+
+@app.post("/api/events/{event_id}/edit")
+def edit_event(event_id: str, body: EditBody):
+    """User-facing edit (the card's ✏️ button): fix the venue name or vibe.
+
+    Metadata updates always; the similarity embedding re-computes best-effort
+    (Ollama down → the old vector stays until the next edit)."""
+    venue = body.venue.strip()[:110]
+    theme = body.theme.strip()[:280]
+    if not venue or len(theme) < 3:
+        raise HTTPException(400, "venue and a short vibe description are required")
+    sink = _sink_for(body.guild_id)
+    res = sink.collection.get(ids=[event_id], include=["metadatas"])
+    if not res["ids"]:
+        raise HTTPException(404, "event not found")
+    meta = res["metadatas"][0] or {}
+    meta["venue_name"] = venue
+    meta["core_theme"] = theme
+    doc = (
+        f"{theme}. Venue: {venue}. Category: {meta.get('category', 'other')}. "
+        f"Vibe: {' '.join((meta.get('tags') or '').split(','))}".strip()
+    )
+    try:
+        embedding = sink.embedder([doc])[0]
+        sink.collection.update(
+            ids=[event_id], metadatas=[meta], documents=[doc], embeddings=[embedding]
+        )
+    except Exception:   # embedder unreachable → metadata-only update
+        sink.collection.update(ids=[event_id], metadatas=[meta])
+    return {
+        "id": event_id,
+        "venue": venue,
+        "theme": theme,
+        "category": meta.get("category", "other"),
+        "source_url": meta.get("source_url", ""),
+        "image": meta.get("image_url", ""),
+        "lat": meta.get("lat"),
+        "lng": meta.get("lng"),
+        "blurb": meta.get("summary", ""),
+        "start_epoch": meta.get("start_epoch"),
+        "end_epoch": meta.get("end_epoch"),
+        "votes": int(meta.get("votes", 0)),
+        "voters": sorted(_voters(meta).values()),
+    }
+
+
 # ── The went-there loop (the "100 Nights Out" counter) ──────────────────────
 # lock → (time passes) → followup prompt → two "we went" confirmations →
 # an attended night. Everything lives in the event's metadata, so the counter

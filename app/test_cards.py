@@ -60,28 +60,36 @@ def test_build_spot_embed_scheduled():
         "votes": 3,
         "sharer": "nick",
     }
+    event["voters"] = ["nick", "sam"]
     embed = cards.build_spot_embed(event)
     assert "Nikushou Nakata Honten" in embed.title
     assert embed.title.startswith("🍽️")  # food_drink emoji
     assert embed.url == event["source_url"]
     assert embed.thumbnail.url == "https://cdn.ig/thumb.jpg"
     fields = {f.name: f.value for f in embed.fields}
-    assert fields["Category"] == "food drink"
+    assert "Category" not in fields          # v3: category lives in emoji + footer
     assert "<t:1781000000:F>" in fields["When"]
     assert fields["Where"] == (
         "[Open map](https://www.openstreetmap.org/?mlat=35.17&mlon=136.91#map=17/35.17/136.91)"
     )
-    assert "shared by nick" in embed.footer.text
+    assert fields["Who's in"] == "nick, sam"
+    assert embed.footer.text == "food drink · shared by nick · via Instagram"
 
 
 def test_build_spot_embed_unscheduled_and_already():
     event = {"id": "x", "venue": "Cafe X", "category": "cafe_dessert", "already": True, "votes": 5}
     embed = cards.build_spot_embed(event)
     fields = {f.name: f.value for f in embed.fields}
-    assert fields["When"] == "no fixed date"
+    assert "When" not in fields              # v3: no date → no noisy field
     assert any("Already in the catalog" in f.value for f in embed.fields)
     assert embed.thumbnail.url is None       # no image → no thumbnail
     assert "Where" not in fields             # no coords → no map field
+
+
+def test_platform_label_from_source_url():
+    assert cards._platform_label("https://www.tiktok.com/@x/video/1") == "via TikTok"
+    assert cards._platform_label("https://www.instagram.com/reel/X/") == "via Instagram"
+    assert cards._platform_label("") == "added manually"
 
 
 def test_with_whos_in_adds_replaces_and_clears():
@@ -121,12 +129,13 @@ def test_failure_view_composition():
     assert [c.custom_id for c in cards.build_failure_view(long_url).children] == ["spot:manual:0"]
 
 
-def test_build_spot_view_has_four_buttons_with_event_id():
+def test_build_spot_view_has_five_buttons_with_event_id():
     view = cards.build_spot_view("deadbeef", votes=2)
     custom_ids = [child.custom_id for child in view.children]
     assert custom_ids == [
         "spot:vote:1:deadbeef",
         "spot:vote:-1:deadbeef",
         "spot:suggest:deadbeef",
+        "spot:edit:deadbeef",
         "spot:remove:deadbeef",
     ]
