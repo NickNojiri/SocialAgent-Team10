@@ -125,3 +125,30 @@ class TestWentLoop:
         tc, _eid = client   # seeded but never locked
         due = tc.get("/api/followups", params={"guild_id": GUILD, "now": NOW * 2}).json()["due"]
         assert due == []
+
+
+class TestDashboard:
+    def test_stats_reports_tenants_and_totals(self, client, monkeypatch):
+        tc, eid = client
+        # the "" catalog shares the tmp client so list_collections stays local
+        monkeypatch.setitem(admin._sinks, "", admin._sinks[GUILD])
+
+        # one attended night for the seeded guild
+        _lock(tc, eid, end_epoch=NOW)
+        for uid in ("1", "2"):
+            tc.post(f"/api/events/{eid}/went", params={"guild_id": GUILD},
+                    json={"user_id": uid, "user_name": f"u{uid}"})
+
+        data = tc.get("/api/stats").json()
+        assert data["totals"]["spots"] >= 1
+        assert data["totals"]["nights"] >= 1
+        assert data["totals"]["servers"] >= 1
+        assert any(t["nights"] >= 1 for t in data["tenants"])
+        assert "admin" in data["services"] and data["services"]["admin"] is True
+        assert isinstance(data["captures"], list)
+
+    def test_dash_page_serves(self, client):
+        tc, _eid = client
+        resp = tc.get("/dash")
+        assert resp.status_code == 200
+        assert "SpotBot operations" in resp.text

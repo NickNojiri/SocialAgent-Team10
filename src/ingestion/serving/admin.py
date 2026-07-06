@@ -146,6 +146,11 @@ _ocr_reader = _build_ocr()
 # a 30s browser cycle.
 _MAX_URLS_PER_INGEST = 10
 
+# Rolling behind-the-scenes feed for the /dash page (in-memory, newest first).
+from collections import deque
+
+_CAPTURE_LOG: deque = deque(maxlen=50)
+
 
 class IngestBody(BaseModel):
     urls: list[str]
@@ -239,6 +244,18 @@ async def ingest(body: IngestBody):
         ocr_reader=_ocr_reader,
     )
     report = await pipeline.run(urls)
+    _CAPTURE_LOG.appendleft(
+        {
+            "ts": int(time.time()),
+            "guild_id": body.guild_id,
+            "urls": len(urls),
+            "added": len(report.validated),
+            "rejected": len(report.rejected),
+            "unreadable": len(report.connectivity_failures),
+            "duration_s": round(report.duration_s, 1),
+            "lines": [result_line(r) for r in report.results][:5],
+        }
+    )
     return {
         "added": len(report.validated),
         "rejected": len(report.rejected),
@@ -455,6 +472,67 @@ def vote(event_id: str, body: VoteBody, guild_id: str = ""):
     }
 
 
+@app.get("/api/stats")
+def stats():
+    """Behind-the-scenes: services, per-server catalogs, and recent captures."""
+    # Services (2s probes — the dash must never hang)
+    def _probe(url: str) -> bool:
+        try:
+            import httpx
+
+            return httpx.get(url, timeout=2.0).status_code < 500
+        except Exception:
+            return False
+
+    services = {
+        "admin": True,   # we answered this request
+        "ollama": _probe(f"{_settings.ollama_url}/api/tags"),
+        "recommend": _probe(
+            os.getenv("RECOMMEND_URL", "http://localhost:8003").rstrip("/") + "/health"
+        ),
+        "transcriber": _transcriber is not None,
+        "ocr": _ocr_reader is not None,
+        "authed_ig": _ig_source is not None,
+    }
+
+    # Tenants: every catalog collection in the store
+    client = _sink_for("").client
+    prefix = _settings.chroma_collection
+    tenants = []
+    totals = {"spots": 0, "votes": 0, "nights": 0}
+    for col in client.list_collections():
+        name = getattr(col, "name", str(col))
+        if not name.startswith(prefix):
+            continue
+        collection = client.get_collection(name)
+        metas = collection.get(include=["metadatas"])["metadatas"] or []
+        spots = len(metas)
+        votes = sum(int((m or {}).get("votes", 0)) for m in metas)
+        nights_count = sum(1 for m in metas if (m or {}).get("attended"))
+        last = max((str((m or {}).get("fetched_at", "")) for m in metas), default="")
+        gid = name[len(prefix):].lstrip("_").lstrip("g") or "default"
+        tenants.append(
+            {"guild": gid, "spots": spots, "votes": votes, "nights": nights_count, "last": last[:16]}
+        )
+        totals["spots"] += spots
+        totals["votes"] += votes
+        totals["nights"] += nights_count
+    tenants.sort(key=lambda t: -t["spots"])
+
+    return {
+        "services": services,
+        "totals": {**totals, "servers": len(tenants)},
+        "tenants": tenants,
+        "captures": list(_CAPTURE_LOG),
+    }
+
+
+@app.get("/dash", response_class=HTMLResponse)
+def dash():
+    """Operator dashboard — the behind-the-scenes view of the whole service."""
+    return _DASH_PAGE
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return _PAGE
@@ -615,5 +693,95 @@ async function load(){
     </div>`).join('');
 }
 load();
+</script>
+</body></html>"""
+
+
+_DASH_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SpotBot — Operations</title>
+<style>
+  :root{--bg:#111318;--panel:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;
+        --acc:#6EA8FE;--ok:#3FB950;--bad:#F85149;--num:#F0F2F7}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 system-ui,"Segoe UI",sans-serif}
+  main{max-width:1020px;margin:0 auto;padding:32px 24px 64px}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0}
+  .sub{color:var(--mut);font-size:12.5px;margin-top:2px}
+  h2{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:32px 0 10px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:20px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .tile b{display:block;font-size:26px;font-weight:700;color:var(--num);
+          font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile span{font-size:11.5px;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
+        border-radius:999px;padding:5px 13px;font-size:12.5px}
+  .dot{width:7px;height:7px;border-radius:50%}
+  .on .dot{background:var(--ok)} .off .dot{background:var(--bad)}
+  .off{color:var(--mut)}
+  .wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);text-align:left;
+     padding:10px 14px 7px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:9px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:0}
+  td.num{text-align:right} th.num{text-align:right}
+  .feed{display:flex;flex-direction:column;gap:8px}
+  .cap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+       display:flex;gap:14px;align-items:baseline;font-size:13px}
+  .cap time{color:var(--mut);font-size:12px;min-width:60px;font-variant-numeric:tabular-nums}
+  .cap .g{color:var(--acc);min-width:90px;overflow:hidden;text-overflow:ellipsis}
+  .cap .r{color:var(--mut)}
+  .ok-n{color:var(--ok);font-weight:600} .bad-n{color:var(--bad);font-weight:600}
+  .empty{color:var(--mut);padding:22px;text-align:center}
+  footer{color:var(--mut);font-size:11.5px;margin-top:28px}
+</style></head><body>
+<main>
+  <h1>SpotBot operations</h1>
+  <div class="sub">Live view of services, per-server catalogs, and capture activity · refreshes every 10s</div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Services</h2>
+  <div class="chips" id="chips"></div>
+
+  <h2>Servers using the service</h2>
+  <div class="wrap"><table id="tenants"></table></div>
+
+  <h2>Recent captures</h2>
+  <div class="feed" id="feed"></div>
+
+  <footer>in-memory activity log (last 50 runs, resets with the admin app) · <a style="color:var(--acc)" href="/">catalog admin</a> · <a style="color:var(--acc)" href="/share">public share page</a></footer>
+</main>
+<script>
+const SVC_LABELS={admin:"Admin API",ollama:"Ollama LLM",recommend:"Recommend",transcriber:"Whisper audio",ocr:"Cover OCR",authed_ig:"Authed IG"};
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+async function load(){
+  let d; try{ d=await (await fetch('/api/stats')).json(); }catch(e){ return; }
+  const t=d.totals||{};
+  document.getElementById('tiles').innerHTML=`
+    <div class="tile"><b>${t.servers??0}</b><span>servers</span></div>
+    <div class="tile"><b>${t.spots??0}</b><span>spots cataloged</span></div>
+    <div class="tile"><b>${t.votes??0}</b><span>votes cast</span></div>
+    <div class="tile"><b>${t.nights??0}</b><span>nights out</span></div>`;
+  document.getElementById('chips').innerHTML=Object.entries(d.services||{}).map(([k,up])=>
+    `<span class="chip ${up?'on':'off'}"><span class="dot"></span>${SVC_LABELS[k]||k}${up?'':' — off'}</span>`).join('');
+  const rows=(d.tenants||[]).map(x=>
+    `<tr><td>${esc(x.guild)}</td><td class="num">${x.spots}</td><td class="num">${x.votes}</td>
+     <td class="num">${x.nights}</td><td>${esc(x.last)||'—'}</td></tr>`).join('');
+  document.getElementById('tenants').innerHTML=
+    `<tr><th>server</th><th class="num">spots</th><th class="num">votes</th><th class="num">nights</th><th>last capture</th></tr>`
+    +(rows||`<tr><td colspan="5" class="empty">no catalogs yet</td></tr>`);
+  document.getElementById('feed').innerHTML=(d.captures||[]).map(c=>{
+    const when=new Date(c.ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const fails=(c.rejected||0)+(c.unreadable||0);
+    return `<div class="cap"><time>${when}</time><span class="g">${esc(c.guild_id)||'default'}</span>
+      <span>${c.urls} link${c.urls===1?'':'s'} → <span class="ok-n">${c.added} added</span>${fails?` · <span class="bad-n">${fails} failed</span>`:''}</span>
+      <span class="r">${(c.duration_s??0)}s</span></div>`;
+  }).join('')||`<div class="empty">no captures since the app started</div>`;
+}
+load(); setInterval(load, 10000);
 </script>
 </body></html>"""
