@@ -1,2 +1,5 @@
 discord.py==2.4.0
 httpx==0.27.0
+# audioop was removed from the stdlib in Python 3.13; discord.py still imports
+# it. This official backport restores it (no-op on 3.12 and earlier).
+audioop-lts; python_version >= "3.13"
