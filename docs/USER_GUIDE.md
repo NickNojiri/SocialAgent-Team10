@@ -11,8 +11,8 @@ in detail.
 
 ## 1. Save a spot (the only thing you *have* to know)
 
-**Paste an Instagram reel or post link into any channel.** That's it. No command,
-no setup.
+**Paste an Instagram reel or post link — or a TikTok — into any channel.** That's
+it. No command, no setup.
 
 What you'll see:
 1. ⏳ appears on your message — SpotBot picked it up
@@ -50,6 +50,7 @@ Every spot card has buttons:
 | 👍 **Want to go** | Puts your name on the card — it literally shows *"Who's in: nick, sam, jo"* |
 | 👎 **Not for me** | Takes your name back off |
 | ✨ **Add suggestions** | SpotBot posts up to 3 *similar* saved spots as new cards |
+| ✏️ **Edit** | Fix a wrong venue name or vibe — a form opens pre-filled, anyone can correct it |
 | 🗑 **Remove** | Deletes the spot (mods only) |
 
 You can't double-vote — tapping 👍 twice still counts once. Changing your mind is
@@ -84,6 +85,12 @@ SpotBot reads the recent conversation, posts a **"Here's what I heard"** card
 group's saved spots — each as a votable card. Keep chatting and `/plan` again to
 refine.
 
+Three things make the picks smarter:
+- **Say a place by name** ("Casa Loma was so nice") → it's 📌 pinned to the top.
+- **Say where you are** ("I'm in Long Beach" / two people in different places)
+  → picks rank by distance, or by the *midpoint* between you.
+- **Places you actually went** (confirmed after an event) outrank never-tried ones.
+
 **Know exactly what you want?** Search directly:
 
 ```
@@ -96,7 +103,10 @@ refine.
 | Command | What it does |
 |---|---|
 | `/setup` | 20-second explainer + this channel's settings (only you see it) |
+| `/browse` | Flip through saved spots by category (🍽️ 🍸 🎶 …) as votable cards |
 | `/catalog` | The leaderboard — your server's top-voted spots |
+| `/digest` | One-message summary: spot count, top picks, nights out |
+| `/share` | The link to your server's public catalog web page |
 | `/mute` | Toggle capture off/on in the current channel *(mods)* |
 | `/suggestions on` | Let SpotBot chime in (in a tidy thread) when the chat sounds like "we should go out" *(mods)* |
 | `/help` | The quick how-to card |
