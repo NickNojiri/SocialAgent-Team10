@@ -1,70 +1,78 @@
-# Next Session Plan: Integration & Live Validation
+# Next Session Plan — location smarts, live validation, cleanup
 
-Here is the concrete, time-boxed plan for the next ~5-hour session. It is ordered so that critical deliverables are shipped first, with maximum buffer reserved for the riskiest integration (Discord bot).
+Written 2026-07-05, after the ease-of-use v1 + OCR/fail-fast session (178 offline
+tests green, tip `7bbe56e3`). Ordered by Nick's priorities; each block says
+whether it's **build** (works offline) or **live** (needs Nick's machine).
 
-## Prerequisites (Before starting)
-- 📶 **Hotspot / clean network** (Required for push, CI, and live geocoding — campus TLS blocks all three).
-- 🐳 **Docker running** + a **`DISCORD_TOKEN`** in `.env` (Required for the bot block).
-- Repo active on the `ingestion-engine` branch, with the `venv` active.
-
----
-
-## Hour 0:00–0:30 — Ship it to GitHub
-*The local commits exist only on this machine right now — get them safe first.*
-- Run `git status` to ensure tree is clean, then `pytest -k "not live" -q` (should be green, ~113 tests).
-- Decide on `.claude/`: commit the project `launch.json` or add `.claude/` to `.gitignore`.
-- **On hotspot:** `git push origin ingestion-engine`
-- Confirm GitHub Actions CI kicks off.
-- **Checkpoint:** Branch pushed, CI running.
-
-## Hour 0:30–1:15 — CI Green + PR
-- Watch the CI run. Fix any runner-specific failures (most likely the `playwright install` step or a path).
-  - *Claude Code* triages; *Codex* patches if it's a code issue.
-- Open PR `ingestion-engine → main` with a description summarizing Phases 1–7 (pull from `docs/PIPELINE.md`).
-- **Checkpoint:** ✅ Green CI on an open PR.
-
-## Hour 1:15–2:15 — Live Validation (First time on a clean network)
-- Run the live geocoding test: `pytest -k "live" -q` (Nominatim now reachable) — confirm coordinates resolve.
-- Run the full pipeline WITH geo on 3–5 real IG URLs: `python -m src.ingestion.cli "<url>" --chroma`
-  - Confirm `geo=geocoded`, records validate, and explicitly note the **IG reliability rate** (how many hit a login wall) — this is the real-world robustness data point we need.
-- **Checkpoint:** Phase 3 geo proven live; Chroma collection now has real data.
-
-## Hour 2:15–3:30 — Discord Bot End-to-End (Biggest unknown, most buffer)
-*This is delivered but never live-run — expect to debug.*
-- Run `docker-compose up` (bot + llm + db + recommend), or run `recommend` service + bot locally.
-- In Discord: use `/events late night tacos`, then `/suggestions on` and chat naturally.
-- Verify recommendations post with the formatter (venue, `<t:>` time, source link).
-- *Claude Code* debugs wiring; if it won't cooperate in time, **document the gap and move on** — don't let it eat the whole session.
-- **Checkpoint:** Either a working `/events` screenshot, or a written list of what's broken.
-
-## Hour 3:30–4:15 — Last Code Item + Polish
-- **Claude Code:** The `Locations` text-isolation fix (now inspectable against live IG DOM) — the one remaining code nit.
-- Fix anything small surfaced during live runs.
-- `pytest -k "not live"` → commit → push.
-- **Checkpoint:** Last code item closed.
-
-## Hour 4:15–5:00 — Demo Prep + Wrap
-- Generate a Markdown digest from the live data (using Codex's exporter): 
-  `python -m src.ingestion.exporters.markdown_digest data/inspirations.jsonl` → a shareable artifact.
-- Update `task.md` / `RUNBOOK.md` with live-validation results.
-- **Antigravity (Gemini):** Polish docs/README in parallel.
-- Final commit + push, confirm CI still green, tag the milestone.
-- Assemble the demo: run report + digest + Discord screenshot.
+## Prerequisites
+- `git pull` on the home machine, `.\scripts\run_local.ps1` still boots the bot
+- ffmpeg actually on PATH (was flaky last session — `where ffmpeg` in a *fresh* terminal)
+- Ollama running with `llama3.1:8b` (or the `llama3.2:3b` speed profile)
 
 ---
 
-## Contingency: Priority Order (If session gets cut short)
-1. **Push + CI green + PR** (Non-negotiable — protects all the work)
-2. **Discord bot working** (Highest demo value)
-3. **Live geocoding validation**
-4. **`Locations` polish + digest** (Nice-to-have)
+## 1 · Location awareness — "I'm near X" (build, ~1.5h)
+When a message or `/plan` mentions a place, rank suggestions by real distance.
+- Parse a location phrase from the request ("near 2nd street", "we're in downtown LB")
+  in `serving/recommender.py` — `synthesize_request` already extracts an `area`.
+- Geocode it with the existing `src/services/location_service.py::address_to_coords`
+  (injectable fake for offline tests, mirroring `TestGeoEnricher`); cache per phrase.
+- Haversine distance to each candidate's stored `lat`/`lng`; sort relevance-passing
+  hits by distance; `Recommendation` gains `lat`/`lng`/`distance_km`.
+- `discord_format` appends "· 1.2 km away"; spot cards already have map links.
+- Tests: fake-geocoder mapping, distance ordering, unchanged behavior with no location.
 
-## Agent Allocation
-- **Claude Code (Opus):** CI/bot debugging, the `Locations` fix — the judgment-heavy lanes.
-- **Codex (GPT-5-Codex):** Precise patches surfaced during live runs.
-- **Antigravity (Gemini):** Docs, README badge, demo artifacts, and any extra test coverage — in parallel.
+## 2 · Midpoint mode — fair-for-everyone suggestions (build, ~1h)
+Multiple people say where they are → suggest spots near the middle.
+- Parse per-user "I'm at/in X" lines from the `/plan` transcript (author → place).
+- Geocode each; combine with the heritage `location_service.get_midpoint` (extend to
+  N points by averaging); rank the shortlist by distance to the midpoint.
+- The "Here's what I heard" card shows the inputs: "midpoint of nick (Long Beach) +
+  sam (Anaheim)".
+- Tests: two/three-user transcripts with a fake geocoder; single-user falls back to
+  block 1 behavior.
 
-## Biggest Risks
-- **Discord Bot:** Never live-run; timebox it and have the "document the gap" fallback ready.
-- **IG Reliability:** Login walls/rate limits may make live runs flaky. Capture the hit rate rather than fighting it.
-- **Network:** Without the hotspot, blocks 1, 3, and 4 are completely blocked.
+## 3 · Make transcribe work — live validation (live, ~30m)
+The Whisper path has never been proven on real reels (ffmpeg PATH issue last time).
+- Fix ffmpeg, then run `docs/REEL_TRANSCRIBE_TEST_PLAN.md` (6 reels) and fill in
+  its results table.
+- Also trial the new OCR path live: `pip install rapidocr-onnxruntime`,
+  `OCR_ENABLED=1`, capture a reel whose venue is typed on-screen; confirm the card
+  picks it up.
+
+## 4 · Ease-of-use v1 live smoke (live, ~30m)
+The new bot UX is unit-tested but never live-run. In Discord:
+- Paste a reel in a random channel (no setup) → progress message → morphs into the card
+- `/mute` stops capture there; `/setup` shows the right state
+- Break a capture on purpose (private reel) → Retry + Add-manually modal both work
+- First card in a fresh server shows the one-time tip; 👍 to quorum → Lock it in →
+  event appears in the server's Events tab
+
+## 5 · Codebase cleanup (build, ~1h)
+- **`requirements.txt` is UTF-16** — convert to UTF-8 so grep/tooling work on it.
+- **Decide the legacy containers' fate**: the bot no longer calls `llm:8001` /
+  `db:8002`. Either delete `llm/`, `db/`, and their compose services, or move them
+  to `legacy/` with a README note. Same call for the heritage negotiator
+  (`src/main.py`, `src/logic/scheduler.py`) — it's the meeting-coordinator era.
+- **CI**: run the *full* offline suite (`pytest -k "not live"`), not just
+  `test_ingestion.py`; add a ruff lint step.
+- Prune scratch scripts (`scripts/diag_video.py`, demo `test_*.py` naming) and stale
+  docs (`RUN_AT_WORK.md`?) — small, but the repo is going public-facing.
+
+## 6 · Stretch (pick one if time remains)
+- **TikTok extractor** (roadmap 2.1 #1) — biggest capture-coverage win.
+- **`/share` command** — replies with the guild's share-page link.
+- **Weekly digest** — `exporters/markdown_digest.py` exists; wire a scheduler post.
+
+## Tests to add next session (offline, regardless of blocks)
+- Recommender: location-ranked ordering + midpoint math (blocks 1–2).
+- Bot handlers: extract-and-capture routing (muted channel, DM, multi-link) via a
+  fake ingest client — `bot.py` currently has zero direct tests.
+- Admin: `/api/manual` endpoint through TestClient with a stubbed sink.
+
+## Carry-over notes
+- Authed IG login still blocked (IP blacklisted during testing; account flagged).
+  Not urgent — the free path measured 100% (13/13). If retried: fresh burner, warm
+  it up in a browser first, different network, and the login-once fix is already in.
+- Capture speed knobs exist (`OLLAMA_MODEL=llama3.2:3b`, `WHISPER_MODEL=tiny`,
+  `TRANSCRIBE_ENABLED=0`, `SETTLE_TIMEOUT_MS=4000`) — measure the balanced profile.
