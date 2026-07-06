@@ -12,6 +12,7 @@ can later rank by popularity.
 """
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -29,7 +30,24 @@ from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
 app = FastAPI(title="SocialAgent Admin")
-_settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False)
+
+# Speed/quality knobs, tunable from .env without code changes. Capture time is
+# dominated by three stages: page render (SETTLE_TIMEOUT_MS), Whisper on CPU
+# (WHISPER_MODEL / TRANSCRIBE_ENABLED), and Ollama inference (OLLAMA_MODEL —
+# e.g. llama3.2:3b is ~2-3x faster than llama3.1:8b at some quality cost).
+_env_overrides: dict = {}
+for _env, _field, _cast in (
+    ("OLLAMA_URL", "ollama_url", str),
+    ("OLLAMA_MODEL", "ollama_model", str),
+    ("WHISPER_MODEL", "whisper_model", str),
+    ("SETTLE_TIMEOUT_MS", "settle_timeout_ms", int),
+):
+    _val = os.getenv(_env, "").strip()
+    if _val:
+        _env_overrides[_field] = _cast(_val)
+
+_settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False, **_env_overrides)
+_TRANSCRIBE_OFF = os.getenv("TRANSCRIBE_ENABLED", "").strip().lower() in ("0", "false", "off", "no")
 
 # One catalog per Discord guild (or DM stash). "" is the legacy/single-tenant
 # collection, so existing data and the web UI keep working unchanged.
@@ -56,7 +74,13 @@ except Exception:
 
 def _build_transcriber():
     """Whisper transcriber for reel audio, built once (model loads on first use).
-    Stays None when faster-whisper isn't installed, so ingest just skips audio."""
+    Stays None when faster-whisper isn't installed — or when TRANSCRIBE_ENABLED=0
+    (the biggest single speed win on CPU-only machines) — so ingest skips audio."""
+    if _TRANSCRIBE_OFF:
+        import logging
+
+        logging.getLogger("ingestion.admin").info("[stt] transcription disabled via TRANSCRIBE_ENABLED=0")
+        return None
     try:
         from faster_whisper import WhisperModel
 
