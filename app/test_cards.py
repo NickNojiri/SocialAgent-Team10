@@ -109,6 +109,18 @@ def test_lock_in_button_custom_id():
     assert button.custom_id == "spot:lockin:deadbeef"
 
 
+def test_failure_view_composition():
+    url = "https://www.instagram.com/reel/DU3evm2Ewhn/"
+    view = cards.build_failure_view(url)
+    ids = [child.custom_id for child in view.children]
+    assert ids == [f"spot:retry:{url}", "spot:manual:0"]
+
+    # multi-link failures (no single url) and over-long urls get manual-add only
+    assert [c.custom_id for c in cards.build_failure_view(None).children] == ["spot:manual:0"]
+    long_url = "https://www.instagram.com/reel/" + "x" * 90 + "/"
+    assert [c.custom_id for c in cards.build_failure_view(long_url).children] == ["spot:manual:0"]
+
+
 def test_build_spot_view_has_four_buttons_with_event_id():
     view = cards.build_spot_view("deadbeef", votes=2)
     custom_ids = [child.custom_id for child in view.children]

@@ -252,6 +252,63 @@ def _event_summary(result, existing_ids: set, sink: ChromaSink) -> dict:
     }
 
 
+class ManualBody(BaseModel):
+    venue: str
+    theme: str
+    source_url: str = ""
+    guild_id: str = ""
+
+
+def _manual_record(venue: str, theme: str, source_url: str = ""):
+    """A validated EventInspiration from user-typed fields (the Discord modal).
+    Pure — no sink, no network — so the mapping is testable offline."""
+    from datetime import datetime, timezone
+
+    from src.ingestion.pipeline.normalizer import _categorize
+    from src.ingestion.schemas.inspiration import (
+        EventInspiration, GeoContext, SourceProvenance, content_hash,
+    )
+
+    venue = venue.strip()[:110]
+    theme = theme.strip()[:280]
+    return EventInspiration(
+        venue_name=venue,
+        core_theme=theme,
+        category=_categorize(f"{venue} {theme}".lower()),
+        geo=GeoContext(),
+        provenance=SourceProvenance(
+            source_url=source_url.strip() or "manual://discord",
+            platform="generic",
+            fetched_at=datetime.now(timezone.utc),
+            content_hash=content_hash(f"manual:{venue}:{theme}"),
+            extractor="manual/1.0",
+        ),
+    )
+
+
+@app.post("/api/manual")
+def add_manual(body: ManualBody):
+    """Manual catalog entry — the never-waste-a-paste fallback for failed captures."""
+    if not body.venue.strip() or len(body.theme.strip()) < 3:
+        raise HTTPException(400, "venue and a short vibe description are required")
+    try:
+        record = _manual_record(body.venue, body.theme, body.source_url)
+    except Exception as exc:
+        raise HTTPException(400, f"couldn't build a valid spot from that: {exc}")
+    sink = _sink_for(body.guild_id)
+    event_id = sink.add(record)
+    src = str(record.provenance.source_url)
+    return {
+        "id": event_id,
+        "venue": record.venue_name,
+        "category": record.category.value,
+        "theme": record.core_theme,
+        "source_url": "" if src.startswith("manual:") else src,
+        "votes": 0,
+        "new": True,
+    }
+
+
 @app.delete("/api/events/{event_id}")
 def delete_event(event_id: str, guild_id: str = ""):
     _sink_for(guild_id).collection.delete(ids=[event_id])

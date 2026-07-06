@@ -101,6 +101,27 @@ def test_share_page_is_served_and_read_only():
         assert write_marker not in resp.text          # no write controls on the public page
 
 
+def test_manual_record_builder():
+    from src.ingestion.serving.admin import _manual_record
+
+    rec = _manual_record("Casa Loma", "late-night birria tacos, cash only")
+    assert rec.venue_name == "Casa Loma"
+    assert rec.category.value == "food_drink"          # keyword-categorized from the text
+    assert str(rec.provenance.source_url).startswith("manual://")
+    assert rec.provenance.extractor == "manual/1.0"
+    assert len(rec.provenance.content_hash) == 64
+
+    with_link = _manual_record("Cafe X", "matcha and vinyl", "https://example.com/cafe")
+    assert str(with_link.provenance.source_url) == "https://example.com/cafe"
+    assert with_link.category.value == "cafe_dessert"
+
+    # same venue+theme → same hash → re-adding upserts instead of duplicating
+    assert (
+        _manual_record("Casa Loma", "late-night birria tacos, cash only").provenance.content_hash
+        == rec.provenance.content_hash
+    )
+
+
 def test_apply_vote_identity_and_anonymous():
     from src.ingestion.serving.admin import VoteBody, _apply_vote, _voters
 

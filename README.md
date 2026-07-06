@@ -129,19 +129,22 @@ Invite the bot to your server, then **paste an Instagram reel link in a DM** —
 
 ## Using the bot
 
-**The main loop needs no commands:** paste a reel in a DM, an `@mention`, or a
-`/dropchannel`-enabled channel, and SpotBot captures it and posts a card.
+**The main loop needs no commands — or setup:** paste an Instagram link in *any*
+channel the bot can read (or a DM) and SpotBot captures it and posts a card,
+with a live status message while it works (~30s). If a capture fails, the reply
+carries **Retry** and **Add manually** buttons so a paste is never wasted.
+Channels where you don't want capture: `/mute`.
 
 Slash commands fill in the rest:
 
 | Command | What it does |
 |---|---|
+| `/setup` | How the bot works + this channel's settings (ephemeral). |
 | `/plan` | Read the recent chat and plan an outing together (opens a thread with picks). |
 | `/events <vibe>` | Find spots matching a vibe, e.g. `/events late night tacos`. |
 | `/catalog` | Show the top-voted spots in the catalog. |
-| `/dropchannel` | Toggle a channel as a reel drop zone (auto-captures any IG link). |
-| `/suggestions` | Toggle automatic spot suggestions in the current channel. |
-| `/here` · `/leave` · `/channels` | Enable / disable / list conversational channels. |
+| `/mute` | Toggle reel capture off/on in the current channel. |
+| `/suggestions on|off` | Toggle automatic spot suggestions in the current channel. |
 | `/help` | How to save spots with the bot. |
 
 On a spot card: **Want to go** (👍) and **Not for me** (👎) vote — the card shows

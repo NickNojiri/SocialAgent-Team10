@@ -14,6 +14,7 @@ vote land in one shared store:
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import discord
@@ -306,6 +307,116 @@ class LockInButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:lo
         )
 
 
+class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:retry:(?P<url>.+)"):
+    """Re-run a failed capture — transient IG walls often clear on a second try."""
+
+    def __init__(self, url: str):
+        self.url = url
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.primary,
+                label="Retry",
+                emoji="🔁",
+                custom_id=f"spot:retry:{url}"[:100],
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["url"])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True)
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/ingest",
+                    json={"urls": [self.url], "guild_id": guild_key(interaction)},
+                )
+                resp.raise_for_status()
+                events = resp.json().get("events", [])
+        except Exception:
+            await interaction.followup.send("⚠️ Still couldn't reach the catalog service.")
+            return
+        if not events:
+            await interaction.followup.send(
+                "🚫 Still unreadable — it may be private. Add it yourself instead:",
+                view=build_failure_view(None),
+            )
+            return
+        ev = events[0]
+        await interaction.followup.send(
+            embed=build_spot_embed(ev),
+            view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
+        )
+
+
+class SpotModal(discord.ui.Modal, title="Add a spot"):
+    """Manual entry — so a reel the pipeline can't read never wastes the paste."""
+
+    venue = discord.ui.TextInput(label="Place name", max_length=100)
+    vibe = discord.ui.TextInput(
+        label="What's the vibe?",
+        style=discord.TextStyle.paragraph,
+        placeholder="late-night birria tacos, cash only, open til 2am",
+        min_length=3,
+        max_length=280,
+    )
+    link = discord.ui.TextInput(label="Link (optional)", required=False, max_length=200)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True)
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/manual",
+                    json={
+                        "venue": str(self.venue),
+                        "theme": str(self.vibe),
+                        "source_url": str(self.link).strip(),
+                        "guild_id": guild_key(interaction),
+                    },
+                )
+                resp.raise_for_status()
+                ev = resp.json()
+        except Exception:
+            await interaction.followup.send("⚠️ Couldn't save that — try again in a moment.")
+            return
+        ev["sharer"] = interaction.user.display_name
+        await interaction.followup.send(
+            embed=build_spot_embed(ev),
+            view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
+        )
+
+
+class ManualAddButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:manual:0"):
+    def __init__(self):
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.secondary,
+                label="Add manually",
+                emoji="✍️",
+                custom_id="spot:manual:0",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls()
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(SpotModal())
+
+
+def build_failure_view(url: Optional[str]) -> discord.ui.View:
+    """Attached to every failed capture: Retry (single-link pastes) + manual add."""
+    view = discord.ui.View(timeout=None)
+    if url and len(f"spot:retry:{url}") <= 100:   # custom_id hard limit
+        view.add_item(RetryButton(url))
+    view.add_item(ManualAddButton())
+    return view
+
+
 class AddSuggestionsButton(
     discord.ui.DynamicItem[discord.ui.Button], template=r"spot:suggest:(?P<eid>[^:]+)"
 ):
@@ -401,7 +512,10 @@ def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
 
 def register_dynamic_items(client: discord.Client) -> None:
     """Call once in on_ready so buttons keep working after a restart."""
-    client.add_dynamic_items(VoteButton, AddSuggestionsButton, RemoveButton, LockInButton)
+    client.add_dynamic_items(
+        VoteButton, AddSuggestionsButton, RemoveButton, LockInButton,
+        RetryButton, ManualAddButton,
+    )
 
 
 # ── helpers for the Add-suggestions button ───────────────────────────────────
