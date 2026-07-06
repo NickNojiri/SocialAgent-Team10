@@ -79,6 +79,31 @@ def _build_transcriber():
 _transcriber = _build_transcriber()
 
 
+def _build_ig_source():
+    """Authenticated IG fetch source, built once when IG_USERNAME/IG_PASSWORD are
+    set (and instagrapi is installed). None → the pipeline uses the Playwright
+    path exactly as before. Login is lazy (on first capture)."""
+    if not (_settings.ig_username and _settings.ig_password):
+        return None
+    try:
+        from src.ingestion.sources.ig_authed import AuthedInstagramSource
+
+        import logging
+
+        logging.getLogger("ingestion.admin").info(
+            "[ig] authenticated fetch source enabled (user=%s)", _settings.ig_username
+        )
+        return AuthedInstagramSource(_settings)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("ingestion.admin").warning(f"[ig] authed source off: {exc}")
+        return None
+
+
+_ig_source = _build_ig_source()
+
+
 class IngestBody(BaseModel):
     urls: list[str]
     guild_id: str = ""      # "" → the legacy/single-tenant catalog
@@ -162,6 +187,7 @@ async def ingest(body: IngestBody):
         temporal_resolver=build_temporal_resolver(_settings),
         jsonl_sink=JsonlSink(Path("data/inspirations.jsonl")),
         chroma_sink=sink,
+        authed_source=_ig_source,
     )
     report = await pipeline.run(urls)
     return {

@@ -1276,6 +1276,72 @@ class TestPipelineGuard:
         assert "RuntimeError: llm exploded" in result.rejection_reason
 
 
+class TestAuthedSourcePipeline:
+    @pytest.mark.asyncio
+    async def test_authed_source_bypasses_browser(self, monkeypatch):
+        """An IG URL served by the authed source produces a validated record
+        without ever launching Playwright."""
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        class ExplodingSession:  # if the browser is touched, the test fails loudly
+            def __init__(self, settings):
+                raise AssertionError("SocialSessionManager must not be constructed")
+
+        monkeypatch.setattr(orchestrator, "SocialSessionManager", ExplodingSession)
+
+        class FakeAuthedSource:
+            def __init__(self):
+                self.seen = []
+
+            def fetch_url(self, url):
+                self.seen.append(url)
+                return make_raw(caption=IG_CAPTION, image_url="https://cdn.ig/t.jpg")
+
+        source = FakeAuthedSource()
+        pipeline = IngestionPipeline(IngestionSettings(), authed_source=source)
+        report = await pipeline.run(["https://www.instagram.com/reel/DU3evm2Ewhn/"])
+
+        assert source.seen == ["https://www.instagram.com/reel/DU3evm2Ewhn/"]
+        assert len(report.results) == 1
+        rec = report.results[0].record
+        assert rec is not None
+        assert rec.venue_name == "Casa Loma"
+        assert rec.image_url == "https://cdn.ig/t.jpg"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_browser_when_source_returns_none(self, monkeypatch):
+        """A URL the authed source can't handle (returns None) drops to Playwright."""
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        class FakeSession:
+            def __init__(self, settings):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def fetch(self, url):
+                return PageSnapshot(
+                    url=url, status=FetchStatus.OK, fetched_at=NOW,
+                    meta={"og:title": "Taco Night",
+                          "og:description": "Birria tacos at Casa Loma this Friday 8pm"},
+                )
+
+        monkeypatch.setattr(orchestrator, "SocialSessionManager", FakeSession)
+
+        class NoneSource:
+            def fetch_url(self, url):
+                return None   # e.g. a non-IG URL or a fetch failure
+
+        pipeline = IngestionPipeline(IngestionSettings(), authed_source=NoneSource())
+        report = await pipeline.run(["https://example.test/post"])
+        assert report.results[0].record is not None
+        assert report.results[0].record.venue_name == "Casa Loma"
+
+
 class TestRunReportBuckets:
     def test_error_rejections_do_not_change_connectivity_bucket(self):
         report = _run_report(

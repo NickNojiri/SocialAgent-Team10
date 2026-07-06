@@ -59,6 +59,7 @@ class RawPostSnapshot(BaseModel):
     fetched_at: Optional[datetime] = None
     caption: Optional[str] = None
     transcript: Optional[str] = None       # speech-to-text of the reel's audio (Phase 2.5)
+    video_url: Optional[str] = None        # reel mp4 for the transcriber (set by fetch/extract)
     title: Optional[str] = None
     description: Optional[str] = None
     author_handle: Optional[str] = None

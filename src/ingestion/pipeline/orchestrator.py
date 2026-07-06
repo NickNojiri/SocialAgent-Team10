@@ -12,13 +12,14 @@ the RunReport aggregates them into an honest summary of successes, validation
 rejections, and connectivity/access exceptions (timeouts, login walls, …).
 """
 
+import asyncio
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from src.ingestion.browser.ig_embed import try_embed_fallback
 from src.ingestion.browser.session_manager import SocialSessionManager
@@ -63,6 +64,7 @@ class IngestionPipeline:
         temporal_resolver: Optional[TemporalResolver] = None,
         jsonl_sink: Optional[JsonlSink] = None,
         chroma_sink: Optional["ChromaSink"] = None,
+        authed_source: Optional[Any] = None,
         on_result: Optional[Callable[[IngestionResult], None]] = None,
     ):
         self.settings = settings
@@ -73,6 +75,10 @@ class IngestionPipeline:
         self.temporal_resolver = temporal_resolver
         self.jsonl_sink = jsonl_sink
         self.chroma_sink = chroma_sink
+        # Optional authenticated fetch source (AuthedInstagramSource): for IG post
+        # URLs it returns a RawPostSnapshot directly (the 95-99% path), and the
+        # Playwright browser is only launched for URLs it can't handle.
+        self.authed_source = authed_source
         self.on_result = on_result
 
     async def run(self, urls: list[str]) -> "RunReport":
@@ -80,17 +86,30 @@ class IngestionPipeline:
         t0 = perf_counter()
         results: list[IngestionResult] = []
 
-        async with SocialSessionManager(self.settings) as session:
+        # The browser is opened lazily — a run where every URL is served by the
+        # authed source never launches Chromium at all.
+        session: Optional[SocialSessionManager] = None
+        try:
             for url in urls:
                 try:
-                    snapshot = await session.fetch(url)
-                    # If IG returned a login wall, attempt the embed-page fallback
-                    # before giving up — recovers the caption without login ~70% of the time.
-                    if snapshot.status is FetchStatus.LOGIN_WALL:
-                        recovered = await try_embed_fallback(url)
-                        if recovered is not None:
-                            snapshot = recovered
-                    result = self._process(snapshot)
+                    raw = None
+                    if self.authed_source is not None:
+                        # Sync instagrapi call — offload so it doesn't block the loop.
+                        raw = await asyncio.to_thread(self.authed_source.fetch_url, url)
+
+                    if raw is not None:
+                        result = self._process_raw(raw, url, FetchStatus.OK)
+                    else:
+                        if session is None:
+                            session = await SocialSessionManager(self.settings).__aenter__()
+                        snapshot = await session.fetch(url)
+                        # If IG returned a login wall, attempt the embed-page fallback
+                        # before giving up — recovers the caption without login ~70% of the time.
+                        if snapshot.status is FetchStatus.LOGIN_WALL:
+                            recovered = await try_embed_fallback(url)
+                            if recovered is not None:
+                                snapshot = recovered
+                        result = self._process(snapshot)
                 except Exception as exc:  # last-ditch guard: one URL never kills the run
                     log.exception(f"[pipeline] unexpected error on {url}: {exc}")
                     result = IngestionResult(
@@ -106,6 +125,9 @@ class IngestionPipeline:
                 results.append(result)
                 if self.on_result is not None:
                     self.on_result(result)
+        finally:
+            if session is not None:
+                await session.__aexit__(None, None, None)
 
         chroma_count = self.chroma_sink.count() if self.chroma_sink is not None else None
         return RunReport(
@@ -130,26 +152,32 @@ class IngestionPipeline:
         page_extractor = select_extractor(snapshot.final_url or snapshot.url)
         raw = page_extractor.extract(snapshot)
 
-        # Phase 2.5: transcribe the reel's audio so a venue/location that is only
-        # *spoken* (never written in the caption) still reaches the LLM. The video
-        # URL lives in og:video, which IG serves even behind the login overlay.
-        if self.transcriber is not None:
+        # The reel mp4 lives in og:video, which IG serves even behind the login
+        # overlay; hand it to the shared tail so _process_raw can transcribe it.
+        if not raw.video_url:
             from src.ingestion.pipeline.transcriber import video_url_from_html, video_url_from_meta
 
-            video_url = video_url_from_meta(snapshot.meta) or video_url_from_html(snapshot.html)
-            if video_url:
-                transcript = self.transcriber.transcribe_url(video_url)
-                if transcript:
-                    raw.transcript = transcript
+            raw.video_url = video_url_from_meta(snapshot.meta) or video_url_from_html(snapshot.html)
+
+        result = self._process_raw(raw, snapshot.url, snapshot.status)
+        # Persist the HTML of rejected fetches so they stay debuggable.
+        if result.record is None and result.raw_ref is None:
+            result.raw_ref = self._save_raw(snapshot)
+        return result
+
+    def _process_raw(self, raw, url: str, fetch_status: FetchStatus) -> IngestionResult:
+        """Shared post-fetch stages, from either the Playwright path or the authed
+        source. `raw` is a RawPostSnapshot; everything below is fetch-agnostic."""
+        # Phase 2.5: transcribe the reel's audio so a venue/location that is only
+        # *spoken* (never written in the caption) still reaches the LLM.
+        if self.transcriber is not None and getattr(raw, "video_url", None):
+            transcript = self.transcriber.transcribe_url(raw.video_url)
+            if transcript:
+                raw.transcript = transcript
 
         record, reason = build_record(raw, extractor=self.extractor)
         if record is None:
-            return IngestionResult(
-                url=snapshot.url,
-                fetch_status=snapshot.status,
-                rejection_reason=reason,
-                raw_ref=self._save_raw(snapshot),
-            )
+            return IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
 
         # Phase 2.5: a user-facing "quick description" from the audio. Only when we
         # actually transcribed something — no transcript → no summary → card shows "No info".
@@ -165,14 +193,9 @@ class IngestionPipeline:
         if self.temporal_resolver is not None:      # Phase 4
             record, expired = self.temporal_resolver.resolve(record)
             if expired is not None:
-                return IngestionResult(
-                    url=snapshot.url,
-                    fetch_status=snapshot.status,
-                    rejection_reason=expired,
-                    raw_ref=self._save_raw(snapshot),
-                )
+                return IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=expired)
 
-        return IngestionResult(url=snapshot.url, fetch_status=snapshot.status, record=record)
+        return IngestionResult(url=url, fetch_status=fetch_status, record=record)
 
     def _save_raw(self, snapshot: PageSnapshot) -> Optional[Path]:
         """Persist the HTML of failed/rejected fetches so they're debuggable."""
