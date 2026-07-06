@@ -110,14 +110,13 @@ def spot_card():
         y += 26
         d.text((x, y), "Watch the reel", font=f(14, True), fill=(126, 168, 254), anchor="lm")
         y += 34
-        field(d, x, y, "Category", "food drink")
-        field(d, x + 190, y, "When", "Fri Jun 26 · 8:00 PM")
-        d.text((x + 400, y), "Where", font=f(13, True), fill=WHITE, anchor="lm")
-        d.text((x + 400, y + 20), "Open map", font=f(14), fill=(126, 168, 254), anchor="lm")
+        field(d, x, y, "When", "Fri Jun 26 · 8:00 PM")
+        d.text((x + 240, y), "Where", font=f(13, True), fill=WHITE, anchor="lm")
+        d.text((x + 240, y + 20), "Open map", font=f(14), fill=(126, 168, 254), anchor="lm")
         y += 52
         field(d, x, y, "Who's in", "nick, sam, jo")
         y += 50
-        d.text((x, y), "shared by nick  ·  via Instagram", font=f(12), fill=MUTE, anchor="lm")
+        d.text((x, y), "food drink  ·  shared by nick  ·  via Instagram", font=f(12), fill=MUTE, anchor="lm")
         return y + 16
 
     bottom = embed_card(img, 76, 84, 600, (224, 123, 57), body)

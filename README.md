@@ -146,14 +146,18 @@ Slash commands fill in the rest:
 | `/setup` | How the bot works + this channel's settings (ephemeral). |
 | `/plan` | Read the recent chat and plan an outing together (opens a thread with picks). |
 | `/events <vibe>` | Find spots matching a vibe, e.g. `/events late night tacos`. |
+| `/browse [category]` | Flip through saved spots — by category or everything, as votable cards. |
 | `/catalog` | Show the top-voted spots in the catalog. |
+| `/digest` | Quick summary: spot count, top-voted, nights out, still-unplanned. |
+| `/share` | The link to this server's public catalog page. |
 | `/mute` | Toggle reel capture off/on in the current channel. |
 | `/suggestions on|off` | Toggle automatic spot suggestions in the current channel. |
 | `/help` | How to save spots with the bot. |
 
 On a spot card: **Want to go** (👍) and **Not for me** (👎) vote — the card shows
 *who's* in, not just a count · **Add suggestions** (✨) posts similar spots as their
-own votable cards · **Remove** deletes it (requires *Manage Messages* in a server).
+own votable cards · **Edit** (✏️) opens a pre-filled form to fix the venue or vibe ·
+**Remove** deletes it (requires *Manage Messages* in a server).
 At **quorum** (`SPOT_QUORUM`, default 3) the bot offers a 📅 **Lock it in** button
 that creates a Discord Scheduled Event (the spot's resolved time, or next Friday
 7pm) with the map link as its location.

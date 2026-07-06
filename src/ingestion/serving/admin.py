@@ -607,11 +607,12 @@ _PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>SocialAgent — Event Catalog</title>
 <style>
-  :root{--bg:#0f1117;--card:#1a1d27;--line:#2a2e3a;--txt:#e7e9ee;--mut:#9aa0ad;--acc:#6ea8fe;--ok:#3fb950;--bad:#f85149}
+  :root{--bg:#111318;--card:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;--acc:#6EA8FE;--ok:#3FB950;--bad:#F85149}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,sans-serif}
   header{padding:20px 24px;border-bottom:1px solid var(--line)}
-  h1{margin:0;font-size:20px} .sub{color:var(--mut);font-size:13px;margin-top:4px}
+  h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em} .sub{color:var(--mut);font-size:12.5px;margin-top:4px}
   main{max-width:860px;margin:0 auto;padding:24px}
+  .count,.votes b{font-variant-numeric:tabular-nums}
   .add{display:flex;gap:8px;margin-bottom:8px}
   textarea{flex:1;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font:inherit;min-height:44px;resize:vertical}
   button{background:var(--acc);color:#06121f;border:0;border-radius:8px;padding:0 16px;font-weight:600;cursor:pointer}
@@ -692,10 +693,10 @@ _SHARE_PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>SpotBot — our spots</title>
 <style>
-  :root{--bg:#0f1117;--card:#1a1d27;--line:#2a2e3a;--txt:#e7e9ee;--mut:#9aa0ad;--acc:#6ea8fe;--ok:#3fb950}
+  :root{--bg:#111318;--card:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;--acc:#6EA8FE;--ok:#3FB950}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,sans-serif}
   header{padding:20px 24px;border-bottom:1px solid var(--line)}
-  h1{margin:0;font-size:20px} .sub{color:var(--mut);font-size:13px;margin-top:4px}
+  h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em} .sub{color:var(--mut);font-size:12.5px;margin-top:4px}
   main{max-width:860px;margin:0 auto;padding:24px}
   .count{color:var(--mut);font-size:13px;margin:0 0 12px}
   .ev{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}

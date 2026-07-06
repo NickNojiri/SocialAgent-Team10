@@ -397,6 +397,107 @@ async def catalog_command(interaction: discord.Interaction):
     await interaction.followup.send("🏆 **Top spots**\n" + "\n".join(lines))
 
 
+_BROWSE_CHOICES = [
+    app_commands.Choice(name="🍽️ food & drink", value="food_drink"),
+    app_commands.Choice(name="🍰 cafés & dessert", value="cafe_dessert"),
+    app_commands.Choice(name="🍸 nightlife", value="nightlife"),
+    app_commands.Choice(name="🎶 live music", value="live_music"),
+    app_commands.Choice(name="🛍️ markets & pop-ups", value="market_popup"),
+    app_commands.Choice(name="🏞️ outdoors", value="outdoors"),
+    app_commands.Choice(name="🤝 community", value="community"),
+    app_commands.Choice(name="📍 everything", value="all"),
+]
+
+
+@tree.command(name="browse", description="Flip through the saved spots — by category or all")
+@app_commands.describe(category="What kind of spots?")
+@app_commands.choices(category=_BROWSE_CHOICES)
+async def browse_command(
+    interaction: discord.Interaction, category: app_commands.Choice[str] = None
+):
+    await interaction.response.defer(thinking=True)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{INGEST_URL}/api/events",
+                params={"guild_id": cards.guild_key(interaction)},
+            )
+            resp.raise_for_status()
+            events = resp.json().get("events", [])
+    except Exception as exc:
+        log.warning(f"[browse] fetch failed: {exc}")
+        await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
+        return
+
+    wanted = category.value if category else "all"
+    if wanted != "all":
+        events = [e for e in events if e.get("category") == wanted]
+    if not events:
+        label = category.name if category else "anything"
+        await interaction.followup.send(f"Nothing saved for {label} yet — paste a reel!")
+        return
+
+    events.sort(key=lambda e: -int(e.get("votes", 0)))
+    shown = events[:5]
+    await interaction.followup.send(
+        f"📖 **{len(events)} spot{'s' if len(events) != 1 else ''}**"
+        + (f" in {category.name}" if category and wanted != 'all' else " saved")
+        + (f" — showing the top {len(shown)}:" if len(events) > len(shown) else ":")
+    )
+    for ev in shown:
+        await interaction.channel.send(
+            embed=cards.build_spot_embed(ev),
+            view=cards.build_spot_view(ev["id"], int(ev.get("votes", 0))),
+        )
+    if len(events) > len(shown):
+        await interaction.channel.send(
+            f"…and {len(events) - len(shown)} more — narrow with a category, or see `/share`."
+        )
+
+
+@tree.command(name="share", description="Get the link to this server's spot catalog page")
+async def share_command(interaction: discord.Interaction):
+    base = os.getenv("SHARE_BASE_URL", ADMIN_URL).rstrip("/")
+    gid = cards.guild_key(interaction)
+    await interaction.response.send_message(
+        f"🔗 This catalog, as a web page anyone can view:\n{base}/share?guild_id={gid}\n"
+        "-# Send it to friends who aren't in the server. Localhost links only work "
+        "on the machine running SpotBot."
+    )
+
+
+@tree.command(name="digest", description="A quick summary of this server's catalog")
+async def digest_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    gid = cards.guild_key(interaction)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            events = (
+                await client.get(f"{INGEST_URL}/api/events", params={"guild_id": gid})
+            ).json().get("events", [])
+            nights = (
+                await client.get(f"{INGEST_URL}/api/nights", params={"guild_id": gid})
+            ).json().get("nights", 0)
+    except Exception as exc:
+        log.warning(f"[digest] fetch failed: {exc}")
+        await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
+        return
+    if not events:
+        await interaction.followup.send("The catalog is empty — paste a reel to start it!")
+        return
+
+    top = sorted(events, key=lambda e: -int(e.get("votes", 0)))[:3]
+    unplanned = sum(1 for e in events if e.get("schedule") != "scheduled")
+    lines = [f"🗞️ **Catalog digest** — {len(events)} spots · 🌃 {nights} nights out"]
+    for ev in top:
+        lines.append(
+            f"{cards.emoji_for(ev.get('category'))} **{ev.get('venue')}** · {int(ev.get('votes', 0))} 👍"
+        )
+    if unplanned:
+        lines.append(f"-# {unplanned} spot{'s' if unplanned != 1 else ''} still waiting for a plan — `/plan` when ready")
+    await interaction.followup.send("\n".join(lines))
+
+
 # ── Planning ─────────────────────────────────────────────────────────────────
 
 @tree.command(
