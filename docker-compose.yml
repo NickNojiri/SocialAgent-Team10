@@ -11,6 +11,8 @@ services:
       - llm
     networks:
       - event-net
+    volumes:
+      - whisper-cache:/root/.cache/huggingface   # persists Whisper weights across rebuilds
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"   # reach Ollama on host
@@ -48,3 +50,4 @@ networks:
 
 volumes:
   db-data:
+  whisper-cache:

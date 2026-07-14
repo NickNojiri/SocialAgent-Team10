@@ -64,6 +64,8 @@ SocialAgent-Team10/
 
     API: FastAPI (Future Implementation) – For web-based user interaction.
 
+    Speech-to-Text: Whisper (via faster-whisper) – Local, free transcription of Discord voice messages.
+
 🧠 Key Components
 NLP Parser (parser.py)
 
@@ -80,6 +82,10 @@ The "Agentic" heart of the project. It performs Weighted Negotiation:
     Persona Alignment: Checks venue metadata against user constraints (e.g., matching a "quiet bar" for a user who hates loud music).
 
     Reasoning: Provides a structured meeting plan with a clear explanation of why specific venues were chosen.
+
+Voice Transcription (app/transcription.py)
+
+Discord voice messages (and audio attachments) are transcribed locally with Whisper — no cloud API, no key. The bot posts what it heard, then feeds the transcript through the normal scheduling pipeline. Configure the model size with WHISPER_MODEL in .env (tiny/base/small/…, default base); weights download once on first use and are cached in the whisper-cache Docker volume. Run python test_transcription.py to test the module.
 
 ⌨️ Developer Shortcuts
 Command	Action

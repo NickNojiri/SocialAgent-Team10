@@ -21,6 +21,8 @@ import httpx
 import json
 from pathlib import Path
 
+from transcription import transcribe_attachment, transcription_available
+
 # ── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -127,10 +129,40 @@ async def on_message(message: discord.Message):
         f"user={message.author.display_name!r} | {message.content[:120]!r}"
     )
 
+    # Voice messages / audio attachments → transcribe locally with Whisper
+    content = message.content
+    audio = next(
+        (
+            a for a in message.attachments
+            if a.is_voice_message() or (a.content_type or "").startswith("audio/")
+        ),
+        None,
+    )
+    if audio is not None:
+        if not transcription_available():
+            if not content.strip():
+                await message.channel.send(
+                    "⚠️ Voice transcription isn't enabled on this bot "
+                    "(faster-whisper is not installed)."
+                )
+                return
+        else:
+            async with message.channel.typing():
+                transcript = await transcribe_attachment(audio)
+            if transcript:
+                log.info(f"[voice] Transcript: {transcript[:120]!r}")
+                await message.channel.send(f"🎙️ *I heard:* “{transcript}”")
+                content = f"{content}\n{transcript}".strip() if content.strip() else transcript
+            elif not content.strip():
+                await message.channel.send(
+                    "⚠️ I couldn't make out that voice message — try again or type it out."
+                )
+                return
+
     t0 = time.perf_counter()
     async with message.channel.typing():
         try:
-            response_text, action, db_event_id = await call_llm(message)
+            response_text, action, db_event_id = await call_llm(message, content)
         except httpx.HTTPStatusError as exc:
             log.error(f"[llm] HTTP {exc.response.status_code} from LLM: {exc.response.text[:300]}")
             await message.channel.send(f"⚠️ LLM returned an error ({exc.response.status_code}). Check the logs.")
@@ -218,14 +250,17 @@ async def channels_command(interaction: discord.Interaction):
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-async def call_llm(message: discord.Message):
-    """Send the message to the LLM service and return (text, action, db_event_id)."""
+async def call_llm(message: discord.Message, content: str | None = None):
+    """Send the message to the LLM service and return (text, action, db_event_id).
+
+    `content` overrides message.content (used for voice-message transcripts).
+    """
     payload = {
         "channel_id": str(message.channel.id),
         "guild_id":   str(message.guild.id),
         "user_id":    str(message.author.id),
         "username":   message.author.display_name,
-        "message":    message.content,
+        "message":    content if content is not None else message.content,
     }
     log.debug(f"[llm] POST /chat payload: {payload}")
 
