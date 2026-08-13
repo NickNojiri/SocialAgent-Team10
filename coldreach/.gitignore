@@ -1,0 +1,12 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+invites/
+contacts.csv
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/

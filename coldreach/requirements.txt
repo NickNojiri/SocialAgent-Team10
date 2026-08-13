@@ -1,0 +1,3 @@
+# Everything else (sqlite3, smtplib, imaplib, email, zoneinfo) is stdlib.
+ollama>=0.3.0
+icalendar>=6.0.0
