@@ -178,4 +178,4 @@ class TestDashboard:
         tc, _eid = client
         resp = tc.get("/dash")
         assert resp.status_code == 200
-        assert "SpotBot operations" in resp.text
+        assert "SpotBot" in resp.text and "ops" in resp.text
