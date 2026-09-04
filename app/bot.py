@@ -522,7 +522,12 @@ async def plan_command(interaction: discord.Interaction):
         return
 
     try:
-        data = await call_plan(interaction.channel_id, transcript, cards.guild_key(interaction))
+        data = await call_plan(
+            interaction.channel_id,
+            transcript,
+            cards.guild_key(interaction),
+            user_id=str(interaction.user.id),   # ML: personalise by requester's vote history
+        )
     except Exception as exc:
         log.warning(f"[plan] failed: {exc}")
         await interaction.followup.send("⚠️ Couldn't reach the planner right now.")
@@ -581,9 +586,14 @@ async def call_recommend(channel_id: int, message: str, mode: str, guild_id: str
         return resp.json()
 
 
-async def call_plan(channel_id: int, transcript: str, guild_id: str = "") -> dict:
+async def call_plan(channel_id: int, transcript: str, guild_id: str = "", user_id: str = "") -> dict:
     """Ask the recommend service to synthesize the group's request + a shortlist."""
-    payload = {"channel_id": str(channel_id), "transcript": transcript, "guild_id": guild_id}
+    payload = {
+        "channel_id": str(channel_id),
+        "transcript": transcript,
+        "guild_id": guild_id,
+        "user_id": user_id,   # ML: personalise results by requester's vote history
+    }
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(f"{RECOMMEND_URL}/plan", json=payload)
         resp.raise_for_status()

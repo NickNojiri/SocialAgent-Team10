@@ -35,7 +35,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # reach Ollama on host
     healthcheck:
-      test: curl -f http://localhost:8003/health || exit 1
+      test: python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"
       interval: 30s
       timeout: 5s
       retries: 3

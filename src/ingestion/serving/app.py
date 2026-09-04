@@ -25,6 +25,7 @@ app = FastAPI(title="SocialAgent Recommendations")
 _settings = IngestionSettings(
     ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
     chroma_path=os.getenv("CHROMA_PATH", "data"),
+    embed_model=os.getenv("EMBED_MODEL", "nomic-embed-text"),
 )
 _service: Optional[RecommendationService] = None
 _services: dict[str, RecommendationService] = {}
@@ -79,12 +80,15 @@ class PlanRequest(BaseModel):
     channel_id: str
     transcript: str          # the recent multi-person chat the bot collected
     guild_id: str = ""       # "" → the legacy/single-tenant catalog
+    user_id: str = ""        # ML Layer 1: personalise by the requester's vote history
 
 
 @app.post("/plan")
 def plan(req: PlanRequest):
     """Group planning: chat transcript -> synthesized request + a shortlist."""
-    result = get_service(req.guild_id).plan(req.channel_id, req.transcript)
+    result = get_service(req.guild_id).plan(
+        req.channel_id, req.transcript, user_id=req.user_id
+    )
     return {
         "request": result.request,
         "query": result.query,

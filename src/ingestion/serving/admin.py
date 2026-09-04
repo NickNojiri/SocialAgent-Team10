@@ -40,6 +40,7 @@ _env_overrides: dict = {}
 for _env, _field, _cast in (
     ("OLLAMA_URL", "ollama_url", str),
     ("OLLAMA_MODEL", "ollama_model", str),
+    ("EMBED_MODEL", "embed_model", str),
     ("WHISPER_MODEL", "whisper_model", str),
     ("SETTLE_TIMEOUT_MS", "settle_timeout_ms", int),
     ("CAPTURE_BUDGET_S", "capture_budget_s", float),
@@ -642,11 +643,43 @@ _PAGE = """<!doctype html>
   </div>
   <div class="hint">Ingesting runs the full pipeline (fetch → LLM → schedule) — ~20–30s per URL. Login-walled or expired posts are skipped.</div>
   <div id="status"></div>
+  <details style="margin-bottom:16px">
+    <summary style="cursor:pointer;color:var(--acc);font-size:13.5px;user-select:none">✏️ Add a spot manually (no link needed)</summary>
+    <div style="margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">
+      <input id="mVenue" placeholder="Venue name (e.g. Wasteland, Casa Loma, The Pike)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
+      <textarea id="mTheme" placeholder="Describe the vibe / what happens here…" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit;min-height:60px;resize:vertical"></textarea>
+      <input id="mUrl" placeholder="Source URL (optional)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="mBtn" onclick="addManual()" style="background:var(--acc);color:#0D1117;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">Add spot</button>
+        <span id="mStatus" style="font-size:13px;color:var(--mut)"></span>
+      </div>
+    </div>
+  </details>
   <div class="count" id="count"></div>
   <div id="list"></div>
 </main>
 <script>
 const EMOJI={food_drink:"🍽️",cafe_dessert:"🍰",nightlife:"🍸",live_music:"🎶",market_popup:"🛍️",outdoors:"🏞️",community:"🤝",other:"📍"};
+async function addManual(){
+  const venue=document.getElementById('mVenue').value.trim();
+  const theme=document.getElementById('mTheme').value.trim();
+  const url=document.getElementById('mUrl').value.trim();
+  const btn=document.getElementById('mBtn'); const st=document.getElementById('mStatus');
+  if(!venue||theme.length<3){st.style.color='var(--bad)';st.textContent='Venue name and a short vibe description are required.';return;}
+  btn.disabled=true; st.style.color='var(--mut)'; st.textContent='Adding…';
+  try{
+    const r=await fetch('/api/manual',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({venue,theme,source_url:url,guild_id:''})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'Error');
+    st.style.color='var(--ok)'; st.textContent=`✅ Added "${d.venue}" (${d.category.replace(/_/g,' ')})`;
+    document.getElementById('mVenue').value='';
+    document.getElementById('mTheme').value='';
+    document.getElementById('mUrl').value='';
+    load();
+  }catch(e){st.style.color='var(--bad)';st.textContent='❌ '+e;}
+  btn.disabled=false;
+}
 async function load(){
   const r=await fetch('/api/events'); const d=await r.json();
   document.getElementById('count').textContent=d.count+' event'+(d.count===1?'':'s')+' in the catalog';
@@ -755,85 +788,165 @@ _DASH_PAGE = """<!doctype html>
 <title>SpotBot — Operations</title>
 <style>
   :root{--bg:#111318;--panel:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;
-        --acc:#6EA8FE;--ok:#3FB950;--bad:#F85149;--num:#F0F2F7}
+        --acc:#6EA8FE;--ok:#3FB950;--bad:#F85149;--warn:#E3B341;--num:#F0F2F7}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 system-ui,"Segoe UI",sans-serif}
-  main{max-width:1020px;margin:0 auto;padding:32px 24px 64px}
-  h1{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0}
-  .sub{color:var(--mut);font-size:12.5px;margin-top:2px}
-  h2{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:32px 0 10px}
-  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:20px}
-  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
-  .tile b{display:block;font-size:26px;font-weight:700;color:var(--num);
-          font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-  .tile span{font-size:11.5px;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+  main{max-width:1060px;margin:0 auto;padding:28px 24px 64px}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0;display:inline}
+  .sub{color:var(--mut);font-size:12px;margin-top:3px}
+  h2{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:28px 0 9px}
+  /* pulse ring on h1 when refreshing */
+  #hdr{display:flex;align-items:center;gap:10px}
+  #pulse{width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0;transition:opacity .15s}
+  #pulse.spin{opacity:.3}
+  #next{font-size:11px;color:var(--mut);margin-left:auto;font-variant-numeric:tabular-nums}
+  /* metric tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:18px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;position:relative}
+  .tile b{display:block;font-size:28px;font-weight:700;color:var(--num);
+          font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .tile span{font-size:11px;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+  .tile .delta{position:absolute;top:12px;right:12px;font-size:11px;font-weight:600}
+  .up{color:var(--ok)} .dn{color:var(--bad)}
+  /* service chips */
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
-        border-radius:999px;padding:5px 13px;font-size:12.5px}
-  .dot{width:7px;height:7px;border-radius:50%}
+        border-radius:999px;padding:5px 13px;font-size:12.5px;transition:border-color .3s}
+  .dot{width:7px;height:7px;border-radius:50%;transition:background .3s}
   .on .dot{background:var(--ok)} .off .dot{background:var(--bad)}
-  .off{color:var(--mut)}
+  .on{border-color:var(--ok)22} .off{color:var(--mut);border-color:var(--bad)22}
+  /* ML layer badges */
+  .ml-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .ml{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--acc)33;
+      border-radius:8px;padding:6px 12px;font-size:12.5px;color:var(--acc)}
+  .ml .icon{font-size:15px}
+  /* tenant table */
   .wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
   table{border-collapse:collapse;width:100%;font-size:13px}
-  th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);text-align:left;
-     padding:10px 14px 7px;border-bottom:1px solid var(--line);font-weight:600}
-  td{padding:9px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);text-align:left;
+     padding:9px 14px 6px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:8px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
   tr:last-child td{border-bottom:0}
   td.num{text-align:right} th.num{text-align:right}
-  .feed{display:flex;flex-direction:column;gap:8px}
+  .bar-cell{width:90px}
+  .bar-bg{height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+  .bar-fill{height:100%;border-radius:3px;background:var(--acc);transition:width .4s}
+  /* capture feed */
+  .feed{display:flex;flex-direction:column;gap:7px}
   .cap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
-       display:flex;gap:14px;align-items:baseline;font-size:13px}
-  .cap time{color:var(--mut);font-size:12px;min-width:60px;font-variant-numeric:tabular-nums}
-  .cap .g{color:var(--acc);min-width:90px;overflow:hidden;text-overflow:ellipsis}
-  .cap .r{color:var(--mut)}
+       display:flex;gap:12px;align-items:baseline;font-size:13px;animation:fadeIn .3s}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .cap time{color:var(--mut);font-size:12px;min-width:56px;font-variant-numeric:tabular-nums}
+  .cap .g{color:var(--acc);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cap .r{color:var(--mut);margin-left:auto;white-space:nowrap}
   .ok-n{color:var(--ok);font-weight:600} .bad-n{color:var(--bad);font-weight:600}
-  .empty{color:var(--mut);padding:22px;text-align:center}
-  footer{color:var(--mut);font-size:11.5px;margin-top:28px}
+  .empty{color:var(--mut);padding:20px;text-align:center}
+  footer{color:var(--mut);font-size:11.5px;margin-top:24px}
+  /* progress bar animates down to 0 between refreshes */
+  #pgbar{height:2px;background:var(--acc);position:fixed;top:0;left:0;transition:width linear 5s;z-index:99}
 </style></head><body>
+<div id="pgbar" style="width:100%"></div>
 <main>
-  <h1>SpotBot operations</h1>
-  <div class="sub">Live view of services, per-server catalogs, and capture activity · refreshes every 10s</div>
+  <div id="hdr">
+    <div id="pulse"></div>
+    <h1>SpotBot — live ops</h1>
+    <span id="next">next refresh in 5s</span>
+  </div>
+  <div class="sub">Auto-refreshes every 5 seconds · <a style="color:var(--acc)" href="/">catalog admin</a> · <a style="color:var(--acc)" href="/share">share page</a></div>
 
   <div class="tiles" id="tiles"></div>
 
   <h2>Services</h2>
   <div class="chips" id="chips"></div>
 
-  <h2>Servers using the service</h2>
+  <h2>ML Layers active</h2>
+  <div class="ml-row" id="ml"></div>
+
+  <h2>Servers</h2>
   <div class="wrap"><table id="tenants"></table></div>
 
   <h2>Recent captures</h2>
   <div class="feed" id="feed"></div>
 
-  <footer>in-memory activity log (last 50 runs, resets with the admin app) · <a style="color:var(--acc)" href="/">catalog admin</a> · <a style="color:var(--acc)" href="/share">public share page</a></footer>
+  <footer>in-memory activity log · last 50 runs · resets with admin app restart</footer>
 </main>
 <script>
-const SVC_LABELS={admin:"Admin API",ollama:"Ollama LLM",recommend:"Recommend",transcriber:"Whisper audio",ocr:"Cover OCR",authed_ig:"Authed IG"};
+const SVC_LABELS={admin:"Admin API",ollama:"Ollama LLM",recommend:"Recommend svc",transcriber:"Whisper audio",ocr:"Cover OCR",authed_ig:"Authed IG"};
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+let prev={};
+let countdown=5;
+let countEl,pgEl,pulseEl;
+
+function startBar(){
+  pgEl.style.transition='none'; pgEl.style.width='100%';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    pgEl.style.transition='width linear 5s'; pgEl.style.width='0%';
+  }));
+}
+
+function delta(key,cur){
+  const p=prev[key]; prev[key]=cur;
+  if(p==null||p===cur) return '';
+  return cur>p?`<span class="delta up">+${cur-p}</span>`:`<span class="delta dn">${cur-p}</span>`;
+}
+
 async function load(){
-  let d; try{ d=await (await fetch('/api/stats')).json(); }catch(e){ return; }
+  pulseEl.classList.add('spin');
+  let d; try{ d=await (await fetch('/api/stats')).json(); }catch(e){ pulseEl.classList.remove('spin'); return; }
+  pulseEl.classList.remove('spin');
+
   const t=d.totals||{};
   document.getElementById('tiles').innerHTML=`
-    <div class="tile"><b>${t.servers??0}</b><span>servers</span></div>
-    <div class="tile"><b>${t.spots??0}</b><span>spots cataloged</span></div>
-    <div class="tile"><b>${t.votes??0}</b><span>votes cast</span></div>
-    <div class="tile"><b>${t.nights??0}</b><span>nights out</span></div>`;
+    <div class="tile"><b>${t.servers??0}</b>${delta('servers',t.servers??0)}<span>Discord servers</span></div>
+    <div class="tile"><b>${t.spots??0}</b>${delta('spots',t.spots??0)}<span>spots cataloged</span></div>
+    <div class="tile"><b>${t.votes??0}</b>${delta('votes',t.votes??0)}<span>votes cast</span></div>
+    <div class="tile"><b>${t.nights??0}</b>${delta('nights',t.nights??0)}<span>nights out</span></div>
+    <div class="tile"><b>${(d.captures||[]).length}</b><span>captures (session)</span></div>`;
+
   document.getElementById('chips').innerHTML=Object.entries(d.services||{}).map(([k,up])=>
-    `<span class="chip ${up?'on':'off'}"><span class="dot"></span>${SVC_LABELS[k]||k}${up?'':' — off'}</span>`).join('');
+    `<span class="chip ${up?'on':'off'}"><span class="dot"></span>${SVC_LABELS[k]||k}</span>`).join('');
+
+  document.getElementById('ml').innerHTML=`
+    <span class="ml"><span class="icon">🔢</span>mxbai-embed-large · 1024-dim</span>
+    <span class="ml"><span class="icon">🔁</span>LLM cross-encoder re-ranking</span>
+    <span class="ml"><span class="icon">👤</span>User taste profile (α=0.25)</span>`;
+
+  const maxSpots=Math.max(1,...(d.tenants||[]).map(x=>x.spots));
   const rows=(d.tenants||[]).map(x=>
-    `<tr><td>${esc(x.guild)}</td><td class="num">${x.spots}</td><td class="num">${x.votes}</td>
-     <td class="num">${x.nights}</td><td>${esc(x.last)||'—'}</td></tr>`).join('');
+    `<tr>
+      <td>${esc(x.guild)}</td>
+      <td class="num">${x.spots}</td>
+      <td class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(x.spots/maxSpots*100)}%"></div></div></td>
+      <td class="num">${x.votes}</td>
+      <td class="num">${x.nights}</td>
+      <td>${esc(x.last)||'—'}</td>
+    </tr>`).join('');
   document.getElementById('tenants').innerHTML=
-    `<tr><th>server</th><th class="num">spots</th><th class="num">votes</th><th class="num">nights</th><th>last capture</th></tr>`
-    +(rows||`<tr><td colspan="5" class="empty">no catalogs yet</td></tr>`);
+    `<tr><th>server / guild id</th><th class="num">spots</th><th class="bar-cell"></th><th class="num">votes</th><th class="num">nights</th><th>last capture</th></tr>`
+    +(rows||`<tr><td colspan="6" class="empty">no catalogs yet</td></tr>`);
+
   document.getElementById('feed').innerHTML=(d.captures||[]).map(c=>{
-    const when=new Date(c.ts*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const when=new Date(c.ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     const fails=(c.rejected||0)+(c.unreadable||0);
     return `<div class="cap"><time>${when}</time><span class="g">${esc(c.guild_id)||'default'}</span>
       <span>${c.urls} link${c.urls===1?'':'s'} → <span class="ok-n">${c.added} added</span>${fails?` · <span class="bad-n">${fails} failed</span>`:''}</span>
-      <span class="r">${(c.duration_s??0)}s</span></div>`;
+      <span class="r">${(c.duration_s??0).toFixed(1)}s</span></div>`;
   }).join('')||`<div class="empty">no captures since the app started</div>`;
+
+  startBar();
 }
-load(); setInterval(load, 10000);
+
+window.addEventListener('DOMContentLoaded',()=>{
+  countEl=document.getElementById('next');
+  pgEl=document.getElementById('pgbar');
+  pulseEl=document.getElementById('pulse');
+  load();
+  setInterval(load, 5000);
+  setInterval(()=>{
+    countdown=(countdown<=1)?5:countdown-1;
+    countEl.textContent=`next refresh in ${countdown}s`;
+  }, 1000);
+});
 </script>
 </body></html>"""

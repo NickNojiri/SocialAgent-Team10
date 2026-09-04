@@ -126,7 +126,7 @@ class IngestionSettings(BaseModel):
     chroma_enabled: bool = False
     chroma_path: str = "data"                       # same persistent store as PreferenceStore
     chroma_collection: str = "event_inspirations"   # dedicated, isolated collection
-    embed_model: str = "llama3.2:1b"                # already pulled; mirrors PreferenceStore
+    embed_model: str = "mxbai-embed-large"            # 1024-dim embedding model; pull with: ollama pull mxbai-embed-large
 
     # ── Recommendation serving (Phase 6) ─────────────────────────────────────
     # Spam controls for chat-context recommendations queried from the bot.
