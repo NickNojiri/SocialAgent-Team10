@@ -403,11 +403,13 @@ class RecommendationService:
                         hits["documents"][0], hits["metadatas"][0], hits["distances"][0]
                     )
                 ]
-                log.debug("taste profile applied (%d liked spots)", len(liked_embeddings))
+                log.info("🎯 taste profile applied — %d liked spots biasing query (α=0.25)", len(liked_embeddings))
             except Exception as exc:
-                log.debug("taste blend failed, falling back to text query: %s", exc)
+                log.warning("taste blend failed, falling back to text query: %s", exc)
                 hits = self.sink.query(query, k=fetch_k, where=where)
         else:
+            if user_id:
+                log.info("👤 user %s has no liked spots yet — cold start, using raw query", user_id)
             hits = self.sink.query(query, k=fetch_k, where=where)
 
         # ML Layer 2: LLM cross-encoder re-ranking.
@@ -416,7 +418,9 @@ class RecommendationService:
         # cosine distance alone. Only fires for command/plan mode (not auto-suggest)
         # to avoid adding latency to every message.
         if rerank and not auto and len(hits) > 1:
+            log.info("🔁 LLM re-ranking %d candidates for query: %r", len(hits), query[:60])
             hits = rerank_with_llm(query, hits, self.settings)
+            log.info("✅ re-ranking complete — top result: %s", hits[0]["metadata"].get("venue_name", "?") if hits else "none")
 
         # 4. Relevance floor + 5. dedup + max results.
         recent = self._recent.setdefault(channel_id, {})

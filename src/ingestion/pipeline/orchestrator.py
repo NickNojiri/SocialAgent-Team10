@@ -141,12 +141,19 @@ class IngestionPipeline:
                         if session is None:
                             session = await SocialSessionManager(self.settings).__aenter__()
                         snapshot = await session.fetch(url)
-                        # If IG returned a login wall, attempt the embed-page fallback
-                        # before giving up — recovers the caption without login ~70% of the time.
-                        if snapshot.status is FetchStatus.LOGIN_WALL:
+                        # If IG returned a login wall OR timed-out on the first page load,
+                        # attempt the embed-page fallback before giving up.
+                        # The embed path is a plain HTTP GET (no Playwright), so it succeeds
+                        # even when the browser is slow or blocked — recovers captions ~70% of
+                        # the time for public reels.
+                        if snapshot.status in (FetchStatus.LOGIN_WALL, FetchStatus.TIMEOUT):
+                            log.info("[pipeline] %s → %s; trying embed fallback", url, snapshot.status.value)
                             recovered = await try_embed_fallback(url)
                             if recovered is not None:
+                                log.info("[pipeline] embed fallback succeeded for %s", url)
                                 snapshot = recovered
+                            else:
+                                log.info("[pipeline] embed fallback also failed for %s", url)
                         result = await asyncio.wait_for(
                             asyncio.to_thread(self._process, snapshot), timeout=budget
                         )
