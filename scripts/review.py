@@ -96,7 +96,8 @@ def main() -> None:
                 pass
 
         if not args.no_open:
-            subprocess.Popen(["xdg-open", r["url"]],
+            embed = f"https://www.instagram.com/p/{code}/embed/captioned/"  # no login wall
+            subprocess.Popen(["xdg-open", embed],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         print("\n" + "─" * 72)
