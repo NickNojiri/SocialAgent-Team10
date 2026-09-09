@@ -603,6 +603,9 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
     text = f"{caption} {' '.join(raw.hashtags or [])}"
     handle = (getattr(raw, "author_handle", "") or "").lstrip("@")
 
+    if slot == "list":                          # a ranking / roundup — no single spot to save
+        return True
+
     # "Not a place" signals strong enough to fire even if a (likely bogus) venue
     # was pulled: a cooking-instructions post, or a tourism-board account. Not when
     # the venue came from a high-confidence slot (a real venue that mentions a recipe).
@@ -629,9 +632,13 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
         return False
     if _AD_MARKERS.search(text):
         return True
-    # Pure hype from a place's own account with no location anywhere.
-    if len(caption) < 120 and re.search(
-        r"\b(is back|back!|now open|limited time|last chance|don'?t miss|lock (?:it |them )?down)\b",
+    # No venue, no location, category=other — a short caption that is pure hype,
+    # an engagement-bait teaser, or a new-special announcement is not a spot.
+    if len(caption) < 140 and re.search(
+        r"\b(is back|back!|now open|new today|new season|limited time|last chance|"
+        r"don'?t miss|lock (?:it |them )?down|you hungry|who'?s hungry|what would you order|"
+        r"comment (?:below|for|['\"“]?[a-z]+['\"”]?)|tag (?:a friend|someone)|save this|"
+        r"link in bio|dm (?:me |us )?for|obviously\??$|new specials?)\b",
         caption, re.IGNORECASE,
     ):
         return True

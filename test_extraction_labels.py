@@ -43,11 +43,15 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #   ── HONEST held-out (--split test, 46-47 rows): venue exact 47.8% · fuzzy 52.2%
 #      · category 66.0% · city 62.2%. The floors below are on ALL labeled rows.
 #   all-split                          : venue exact 96/185 · fuzzy 104/185 · category 134/186 · city 114/151 · vague 8/16
-_FLOOR_VENUE_EXACT = 96
-_FLOOR_VENUE_FUZZY = 104
-_FLOOR_CATEGORY = 134
-_FLOOR_CITY = 114
-_FLOOR_VAGUE = 8
+#   2026-09-09 label-loop pass: +231 hand-labeled DM-harvest rows (16 more left
+#     needs_review), aliases regenerated (63). Heuristic-only on all 433 rows,
+#     --split all numerators below:
+#   all-split (433, 417 labeled)       : venue 207/415 · fuzzy 217/415 · category 284/417 · city 262/341 · vague 15/51  |  HONEST test: venue 49.6% · cat 63.2% · city 73.1%
+_FLOOR_VENUE_EXACT = 207
+_FLOOR_VENUE_FUZZY = 217
+_FLOOR_CATEGORY = 284
+_FLOOR_CITY = 262
+_FLOOR_VAGUE = 15
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.
