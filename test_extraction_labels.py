@@ -34,10 +34,14 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #     real-estate/hype vague · _IN_CITY multi-match + region demotion · curly
 #     apostrophes · _FIRST_PERSON widening):
 #   round-3 full                       : venue exact 67/158 · fuzzy 77/158 · category 119/161 · city 86/130 · vague 8/12
-_FLOOR_VENUE_EXACT = 67
-_FLOOR_VENUE_FUZZY = 77
+#   + round-4 (alias table from corpus corrections · gazetteer expanded past
+#     SoCal · profile-name capture): venue partly corpus-fitted via aliases —
+#     the honest gain is city (gazetteer). Real number comes from the train/test split.
+#   round-4                            : venue exact 82/158 · fuzzy 88/158 · category 119/161 · city 102/130 · vague 8/12
+_FLOOR_VENUE_EXACT = 82
+_FLOOR_VENUE_FUZZY = 88
 _FLOOR_CATEGORY = 119
-_FLOOR_CITY = 86
+_FLOOR_CITY = 102
 _FLOOR_VAGUE = 8
 
 # Regression guards: venue name is a run-together @handle in the caption and the

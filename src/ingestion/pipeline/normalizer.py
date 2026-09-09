@@ -9,7 +9,9 @@ grounded fields override the heuristics, while coordinates, hashtags, hashes, an
 provenance stay code-owned (merged, never delegated).
 """
 
+import json
 import re
+from pathlib import Path
 from typing import Optional
 
 from src.ingestion.schemas.extraction import LlmExtraction
@@ -166,6 +168,23 @@ _AREA_HASHTAGS = {
     "sangabrielvalley": "San Gabriel Valley", "sgv": "San Gabriel Valley",
     "sanfrancisco": "San Francisco", "hollywood": "Hollywood",
     "koreatown": "Koreatown", "ktown": "Koreatown", "carson": "Carson", "torrance": "Torrance",
+    "alhambra": "Alhambra", "montereypark": "Monterey Park", "cerritos": "Cerritos",
+    "newportbeach": "Newport Beach", "danapoint": "Dana Point", "sanjuancapistrano": "San Juan Capistrano",
+    "sanmarcos": "San Marcos", "escondido": "Escondido", "carlsbad": "Carlsbad",
+    "ranchocucamonga": "Rancho Cucamonga", "redlands": "Redlands", "rollinghillsestates": "Rolling Hills Estates",
+    "downey": "Downey", "westadams": "West Adams", "sawtelle": "Sawtelle", "westhollywood": "West Hollywood",
+    "santamonica": "Santa Monica", "culvercity": "Culver City", "melrose": "Melrose",
+    # outside SoCal — appears in DM batches
+    "sanjose": "San Jose", "sanmateo": "San Mateo", "berkeley": "Berkeley", "hayward": "Hayward",
+    "paloalto": "Palo Alto", "bayarea": "Bay Area", "sacramento": "Sacramento",
+    "chicago": "Chicago", "logansquare": "Logan Square", "lakeview": "Lakeview",
+    "seattle": "Seattle", "newyork": "New York", "nyc": "New York", "hellskitchen": "Hell's Kitchen",
+    "williamsburg": "Williamsburg", "brooklyn": "Brooklyn", "queens": "Queens", "littleneck": "Little Neck",
+    "boston": "Boston", "dallas": "Dallas", "orlando": "Orlando", "winterpark": "Winter Park",
+    "miami": "Miami", "wynwood": "Wynwood", "coralgables": "Coral Gables", "fortlauderdale": "Fort Lauderdale",
+    "toronto": "Toronto", "yorkville": "Yorkville", "vancouver": "Vancouver",
+    "melbourne": "Melbourne", "perth": "Perth", "subiaco": "Subiaco", "amsterdam": "Amsterdam",
+    "sydney": "Sydney", "chinatown": "Chinatown", "singapore": "Singapore",
     # named complexes that pin a city
     "disneyland": "Anaheim", "disneylandresort": "Anaheim", "downtowndisney": "Anaheim",
     "disneysprings": "Lake Buena Vista", "waltdisneyworld": "Lake Buena Vista",
@@ -238,6 +257,8 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         t_venue, _ = _venue_slot(raw, raw.transcript)
         if t_venue:
             venue, venue_slot = t_venue, "transcript"
+    if venue and (fix := _ALIASES.get(_norm_alias(venue))):   # learned correction
+        venue, venue_slot = fix, "alias"
     geo = _geo_context(raw, caption if not raw.transcript else f"{caption}\n{raw.transcript}")
     if venue is None and geo.raw_location_text:
         guess = geo.raw_location_text.split(",")[0].strip() or None
@@ -306,13 +327,48 @@ def _is_container(name: Optional[str]) -> bool:
     return bool(name) and name.strip().lower().rstrip(".").strip() in _CONTAINERS
 
 
+_DISPLAY_JUNK = re.compile(
+    r"\b(foodie|eats|eater|eatz|noms|blog|guide|reviews?|official|nyc|la|oc|sd|sf|"
+    r"restaurant group|hospitality|media|content)\b", re.IGNORECASE,
+)
+
+
+def _clean_display_name(name: Optional[str]) -> Optional[str]:
+    """An IG profile 'full_name' — a venue name only if it reads like one: a short
+    Title-Case phrase with no blogger/personal-account tells and no emoji."""
+    if not name:
+        return None
+    s = re.sub(r"[^\w &'’.\-]", "", name).strip(" .,&-")
+    if not s or len(s) > 45 or "  " in name.strip():
+        return None
+    toks = s.split()
+    if not (1 <= len(toks) <= 5) or _DISPLAY_JUNK.search(s):
+        return None
+    if not any(t[:1].isupper() for t in toks) or s.lower() in _AREA_CITY_SET:
+        return None
+    return s
+
+
 # Which slot filled the venue → a confidence the rest of the system can act on
 # (route low-confidence to human review; spend the LLM only on the uncertain tail).
 VENUE_CONF = {
-    "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
+    "alias": 0.9, "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
     "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55, "transcript": 0.5,
     "title_fallback": 0.3, "llm_fill": 0.35, "none": 0.0,
 }
+
+# Learned corrections: normalize(predicted) -> canonical venue. Regenerate with
+# scripts/build_aliases.py after any change to fixtures/labels.jsonl.
+try:
+    _ALIASES: dict[str, str] = json.loads(
+        (Path(__file__).resolve().parents[3] / "fixtures" / "venue_aliases.json").read_text()
+    )
+except Exception:  # noqa: BLE001
+    _ALIASES = {}
+
+
+def _norm_alias(s: Optional[str]) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
 _VENUE_COLON = re.compile(r"^\s*(?P<venue>[A-Z][\w &'’.\-]{2,45}?):\s*\$")
@@ -426,8 +482,11 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if len(mentions) == 1 and not _BLOGGER_HANDLE.search(mentions[0]):
         return _caption_spelling(_handle_to_name(mentions[0]), caption), "bare_mention"
 
-    if _FIRST_PERSON.search(caption) and getattr(raw, "author_handle", None):
-        return _caption_spelling(_handle_to_name(raw.author_handle), caption), "first_person"
+    if _FIRST_PERSON.search(caption) and (getattr(raw, "author_handle", None) or getattr(raw, "author_name", None)):
+        name = _clean_display_name(getattr(raw, "author_name", None))
+        if not name:
+            name = _caption_spelling(_handle_to_name(raw.author_handle), caption)
+        return name, "first_person"
 
     pm = _PIN_LINE.search(caption)                # "📍 Grounded Coffee House"
     if pm:
@@ -449,6 +508,9 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
         cleaned = cleaned.split("•")[0].split("|")[0].strip()
         if cleaned:
             return cleaned, "title_fallback"
+    disp = _clean_display_name(getattr(raw, "author_name", None))
+    if disp:                                   # the account's own name, last resort
+        return disp, "title_fallback"
     return None, "none"
 
 

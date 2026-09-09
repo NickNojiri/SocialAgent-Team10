@@ -121,6 +121,7 @@ class AuthedInstagramSource:
             fetched_at=datetime.now(timezone.utc),
             caption=caption,
             author_handle=getattr(user, "username", None),
+            author_name=getattr(user, "full_name", None) or None,   # profile display name
             image_url=str(thumbnail) if thumbnail else None,
             location_text=getattr(location, "name", None),
             # Platform coordinates are authoritative — the geo enricher records

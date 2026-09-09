@@ -53,6 +53,7 @@ def _row(url: str, raw, cand: dict) -> dict:
             "caption": getattr(raw, "caption", None) or "",
             "og_title": getattr(raw, "title", None) or "",
             "handle": getattr(raw, "author_handle", None) or "",
+            "author_name": getattr(raw, "author_name", None) or "",
             "ocr": getattr(raw, "frame_text", None) or "",
             "transcript": getattr(raw, "transcript", None) or "",
             "hashtags": list(getattr(raw, "hashtags", None) or []),

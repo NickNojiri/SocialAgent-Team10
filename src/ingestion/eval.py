@@ -59,6 +59,7 @@ def raw_from_input(url: str, inp: dict) -> RawPostSnapshot:
         caption=inp.get("caption") or None,
         title=inp.get("og_title") or None,
         author_handle=inp.get("handle") or None,
+        author_name=inp.get("author_name") or None,
         frame_text=inp.get("ocr") or None,
         transcript=inp.get("transcript") or None,
         hashtags=list(inp.get("hashtags") or []),
