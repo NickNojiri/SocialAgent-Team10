@@ -1,16 +1,12 @@
-"""Fast keyboard review of corpus rows that need a human.
+"""Label the reels the bot couldn't figure out.
 
-    python scripts/review.py            # rows with verdict.venue == "needs_review"
-    python scripts/review.py --misses   # + rows the extractor currently gets wrong
-    python scripts/review.py --no-open  # don't launch the browser
+    python scripts/review.py            # label the unlabeled rows
+    python scripts/review.py --misses   # re-check already-labeled rows the bot still gets wrong
+    python scripts/review.py --no-open  # don't auto-open the browser
 
-For each row it opens the reel in your browser and prompts. Progress is written
-after every row, so Ctrl-C any time and re-run to resume.
-
-Prompts (Enter = keep what's shown):
-  venue :  text = set it · "-" = not a real place (in_catalog=false) · Enter = accept predicted
-  city  :  text = set it · "-" = clear · Enter = accept predicted
-  cat   :  1-8 from the menu · Enter = keep
+For each reel it opens the video in your browser, shows the caption and the
+bot's guess, and asks 3 things. Answers save immediately — press q to stop and
+just run it again to pick up where you left off.
 """
 
 from __future__ import annotations
@@ -63,78 +59,100 @@ def main() -> None:
         elif args.misses and v.get("venue") in ("wrong", "missing") and labeled:
             todo.append(idx)
 
-    print(f"{len(todo)} rows to review  ({CORPUS})\n", file=sys.stderr)
+    print(f"""
+{len(todo)} reels to label.  For each one:
+
+  Q1 venue  — the ONE place the reel is about (a restaurant / bar / cafe / bakery).
+              Type its name.  Press ENTER to accept the [bracketed] guess.
+              Type  x  if it's NOT about one place (a recipe, an ad, a meme).
+              Type  ?  if you can't tell — comes back later.
+  Q2 city   — the city or neighborhood.  ENTER accepts the guess.  Type  x  for none.
+  Q3 type   — pick a number 1-8.  ENTER keeps the guess.
+
+  Type  q  at any question to stop (your work is saved; just re-run to continue).
+""", file=sys.stderr)
+
+    CAT_MENU = "  1 food/drink   2 cafe/dessert   3 nightlife/bar   4 live music\n" \
+               "  5 market/popup  6 outdoors       7 community       8 other"
+
     for n, idx in enumerate(todo, 1):
         r = rows[idx]
         code = r["url"].rstrip("/").split("/")[-1]
         i = r.get("input", {})
-        p = r.get("predicted", {})
         g = r.get("gold", {})
         cap = " ".join((i.get("caption") or "").split())
 
-        pv = p.get("venue")
-        if normalize is not None:                 # show the CURRENT extractor output
+        guess_v = r.get("predicted", {}).get("venue")
+        guess_c = r.get("predicted", {}).get("city")
+        guess_cat = r.get("predicted", {}).get("category") or "other"
+        if normalize is not None:                 # re-run the parser for a live guess
             try:
                 c = normalize(raw_from_input(r["url"], i))
-                pv = c.get("venue_name")
-                p = {"venue": pv, "city": (c.get("geo").place_names or [None])[-1]
-                     if c.get("geo") else None, "category": getattr(c.get("category"), "value", None)}
+                guess_v = c.get("venue_name")
+                gp = getattr(c.get("geo"), "place_names", None) or []
+                guess_c = gp[-1] if gp else None
+                guess_cat = getattr(c.get("category"), "value", guess_cat)
             except Exception:  # noqa: BLE001
                 pass
 
-        print("\n" + "═" * 70)
-        print(f"[{n}/{len(todo)}]  {code}   @{i.get('handle')}   {r['url']}")
-        if i.get("venue_candidate"):
-            print(f"  IG tag  : {i['venue_candidate']!r}")
-        if g.get("venue") or g.get("in_catalog") is False:
-            print(f"  CURRENT gold: venue={g.get('venue')!r}  city={g.get('city')!r}  cat={g.get('category')}  in_catalog={g.get('in_catalog')}")
-        print(f"  extractor : venue={pv!r}  city={p.get('city')!r}  cat={p.get('category')}")
-        if i.get("transcript"):
-            print(f"  transcript: {' '.join(i['transcript'].split())[:240]}")
-        print(f"  caption : {cap[:500]}")
         if not args.no_open:
             subprocess.Popen(["xdg-open", r["url"]],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+        print("\n" + "─" * 72)
+        print(f"  REEL {n} of {len(todo)}   ·   {r['url']}   ·   @{i.get('handle')}")
+        print(f"  caption   “{cap[:400]}”")
+        if i.get("transcript"):
+            print(f"  spoken    “{' '.join(i['transcript'].split())[:220]}”")
+        if i.get("venue_candidate"):
+            print(f"  IG tag    {i['venue_candidate']}")
+        if g.get("venue") or g.get("in_catalog") is False:
+            print(f"  (already labeled: {g.get('venue')!r} / {g.get('city')!r} / {g.get('category')})")
+        print(f"  BOT GUESS   venue: {guess_v or '—'}   city: {guess_c or '—'}   type: {guess_cat}")
+        print()
+
         try:
-            ans = input(f"  venue [{p.get('venue') or ''}] (- = not a place, s = skip, q = quit): ").strip()
+            ans = input(f"  Q1 venue?  [{guess_v or ''}]  (name / ENTER=guess / x=not a place / ?=later / q=quit)\n     > ").strip()
         except EOFError:
             break
-        if ans == "q":
+        if ans.lower() == "q":
             break
-        if ans == "s":
+        if ans == "?":
             continue
 
         incat = True
-        if ans == "-":
-            gold_v = None
-            incat = False
+        if ans.lower() == "x":
+            gold_v, incat = None, False
         elif ans == "":
-            gold_v = p.get("venue")
+            gold_v = guess_v
         else:
             gold_v = ans
 
-        city_in = input(f"  city  [{p.get('city') or ''}] (- = none): ").strip()
-        gold_c = None if city_in == "-" else (p.get("city") if city_in == "" else city_in)
+        city_in = input(f"  Q2 city?   [{guess_c or ''}]  (name / ENTER=guess / x=none / q=quit)\n     > ").strip()
+        if city_in.lower() == "q":
+            break
+        gold_c = None if city_in.lower() == "x" else (guess_c if city_in == "" else city_in)
 
-        print("   " + "  ".join(f"{k+1}:{c}" for k, c in enumerate(CATS)))
-        cat_in = input(f"  cat   [{p.get('category') or 'other'}]: ").strip()
-        gold_cat = CATS[int(cat_in) - 1] if cat_in.isdigit() and 1 <= int(cat_in) <= 8 \
-            else (p.get("category") or "other")
+        print(CAT_MENU)
+        cat_in = input(f"  Q3 type?   [{guess_cat}]  (1-8 / ENTER=guess / q=quit)\n     > ").strip()
+        if cat_in.lower() == "q":
+            break
+        gold_cat = CATS[int(cat_in) - 1] if cat_in.isdigit() and 1 <= int(cat_in) <= 8 else guess_cat
 
         r["gold"] = {"venue": gold_v, "city": gold_c, "category": gold_cat, "in_catalog": incat}
         r["verdict"] = {
-            "venue": "right" if (gold_v is None and not p.get("venue"))
-            or _norm(p.get("venue")) == _norm(gold_v) else ("missing" if not p.get("venue") else "wrong"),
-            "city": "right" if _norm(p.get("city")) == _norm(gold_c) else ("missing" if not p.get("city") else "wrong"),
-            "category": "right" if p.get("category") == gold_cat else "wrong",
+            "venue": "right" if (gold_v is None and not guess_v) or _norm(guess_v) == _norm(gold_v)
+            else ("missing" if not guess_v else "wrong"),
+            "city": "right" if _norm(guess_c) == _norm(gold_c) else ("missing" if not guess_c else "wrong"),
+            "category": "right" if guess_cat == gold_cat else "wrong",
         }
-        r["note"] = (input("  note (optional): ").strip() or r.get("note", ""))
+        r["note"] = r.get("note", "")
         rows[idx] = r
-        _save(rows)               # persist after every row
-        print("  ✓ saved")
+        _save(rows)
+        print(f"  ✓ saved  →  {gold_v or ('NOT A PLACE' if not incat else '(none)')}")
 
-    print(f"\ndone — {CORPUS}", file=sys.stderr)
+    left = sum(1 for x in rows if x.get("verdict", {}).get("venue") == "needs_review")
+    print(f"\nstopped — {left} still unlabeled. re-run to continue.", file=sys.stderr)
 
 
 if __name__ == "__main__":
