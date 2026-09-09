@@ -42,17 +42,25 @@ def _norm(s: str | None) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--misses", action="store_true", help="also review extractor-wrong rows")
+    ap.add_argument("--misses", action="store_true",
+                    help="re-audit extractor-wrong rows that are ALREADY labeled")
     ap.add_argument("--no-open", action="store_true")
     args = ap.parse_args()
+
+    try:
+        from src.ingestion.eval import raw_from_input
+        from src.ingestion.pipeline.normalizer import normalize
+    except Exception:  # noqa: BLE001
+        raw_from_input = normalize = None
 
     rows = _load()
     todo = []
     for idx, r in enumerate(rows):
         v = r.get("verdict", {})
+        labeled = (r.get("gold") or {}).get("venue") or (r.get("gold") or {}).get("in_catalog") is False
         if v.get("venue") == "needs_review":
             todo.append(idx)
-        elif args.misses and v.get("venue") in ("wrong", "missing"):
+        elif args.misses and v.get("venue") in ("wrong", "missing") and labeled:
             todo.append(idx)
 
     print(f"{len(todo)} rows to review  ({CORPUS})\n", file=sys.stderr)
@@ -64,11 +72,25 @@ def main() -> None:
         g = r.get("gold", {})
         cap = " ".join((i.get("caption") or "").split())
 
+        pv = p.get("venue")
+        if normalize is not None:                 # show the CURRENT extractor output
+            try:
+                c = normalize(raw_from_input(r["url"], i))
+                pv = c.get("venue_name")
+                p = {"venue": pv, "city": (c.get("geo").place_names or [None])[-1]
+                     if c.get("geo") else None, "category": getattr(c.get("category"), "value", None)}
+            except Exception:  # noqa: BLE001
+                pass
+
         print("\n" + "═" * 70)
         print(f"[{n}/{len(todo)}]  {code}   @{i.get('handle')}   {r['url']}")
         if i.get("venue_candidate"):
             print(f"  IG tag  : {i['venue_candidate']!r}")
-        print(f"  predicted: venue={p.get('venue')!r}  city={p.get('city')!r}  cat={p.get('category')}")
+        if g.get("venue") or g.get("in_catalog") is False:
+            print(f"  CURRENT gold: venue={g.get('venue')!r}  city={g.get('city')!r}  cat={g.get('category')}  in_catalog={g.get('in_catalog')}")
+        print(f"  extractor : venue={pv!r}  city={p.get('city')!r}  cat={p.get('category')}")
+        if i.get("transcript"):
+            print(f"  transcript: {' '.join(i['transcript'].split())[:240]}")
         print(f"  caption : {cap[:500]}")
         if not args.no_open:
             subprocess.Popen(["xdg-open", r["url"]],
