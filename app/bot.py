@@ -438,20 +438,13 @@ async def browse_command(
         return
 
     events.sort(key=lambda e: -int(e.get("votes", 0)))
-    shown = events[:5]
-    await interaction.followup.send(
-        f"📖 **{len(events)} spot{'s' if len(events) != 1 else ''}**"
-        + (f" in {category.name}" if category and wanted != 'all' else " saved")
-        + (f" — showing the top {len(shown)}:" if len(events) > len(shown) else ":")
-    )
-    for ev in shown:
-        await interaction.channel.send(
-            embed=cards.build_spot_embed(ev),
-            view=cards.build_spot_view(ev["id"], int(ev.get("votes", 0))),
-        )
-    if len(events) > len(shown):
-        await interaction.channel.send(
-            f"…and {len(events) - len(shown)} more — narrow with a category, or see `/share`."
+    label = category.name if category and wanted != "all" else None
+    view = cards.BrowseView(events, label=label)
+    if view.pages == 1:
+        await interaction.followup.send(embed=view.embed())
+    else:
+        view.message = await interaction.followup.send(
+            embed=view.embed(), view=view, wait=True
         )
 
 

@@ -39,6 +39,15 @@ def build_record(
 
     candidates = normalize(raw, llm_extraction=llm_extraction)
 
+    # Not an EventInspiration field: a heuristic "this isn't a place/event at all"
+    # gate (product ads, music clips) so the catalog stays clean without an LLM.
+    if candidates.pop("is_vague", False):
+        return None, "post is not clearly about a place, event, or food"
+
+    # Extraction-quality signals ride in provenance, not the record body.
+    venue_slot = candidates.pop("venue_slot", None)
+    venue_confidence = candidates.pop("venue_confidence", 0.5)
+
     if extractor is None:
         extractor_tag = raw.extractor                       # Phase 1 behavior, unchanged
     elif llm_extraction is not None:
@@ -53,6 +62,8 @@ def build_record(
         "fetched_at": raw.fetched_at or datetime.now(timezone.utc),
         "content_hash": content_hash(basis),
         "extractor": extractor_tag,
+        "venue_slot": venue_slot,
+        "venue_confidence": venue_confidence,
     }
 
     try:

@@ -31,6 +31,8 @@ RECOMMEND_URL = os.getenv("RECOMMEND_URL", "http://recommend:8003")
 QUORUM = int(os.getenv("SPOT_QUORUM", "3"))
 # Fallback timezone for the default start time when a spot has no schedule.
 BOT_TZ = os.getenv("BOT_TZ", "America/Los_Angeles")
+# How many spots /browse shows per page (the ◀ ▶ pager cycles through the rest).
+BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 
 def guild_key(source) -> str:
     """Catalog tenant key: the server's guild id, or a per-user stash in DMs.
@@ -715,6 +717,89 @@ def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
     view.add_item(EditButton(event_id))
     view.add_item(RemoveButton(event_id))
     return view
+
+
+# ── /browse pager ────────────────────────────────────────────────────────────
+
+
+def _browse_page_count(total: int) -> int:
+    return max(1, (total + BROWSE_PAGE_SIZE - 1) // BROWSE_PAGE_SIZE)
+
+
+def build_browse_embed(events: list[dict], page: int, *, label: Optional[str] = None) -> discord.Embed:
+    """One page of the catalog as a compact numbered list.
+
+    /browse is a discovery surface, so a page is a scannable list rather than a
+    stack of full cards — BROWSE_PAGE_SIZE per page, the ◀ ▶ pager does the rest.
+    """
+    total = len(events)
+    pages = _browse_page_count(total)
+    page = max(0, min(page, pages - 1))
+    start = page * BROWSE_PAGE_SIZE
+    chunk = events[start : start + BROWSE_PAGE_SIZE]
+
+    scope = f" in {label}" if label else " saved"
+    embed = discord.Embed(
+        title=f"📖 {total} spot{'s' if total != 1 else ''}{scope}",
+        color=0x6EA8FE,
+    )
+    lines: list[str] = []
+    for rank, ev in enumerate(chunk, start=start + 1):
+        venue = ev.get("venue") or "Unknown spot"
+        url = ev.get("source_url")
+        linked = f"[{venue}]({url})" if url else f"**{venue}**"
+        row = f"`{rank:>2}` {emoji_for(ev.get('category', 'other'))} {linked} · {int(ev.get('votes', 0))} 👍"
+        note = ev.get("blurb") or ev.get("theme") or ""
+        if note:
+            note = " ".join(str(note).split())
+            row += f"\n{note[:99] + '…' if len(note) > 100 else note}"
+        lines.append(row)
+    embed.description = "\n\n".join(lines) or "Nothing here yet — paste a reel!"
+    embed.set_footer(text=f"Page {page + 1}/{pages} · sorted by 👍 · /share for the full web list")
+    return embed
+
+
+class BrowseView(discord.ui.View):
+    """◀ ▶ pager for /browse. Transient — no cross-restart persistence needed,
+    so it's a plain View (not a DynamicItem) that disables itself on timeout."""
+
+    def __init__(self, events: list[dict], *, label: Optional[str] = None, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.events = events
+        self.label = label
+        self.page = 0
+        self.pages = _browse_page_count(len(events))
+        self.message: Optional[discord.Message] = None
+        self._sync()
+
+    def _sync(self) -> None:
+        self.prev_page.disabled = self.page <= 0
+        self.next_page.disabled = self.page >= self.pages - 1
+
+    def embed(self) -> discord.Embed:
+        return build_browse_embed(self.events, self.page, label=self.label)
+
+    async def _turn(self, interaction: discord.Interaction, delta: int) -> None:
+        self.page = max(0, min(self.page + delta, self.pages - 1))
+        self._sync()
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+    @discord.ui.button(emoji="◀", style=discord.ButtonStyle.secondary)
+    async def prev_page(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._turn(interaction, -1)
+
+    @discord.ui.button(emoji="▶", style=discord.ButtonStyle.secondary)
+    async def next_page(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._turn(interaction, +1)
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
 
 
 def register_dynamic_items(client: discord.Client) -> None:

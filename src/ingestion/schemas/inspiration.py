@@ -82,6 +82,10 @@ class SourceProvenance(BaseModel):
     content_hash: str = Field(min_length=64, max_length=64)  # sha256 hex — dedupe key
     extractor: str                                           # adapter name/version
     temporal_parser: Optional[str] = None                    # e.g. "timeparser/dateparser-1.4.0"
+    # Which slot produced venue_name and how much to trust it (0-1). Drives
+    # "ask the group when unsure" and, later, targets LLM spend at low scores.
+    venue_slot: Optional[str] = None
+    venue_confidence: float = Field(0.5, ge=0.0, le=1.0)
 
 
 # Venue strings that mean page chrome leaked through, not a real venue.
@@ -92,6 +96,9 @@ _BOILERPLATE_VENUES = {
     "login",
     "facebook",
     "page not found",
+    "locations",
+    "location",
+    "explore",
 }
 
 

@@ -273,6 +273,22 @@ class TestNormalizer:
         assert candidates["geo"].source is GeoSource.PLATFORM_LOCATION_TAG
         assert candidates["geo"].confidence == pytest.approx(0.9)
 
+    def test_chrome_word_location_tag_is_ignored(self):
+        # Regression: IG's footer "Locations" link leaked in as location_text and
+        # became venue_name + a bogus 0.9-confidence geo on 12/18 live catalog rows.
+        candidates = normalize(make_raw(caption="great tacos, go try them", location_text="Locations"))
+        assert candidates["geo"].source is not GeoSource.PLATFORM_LOCATION_TAG
+        assert candidates["geo"].raw_location_text != "Locations"
+        assert candidates["venue_name"] != "Locations"
+
+    def test_looks_vague_gates_product_and_music_posts(self):
+        ad = make_raw(caption="When the first sip of Red Bull® Dragonberry Energizer hits.")
+        assert normalize(ad)["is_vague"] is True
+        music = make_raw(caption="worth it", hashtags=["newmusic", "housemusic", "edm"])
+        assert normalize(music)["is_vague"] is True
+        # A real venue post is never gated.
+        assert normalize(make_raw(caption=IG_CAPTION))["is_vague"] is False
+
     def test_category_keywords(self):
         assert normalize(make_raw(caption="best matcha latte in town"))["category"] is EventCategory.CAFE_DESSERT
         assert normalize(make_raw(caption="Friday jazz concert on the pier"))["category"] is EventCategory.LIVE_MUSIC
@@ -529,19 +545,27 @@ class TestLlmExtractorLadder:
 
 
 class TestNormalizeWithLlm:
-    def test_llm_overrides_heuristic_venue_and_category(self):
-        # Heuristics alone would pick "market_popup" + "Casa Loma"; force a divergent
-        # (grounded) LLM result and confirm it wins.
+    def test_llm_does_not_override_a_confident_heuristic(self):
+        # New contract (docs/EXTRACTION_ACCURACY.md): the LLM is a gap-filler.
+        # Heuristics pick "market_popup" + "Casa Loma" here; a divergent LLM
+        # result must NOT win — the small local model is measurably worse.
         raw = make_raw(caption=IG_CAPTION)
         ext = LlmExtraction(
-            venue_name="Casa Loma",
+            venue_name="Somewhere Else",
             core_theme="birria night",
             category="food_drink",
             candidate_times=["this Friday"],
         )
         candidates = normalize(raw, llm_extraction=ext)
-        assert candidates["category"] is EventCategory.FOOD_DRINK
-        assert candidates["core_theme"] == "birria night"
+        assert candidates["category"] is EventCategory.MARKET_POPUP
+        assert candidates["venue_name"] == "Casa Loma"
+        assert candidates["core_theme"] != "birria night"     # heuristic's theme kept
+        assert "this Friday" in candidates["candidate_times"]  # times still merged in
+
+    def test_llm_fills_venue_only_when_heuristic_found_none(self):
+        raw = make_raw(caption="no venue words here at all, just vibes")
+        ext = LlmExtraction(venue_name="The Back Room", category="nightlife")
+        assert normalize(raw, llm_extraction=ext)["venue_name"] == "The Back Room"
 
     def test_invalid_llm_category_coerced_to_other(self):
         raw = make_raw(caption="something neutral")
@@ -554,7 +578,9 @@ class TestNormalizeWithLlm:
         geo = normalize(raw, llm_extraction=ext)["geo"]
         assert geo.source is GeoSource.PLATFORM_LOCATION_TAG
         assert geo.raw_location_text == "Long Beach, California"
-        assert "Extra Place" in geo.place_names  # still enriched
+        # Gap-filler contract: the model does not touch geo once the heuristics
+        # have a location — its place_names are not merged into an authoritative tag.
+        assert "Extra Place" not in geo.place_names
 
     def test_llm_supplies_location_when_heuristics_blank(self):
         raw = make_raw(caption="no obvious location here")  # heuristic geo = NONE

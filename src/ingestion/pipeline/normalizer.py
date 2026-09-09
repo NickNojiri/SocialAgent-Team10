@@ -18,18 +18,88 @@ from src.ingestion.schemas.snapshot import RawPostSnapshot
 
 # Checked in order — more specific categories first, FOOD_DRINK as the broad net.
 _CATEGORY_KEYWORDS: list[tuple[EventCategory, tuple[str, ...]]] = [
-    (EventCategory.CAFE_DESSERT, ("cafe", "coffee", "dessert", "boba", "bakery", "ice cream", "matcha")),
-    (EventCategory.LIVE_MUSIC, ("live music", "concert", "band", "dj set", "jazz", "open mic", "vinyl night")),
-    (EventCategory.MARKET_POPUP, ("pop-up", "popup", "night market", "food fair", "farmers market", "festival")),
-    (EventCategory.NIGHTLIFE, ("bar", "cocktail", "brewery", "club", "happy hour", "speakeasy")),
-    (EventCategory.OUTDOORS, ("hike", "beach", "park", "picnic", "trail", "kayak")),
-    (EventCategory.COMMUNITY, ("meetup", "community", "volunteer", "workshop", "book club")),
-    (EventCategory.FOOD_DRINK, ("taco", "birria", "restaurant", "food", "brunch", "dinner", "eats", "ramen", "sushi", "bbq", "pizza", "burger")),
+    (EventCategory.CAFE_DESSERT, (
+        "cafe", "café", "coffee", "espresso", "latte", "dessert", "boba", "bubble tea",
+        "bakery", "pastry", "croissant", "ice cream", "gelato", "matcha", "cake",
+        "donut", "doughnut", "churro", "crepe", "s'more", "smore", "fresas con crema",
+    )),
+    (EventCategory.LIVE_MUSIC, (
+        "live music", "concert", "band", "dj set", "dj ", "jazz", "open mic",
+        "vinyl night", "gig", "live set", "house music", "rave",
+    )),
+    (EventCategory.MARKET_POPUP, (
+        "pop-up", "popup", "pop up", "night market", "food fair", "farmers market",
+        "festival", "vendor", "vendors", "booth", "all weekend", "weekend only",
+        "one day only", "this weekend only", "market this",
+    )),
+    (EventCategory.NIGHTLIFE, (
+        "bar", "cocktail", "cocktails", "brewery", "brew", "club", "happy hour",
+        "speakeasy", "wine bar", "natural wine", "lounge", "nightclub",
+    )),
+    (EventCategory.OUTDOORS, ("hike", "hiking", "beach", "picnic", "trail", "kayak", "camping", "national park", "state park")),
+    (EventCategory.COMMUNITY, ("meetup", "community", "volunteer", "workshop", "book club", "class ", "market day")),
+    (EventCategory.FOOD_DRINK, (
+        "taco", "birria", "restaurant", "food", "brunch", "breakfast", "lunch", "dinner",
+        "eats", "eatery", "kitchen", "grill", "diner", "bistro", "ramen", "sushi",
+        "omakase", "poke", "bbq", "barbecue", "korean bbq", "kbbq", "pizza", "burger",
+        "burrito", "quesadilla", "nachos", "carne asada", "al pastor", "pho", "noodle",
+        "dumpling", "dim sum", "hot pot", "naan", "curry", "pastrami", "sandwich",
+        "deli", "wings", "fried chicken", "crispy pata", "steak", "seafood", "oyster",
+        "lobster", "crab", "dessert menu", "menu", "erewhon",
+    )),
 ]
 
 _PIN_LINE = re.compile(r"📍\s*(?P<loc>[^\n#@—!]+)")
 _AT_VENUE = re.compile(r"\bat\s+(?P<venue>[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){0,4})")
-_IN_CITY = re.compile(r"\bin\s+(?P<city>[A-Z][a-zA-Z'-]*(?:\s+[A-Z][a-zA-Z'-]*){0,2})")
+# "from / by <Venue>" and "from / by @handle" — the venue-mention slot. Handled
+# separately from `at` so a preposition-specific priority is possible and so the
+# @handle branch can survive (an @mention has no leading capital).
+_FROM_VENUE = re.compile(
+    r"\b(?:from|by)\s+(?P<venue>[A-Z][\w'&.-]*(?:\s+[A-Z][\w'&.-]*){0,4})"
+)
+# A person, not a venue, when the mention starts with one of these.
+_PERSON_LEAD = re.compile(r"^(chef|owner|founder|my|the|our|host|dj)\b", re.IGNORECASE)
+_OWNER_OF = re.compile(r"\bowner of\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
+# A Title-Case proper name in quotes — usually a pop-up / event / branded item.
+_QUOTED_NAME = re.compile(r"[\"“”‘’']([A-Z][\w&'.-]*(?:\s+[\w&'.-]+){0,4})[\"“”‘’']")
+_FROM_HANDLE = re.compile(r"\b(?:from|by|at)\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
+_ANY_HANDLE = re.compile(r"(?<![\w.])@(?P<handle>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})")
+# First person → the posting account IS the venue ("our menu", "come see us").
+_FIRST_PERSON = re.compile(
+    r"\b(our|we're|we are|we've|come (?:to|see)|visit us|on (?:our|the) menu|to the menu)\b",
+    re.IGNORECASE,
+)
+# Named complexes that are never the venue on their own — kept as context.
+_CONTAINERS = {
+    "disney", "disneyland", "disneyland resort", "disney world", "disney springs",
+    "walt disney world", "california adventure", "disney california adventure",
+    "universal", "universal studios", "universal studios hollywood",
+    "universal citywalk", "citywalk", "knott's berry farm", "knotts berry farm",
+    "the grove", "the mall", "the airport", "lax", "sfo",
+}
+_IN_CITY = re.compile(r"\b[Ii]n\s+(?P<city>[A-Z][a-zA-Z'-]*(?:\s+[A-Z][a-zA-Z'-]*){0,2})")
+
+# In-house area gazetteer (seed: SoCal — the product's roots). A hashtag whose
+# normalised form equals a key, or contains one as a substring after stripping a
+# food/travel suffix ("longbeacheats" -> "longbeach"), yields the place.
+# Grow this file from /dash corrections — do not reach for a geocoding API.
+_AREA_HASHTAGS = {
+    "losangeles": "Los Angeles", "dtla": "Downtown Los Angeles", "socal": "Southern California",
+    "longbeach": "Long Beach", "lbc": "Long Beach",
+    "orangecounty": "Orange County", "theoc": "Orange County",
+    "anaheim": "Anaheim", "santaana": "Santa Ana", "irvine": "Irvine", "fullerton": "Fullerton",
+    "costamesa": "Costa Mesa", "huntingtonbeach": "Huntington Beach", "gardengrove": "Garden Grove",
+    "riverside": "Riverside", "sandiego": "San Diego", "pasadena": "Pasadena",
+    "sangabrielvalley": "San Gabriel Valley", "sgv": "San Gabriel Valley",
+    "sanfrancisco": "San Francisco", "hollywood": "Hollywood",
+    "koreatown": "Koreatown", "ktown": "Koreatown", "carson": "Carson", "torrance": "Torrance",
+    # named complexes that pin a city
+    "disneyland": "Anaheim", "disneylandresort": "Anaheim", "downtowndisney": "Anaheim",
+    "disneysprings": "Lake Buena Vista", "waltdisneyworld": "Lake Buena Vista",
+    "universalstudioshollywood": "Universal City", "universalcitywalk": "Universal City",
+}
+_HASHTAG_SUFFIXES = ("eats", "eater", "eatery", "food", "foodie", "foodies", "eeeeeats",
+                     "restaurants", "coffee", "life", "living", "local", "vibes", "explore")
 _TITLE_NOISE = re.compile(r"\(@[\w.]+\)")  # "(handle)" suffixes in account titles
 _URL = re.compile(r"https?://\S+")
 _TIME_MENTION = re.compile(
@@ -82,36 +152,40 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     """Return candidate kwargs for EventInspiration (validation happens later)."""
     caption = raw.caption or ""
     searchable = " ".join(
-        filter(None, [raw.caption, raw.transcript, raw.frame_text, raw.title, raw.description])
+        filter(None, [raw.caption, raw.transcript, raw.frame_text, raw.title, raw.description,
+                      " ".join(raw.hashtags or [])])
     )
 
     # 1. Heuristic baseline — always computed, deterministic, cheap.
-    venue = _venue_candidate(raw, caption)
+    venue, venue_slot = _venue_slot(raw, caption)
     geo = _geo_context(raw, caption)
     if venue is None and geo.raw_location_text:
         venue = geo.raw_location_text.split(",")[0].strip() or None
+        if venue:
+            venue_slot = "at_venue"  # a bare location string is a weak venue guess
     candidate_times = _heuristic_times(searchable, raw.start_date_raw)
     category = _categorize(searchable.lower())
     core_theme = _core_theme(raw, caption)
 
-    # 2. LLM layer — refines chaotic text; it never overrides structured data.
+    # 2. LLM layer — a GAP-FILLER, not an overrider. The slot parser + gazetteer
+    #    now beat a small local model on this content (measured: see
+    #    docs/EXTRACTION_ACCURACY.md), so the model only supplies what the
+    #    heuristics left blank. It never overrides a confident heuristic slot,
+    #    and structured data (JSON-LD Place) always wins.
     if llm_extraction is not None:
         ext = llm_extraction
-        # A JSON-LD Place name (raw.venue_candidate) is authoritative structured
-        # data, like coordinates — the model doesn't get to second-guess it.
         if raw.venue_candidate:
-            venue = raw.venue_candidate.strip()
-        else:
-            venue = ext.venue_name or venue
-        core_theme = ext.core_theme or core_theme
-        # Prefer a confident (non-OTHER) category. The model wins genuine ties on
-        # messy captions; the keyword heuristic is the floor when the model is
-        # unsure, so a clear "jazz concert" never regresses to "other".
-        llm_category = _coerce_category(ext.category)
-        if llm_category is not EventCategory.OTHER:
-            category = llm_category
-        candidate_times = _dedupe([*ext.candidate_times, *candidate_times])
-        geo = _merge_geo(geo, ext)
+            venue, venue_slot = raw.venue_candidate.strip(), "jsonld"
+        elif venue is None and ext.venue_name:
+            venue, venue_slot = ext.venue_name, "llm_fill"
+        core_theme = core_theme or ext.core_theme
+        # Category stays with the keyword heuristic. Measured: the small local
+        # model turns a correct "other" (promo / vague posts) into a wrong
+        # specific label more often than it rescues a genuine miss.
+        candidate_times = _dedupe([*candidate_times, *ext.candidate_times])
+        # Only consult the model for location when the heuristics found nothing.
+        if geo.source is GeoSource.NONE and not geo.place_names:
+            geo = _merge_geo(geo, ext)
 
     if venue:
         venue = venue[:110].strip()
@@ -127,25 +201,83 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         "candidate_times": candidate_times,
         # Code-owned like coordinates — the LLM never supplies or overrides it.
         "image_url": image_url if image_url.startswith("http") else None,
+        # Which slot filled the venue + its confidence (0-1). Routes the uncertain
+        # tail to review and, later, targets LLM spend at the low-confidence rows.
+        "venue_slot": venue_slot,
+        "venue_confidence": VENUE_CONF[venue_slot] if venue else 0.0,
+        # Not an EventInspiration field — build_record pops it and rejects if set.
+        "is_vague": looks_vague(raw, venue, geo, category, candidate_times),
     }
 
 
 # ── heuristic helpers (Phase 1, unchanged behavior) ─────────────────────────
 
 
-def _venue_candidate(raw: RawPostSnapshot, caption: str) -> Optional[str]:
+def _handle_to_name(handle: str) -> str:
+    """@waterfall.chicken -> 'Waterfall Chicken' (separators), and
+    @waterfallchicken -> 'Waterfall Chicken' via the bundled word-split; an
+    unsegmentable run stays whole ('erewhon' -> 'Erewhon')."""
+    from src.ingestion.pipeline.handle_split import split_handle
+
+    return split_handle(handle)
+
+
+def _is_container(name: Optional[str]) -> bool:
+    return bool(name) and name.strip().lower().rstrip(".").strip() in _CONTAINERS
+
+
+# Which slot filled the venue → a confidence the rest of the system can act on
+# (route low-confidence to human review; spend the LLM only on the uncertain tail).
+VENUE_CONF = {
+    "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
+    "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55,
+    "title_fallback": 0.3, "llm_fill": 0.35, "none": 0.0,
+}
+
+
+def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]:
+    """(venue, slot-name). Slot-first: structured > venue-mention (from/by/@handle)
+    > first-person poster > 'at <Venue>' > account title. Named complexes
+    ('Disneyland') never win on their own — they're context, not the venue."""
     if raw.venue_candidate:
-        return raw.venue_candidate.strip()
+        return raw.venue_candidate.strip(), "jsonld"
+
+    for pattern in (_OWNER_OF, _FROM_HANDLE):
+        m = pattern.search(caption)
+        if m:
+            return _handle_to_name(m.group("handle")), "handle_from"
+    m = _FROM_VENUE.search(caption)
+    if m:
+        cand = m.group("venue").strip(" .,!?:;")
+        if cand and not _is_container(cand) and not _PERSON_LEAD.match(cand):
+            return cand, "from_titlecase"
+
+    q = _QUOTED_NAME.search(caption)
+    if q and not _is_container(q.group(1)):
+        return q.group(1).strip(" .,!?:;"), "quoted"
+
+    author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
+    mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption)) if h.lower() != author]
+    if len(mentions) == 1:
+        return _handle_to_name(mentions[0]), "bare_mention"
+
+    if _FIRST_PERSON.search(caption) and getattr(raw, "author_handle", None):
+        return _handle_to_name(raw.author_handle), "first_person"
+
     at_match = _AT_VENUE.search(caption)
-    if at_match:
-        return at_match.group("venue").strip()
+    if at_match and not _is_container(at_match.group("venue")):
+        return at_match.group("venue").strip(), "at_venue"
+
     if raw.title:
-        # Last resort: the page/account title. For a venue's own account this
-        # is often correct ("Casa Loma Tacos (@casaloma) • Instagram…").
         cleaned = _TITLE_NOISE.sub("", raw.title)
         cleaned = cleaned.split("•")[0].split("|")[0].strip()
-        return cleaned or None
-    return None
+        if cleaned:
+            return cleaned, "title_fallback"
+    return None, "none"
+
+
+def _venue_candidate(raw: RawPostSnapshot, caption: str) -> Optional[str]:
+    return _venue_slot(raw, caption)[0]
 
 
 def _core_theme(raw: RawPostSnapshot, caption: str) -> Optional[str]:
@@ -172,11 +304,75 @@ def _heuristic_times(searchable: str, start_date_raw: Optional[str]) -> list[str
     return _dedupe(mentions)
 
 
+_AD_MARKERS = re.compile(
+    r"®|™|\b(?:special[-\s]?edition|limited[-\s]?edition|new flavou?r|available now|"
+    r"shop now|link in bio|use code|giveaway|sweepstakes|drinkware|merch(?:\s?drop)?|"
+    r"sponsored|#ad|paid partnership)\b",
+    re.IGNORECASE,
+)
+_MUSIC_GENRE_TAGS = {
+    "newmusic", "housemusic", "technomusic", "edm", "electronicmusic", "hiphop",
+    "rap", "rnb", "indiemusic", "rockmusic", "djlife", "producerlife", "speedgarage",
+    "garage", "dnb", "dubstep", "trap", "afrobeats",
+}
+
+
+def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times) -> bool:
+    """In-house stand-in for the LLM's is_vague: True when a post isn't clearly
+    about a place/event, so product ads and music clips don't enter the catalog.
+    Conservative — it only fires when EVERY place signal is absent."""
+    if venue or geo.place_names or candidate_times or category is not EventCategory.OTHER:
+        return False
+    text = f"{raw.caption or ''} {' '.join(raw.hashtags or [])}"
+    if _AD_MARKERS.search(text):
+        return True
+    tags = {re.sub(r"[^a-z0-9]", "", t.lower()) for t in (raw.hashtags or [])}
+    return len(tags & _MUSIC_GENRE_TAGS) >= 2
+
+
+def _place_from_hashtags(hashtags: list[str]) -> Optional[str]:
+    """First area-gazetteer hit across the post's hashtags, else None."""
+    for tag in hashtags or []:
+        key = re.sub(r"[^a-z0-9]", "", tag.lower())
+        if key in _AREA_HASHTAGS:
+            return _AREA_HASHTAGS[key]
+        for suffix in _HASHTAG_SUFFIXES:
+            if key.endswith(suffix) and key[: -len(suffix)] in _AREA_HASHTAGS:
+                return _AREA_HASHTAGS[key[: -len(suffix)]]
+        for gaz_key, place in _AREA_HASHTAGS.items():
+            if len(gaz_key) >= 6 and gaz_key in key:
+                return place
+    return None
+
+
+def _place_from_containers(caption: str) -> Optional[str]:
+    """A named complex in the caption ('… at Disneyland') pins a city, without the
+    decoy risk of scanning prose for arbitrary city names."""
+    low = caption.lower()
+    for name in _CONTAINERS:
+        if name in low:
+            city = _AREA_HASHTAGS.get(re.sub(r"[^a-z0-9]", "", name))
+            if city:
+                return city
+    return None
+
+
+# Nav/chrome words that leaked in as a "location tag" from a scraped page — never
+# a real place. Belt-and-suspenders behind the text_isolation.py href check.
+_CHROME_LOCATIONS = {
+    "locations", "location", "explore", "log in", "login", "sign up", "signup",
+    "about", "home", "meta", "help", "privacy", "terms",
+}
+
+
 def _geo_context(raw: RawPostSnapshot, caption: str) -> GeoContext:
     raw_location_text = raw.location_text
+    if raw_location_text and raw_location_text.strip().lower() in _CHROME_LOCATIONS:
+        raw_location_text = None
     source, confidence = GeoSource.NONE, 0.0
+    hashtag_place = _place_from_hashtags(raw.hashtags) or _place_from_containers(caption)
 
-    if raw.location_text or (raw.lat is not None and raw.lng is not None):
+    if raw_location_text or (raw.lat is not None and raw.lng is not None):
         source, confidence = GeoSource.PLATFORM_LOCATION_TAG, 0.9
     else:
         pin_match = _PIN_LINE.search(caption)
@@ -185,6 +381,8 @@ def _geo_context(raw: RawPostSnapshot, caption: str) -> GeoContext:
             source, confidence = GeoSource.CAPTION_TEXT, 0.6
         elif _IN_CITY.search(caption):
             source, confidence = GeoSource.CAPTION_TEXT, 0.5
+        elif hashtag_place:
+            source, confidence = GeoSource.HASHTAG, 0.4
         elif raw.hashtags:
             source, confidence = GeoSource.HASHTAG, 0.2
 
@@ -196,6 +394,8 @@ def _geo_context(raw: RawPostSnapshot, caption: str) -> GeoContext:
         city = city_match.group("city").strip()
         if city and city not in place_names:
             place_names.append(city)
+    if hashtag_place and hashtag_place not in place_names:
+        place_names.append(hashtag_place)
 
     return GeoContext(
         raw_location_text=raw_location_text,
@@ -208,13 +408,6 @@ def _geo_context(raw: RawPostSnapshot, caption: str) -> GeoContext:
 
 
 # ── LLM merge helpers ────────────────────────────────────────────────────────
-
-
-def _coerce_category(value: str) -> EventCategory:
-    try:
-        return EventCategory(value)
-    except ValueError:
-        return EventCategory.OTHER
 
 
 def _merge_geo(geo: GeoContext, ext: LlmExtraction) -> GeoContext:

@@ -51,6 +51,20 @@ Rules:
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 
+# When not using schema-constrained decoding, the model needs the field list
+# spelled out (the `format` schema used to carry it implicitly).
+_SCHEMA_HINT = (
+    "\n\nReturn ONLY a JSON object with exactly these keys:\n"
+    '  "venue_name": string or null   — the specific named place, verbatim from the input\n'
+    '  "core_theme": string or null   — one short phrase describing the post\n'
+    '  "category": one of "food_drink","cafe_dessert","nightlife","live_music",'
+    '"market_popup","outdoors","community","other"\n'
+    '  "raw_location_text": string or null — location as written in the post\n'
+    '  "place_names": array of strings — neighbourhoods/cities/venues mentioned (may be empty)\n'
+    '  "candidate_times": array of strings — raw date/time phrases, verbatim (may be empty)\n'
+    '  "is_vague": boolean — true when the post is not clearly about a place/event'
+)
+
 
 class LlmFieldExtractor:
     def __init__(self, settings: IngestionSettings, transport: Optional[Transport] = None):
@@ -65,15 +79,17 @@ class LlmFieldExtractor:
     # ── default Ollama transport ─────────────────────────────────────────────
 
     def _default_transport(self, messages: list[dict], format_schema: dict) -> str:
-        """POST to Ollama /api/chat — same call shape as llm/app.py::call_ollama,
-        plus `format` for schema-constrained decoding."""
+        """POST to Ollama /api/chat. `format` is the full JSON schema only when
+        llm_strict_schema is set (grammar-constrained: exact but slow on CPU);
+        otherwise "json" (valid-JSON mode). The parse ladder validates either way."""
+        fmt = format_schema if self.settings.llm_strict_schema else "json"
         resp = httpx.post(
             f"{self.settings.ollama_url}/api/chat",
             json={
                 "model": self.settings.ollama_model,
                 "messages": messages,
                 "stream": False,
-                "format": format_schema,
+                "format": fmt,
                 "options": {"temperature": 0, "seed": self.settings.llm_seed},
             },
             timeout=self.settings.llm_timeout_s,
@@ -86,8 +102,9 @@ class LlmFieldExtractor:
     def extract(self, payload: dict) -> Optional[LlmExtraction]:
         """Return a cross-checked LlmExtraction, or None to fall back to heuristics."""
         payload_text = _payload_text(payload)
+        system = SYSTEM_PROMPT if self.settings.llm_strict_schema else SYSTEM_PROMPT + _SCHEMA_HINT
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
 

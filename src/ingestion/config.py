@@ -79,6 +79,11 @@ class IngestionSettings(BaseModel):
     llm_timeout_s: float = Field(90.0, gt=0)
     llm_max_retries: int = Field(1, ge=0)  # corrective re-prompts after a parse failure
     llm_seed: int = 42                      # fixed seed + temperature 0 → deterministic
+    # Ollama's `format` param. False → "json" (valid-JSON mode, fast). True →
+    # the full JSON schema (grammar-constrained decoding: exact, but 10-50x
+    # slower on CPU — it times out on small local models). Either way the parse
+    # ladder + pydantic still enforce LlmExtraction, so False loses no safety.
+    llm_strict_schema: bool = False
 
     # ── Audio transcription (Phase 2.5) ──────────────────────────────────────
     # Reels often *say* the venue/location out loud without writing it in the

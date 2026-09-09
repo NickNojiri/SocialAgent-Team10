@@ -6,6 +6,8 @@ platforms change markup without notice — so every profile degrades to the
 generic fallback instead of erroring.
 """
 
+import re
+
 from playwright.async_api import Page
 
 from src.ingestion.schemas.snapshot import TextComponent, TextRole
@@ -14,10 +16,16 @@ SELECTOR_PROFILES: dict[str, list[tuple[str, TextRole]]] = {
     "instagram.com": [
         ("article h1", TextRole.CAPTION),
         ("h1", TextRole.TITLE),
-        ('a[href*="/explore/locations/"]', TextRole.LOCATION_TAG),
-        ('a[href*="/locations/"]', TextRole.LOCATION_TAG),
+        # A real post location tag is /explore/locations/<numeric-id>/<slug>/.
+        # `:not([href$="/locations/"])` drops IG's site-wide "Locations" footer
+        # link (href exactly /explore/locations/), and _LOCATION_HREF_RE below
+        # enforces the numeric id so no other chrome link slips through.
+        ('a[href*="/explore/locations/"]:not([href$="/locations/"])', TextRole.LOCATION_TAG),
     ],
 }
+
+# The location-tag href must carry a numeric location id, else it's page chrome.
+_LOCATION_HREF_RE = re.compile(r"/locations/\d+")
 
 GENERIC_PROFILE: list[tuple[str, TextRole]] = [
     ("h1", TextRole.TITLE),
@@ -50,6 +58,13 @@ async def isolate_text(page: Page, host: str) -> list[TextComponent]:
                 text = (await element.inner_text()).strip()
             except Exception:
                 continue
+            if role is TextRole.LOCATION_TAG:
+                try:
+                    href = (await element.get_attribute("href")) or ""
+                except Exception:
+                    href = ""
+                if not _LOCATION_HREF_RE.search(href):
+                    continue   # a chrome link ("Locations" footer), not a real place tag
             text = text[:MAX_TEXT_LEN]
             if text and text not in seen_texts:
                 seen_texts.add(text)
