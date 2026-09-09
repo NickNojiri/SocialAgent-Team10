@@ -245,17 +245,22 @@ def build_llm_payload(raw: RawPostSnapshot) -> dict:
 def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = None) -> dict:
     """Return candidate kwargs for EventInspiration (validation happens later)."""
     caption = raw.caption or ""
+    # Transcript is deliberately NOT in `searchable`: conversational speech
+    # ("the bar was packed", "we hiked after") trips category keywords. It's a
+    # venue/location signal only — used narrowly in the slot fallback below.
     searchable = " ".join(
-        filter(None, [raw.caption, raw.transcript, raw.frame_text, raw.title, raw.description,
+        filter(None, [raw.caption, raw.frame_text, raw.title, raw.description,
                       " ".join(raw.hashtags or [])])
     )
 
     # 1. Heuristic baseline — always computed, deterministic, cheap.
     venue, venue_slot = _venue_slot(raw, caption)
     if venue is None and raw.transcript:
-        # spoken-only venue: run the mention/from/at/called slots over the transcript
-        t_venue, _ = _venue_slot(raw, raw.transcript)
-        if t_venue:
+        # spoken-only venue: only trust a high-signal slot from the transcript —
+        # a run-together @handle, "from/by X", or "called X". "at X" / quoted from
+        # conversational speech is too noisy.
+        t_venue, t_slot = _venue_slot(raw, raw.transcript)
+        if t_venue and t_slot in ("handle_from", "from_titlecase", "quoted", "jsonld"):
             venue, venue_slot = t_venue, "transcript"
     if venue and (fix := _ALIASES.get(_norm_alias(venue))):   # learned correction
         venue, venue_slot = fix, "alias"
