@@ -65,6 +65,7 @@ def main() -> None:
   Q1 venue  — the ONE place the reel is about (a restaurant / bar / cafe / bakery).
               Type its name.  Press ENTER to accept the [bracketed] guess.
               Type  x  if it's NOT about one place (a recipe, an ad, a meme).
+              Type  l  if it's a LIST / ranking of several places ("10 best tacos").
               Type  ?  if you can't tell — comes back later.
   Q2 city   — the city or neighborhood.  ENTER accepts the guess.  Type  x  for none.
   Q3 type   — pick a number 1-8.  ENTER keeps the guess.
@@ -113,7 +114,7 @@ def main() -> None:
         print()
 
         try:
-            ans = input(f"  Q1 venue?  [{guess_v or ''}]  (name / ENTER=guess / x=not a place / ?=later / q=quit)\n     > ").strip()
+            ans = input(f"  Q1 venue?  [{guess_v or ''}]  (name / ENTER=guess / x=not a place / l=list / ?=later / q=quit)\n     > ").strip()
         except EOFError:
             break
         if ans.lower() == "q":
@@ -121,9 +122,11 @@ def main() -> None:
         if ans == "?":
             continue
 
-        incat = True
+        incat, note = True, r.get("note", "")
         if ans.lower() == "x":
             gold_v, incat = None, False
+        elif ans.lower() == "l":
+            gold_v, incat, note = None, False, "listicle"
         elif ans == "":
             gold_v = guess_v
         else:
@@ -147,7 +150,7 @@ def main() -> None:
             "city": "right" if _norm(guess_c) == _norm(gold_c) else ("missing" if not guess_c else "wrong"),
             "category": "right" if guess_cat == gold_cat else "wrong",
         }
-        r["note"] = r.get("note", "")
+        r["note"] = note
         rows[idx] = r
         _save(rows)
         print(f"  ✓ saved  →  {gold_v or ('NOT A PLACE' if not incat else '(none)')}")
