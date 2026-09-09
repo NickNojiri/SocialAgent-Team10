@@ -23,11 +23,18 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #      bug-fix pass (address/IG-tag cleanup, @handle spelling from caption, beach
 #      word-boundary, quoted double-quotes only, first-person possessive, "at the"):
 #   49-row baseline                    : venue 20/41 · category 35/44 · city 27/35 · vague 3/6
-_FLOOR_VENUE_EXACT = 20
-_FLOOR_VENUE_FUZZY = 20
-_FLOOR_CATEGORY = 35
-_FLOOR_CITY = 27
-_FLOOR_VAGUE = 3
+#   2026-09-09 corpus grown to 172 labeled rows (batch2, +123 captioned reels
+#      hand-labeled); heuristic-only numbers on the bigger corpus:
+#   172-row baseline                   : venue exact 48/158 · fuzzy 51/158 · category 116/161 · city 84/130 · vague 6/12
+#   + round 3 (OUTDOORS keywords · _CALLED + region stoplist · pin-line clean ·
+#      bracket [name] city · Spanish-recipe vague · handle geo-suffix strip +
+#      tail-word peel + vocab · _FROM_VENUE de/del connectors · blogger-handle skip):
+#   round-3                            : venue exact 66/158 · fuzzy 77/158 · category 119/161 · city 85/130 · vague 7/12
+_FLOOR_VENUE_EXACT = 66
+_FLOOR_VENUE_FUZZY = 77
+_FLOOR_CATEGORY = 119
+_FLOOR_CITY = 85
+_FLOOR_VAGUE = 7
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.

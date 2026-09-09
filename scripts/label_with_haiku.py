@@ -85,6 +85,10 @@ def main() -> None:
     ap.add_argument("--sleep", type=float, default=0.4)
     args = ap.parse_args()
 
+    key = __import__("os").getenv("ANTHROPIC_API_KEY", "")
+    if not key or key.endswith("...") or len(key) < 40:
+        sys.exit("ANTHROPIC_API_KEY is missing or a placeholder — export your real key first "
+                 "(console.anthropic.com → API keys).")
     client = anthropic.Anthropic()
     rows = [json.loads(l) for l in args.src.read_text().split("\n") if l.strip()]
     agree = tot = tin = tout = 0
@@ -95,6 +99,8 @@ def main() -> None:
             continue
         try:
             h = ask(client, r["input"])
+        except anthropic.AuthenticationError as exc:
+            sys.exit(f"auth failed — check ANTHROPIC_API_KEY: {exc}")
         except Exception as exc:  # noqa: BLE001
             print(f"  [{i}/{len(rows)}] {exc!r}", file=sys.stderr)
             time.sleep(2)

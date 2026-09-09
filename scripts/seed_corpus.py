@@ -88,8 +88,10 @@ def main() -> None:
     if args.skip_existing:
         import json as _j
         base = REPO / "fixtures" / "labels.jsonl"
+        # split on "\n" only — captions can contain U+2028/U+2029, which
+        # str.splitlines() treats as line breaks and would shred valid JSONL rows.
         done = {(_j.loads(l)["url"]).rstrip("/").split("/")[-1]
-                for l in base.read_text().splitlines() if l.strip()} if base.exists() else set()
+                for l in base.read_text().split("\n") if l.strip()} if base.exists() else set()
         before = len(urls)
         urls = [u for u in urls if u.rstrip("/").split("/")[-1] not in done]
         print(f"skip-existing: {before - len(urls)} already labeled, {len(urls)} new", file=sys.stderr)

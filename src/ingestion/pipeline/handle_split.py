@@ -50,15 +50,61 @@ _WORDS: set[str] = set(
     brother brothers sister sisters family friend friends folks people
     mister missus madam senor senora chef cook baker butcher grocer
     company co bros son sons daughter and social supply provisions goods
+    cheesecake cheese factory bagel bamboo bean malatang chop label
+    grounded sapo dolce buena onda izakaya tokyo willow whisk
     """.split()
 )
+
+import re  # noqa: E402
 
 # Longest first so greedy match prefers whole words.
 _MAX_WORD = max(len(w) for w in _WORDS)
 
+# Trailing city / market abbreviations tacked onto a handle: "@mizuri.la",
+# "@oishibasd", "@chinamaxsandiego". Stripped only when a real name remains.
+_GEO_SUFFIXES = (
+    "sandiego", "losangeles", "sanfrancisco", "orangecounty", "sacramento",
+    "sac", "sd", "oc", "la", "nyc", "chi", "sf", "dtla", "sgv", "lbc", "usa", "us",
+    "socal", "bayarea", "chicago", "seattle", "torrance", "cerritos", "irvine",
+    "anaheim", "pasadena", "fullerton", "carlsbad", "escondido", "tustin",
+    "hayward", "alhambra", "vegas", "miami", "boston", "dallas", "toronto",
+    "vancouver", "amsterdam", "melbourne", "perth", "seoul", "tokyo", "co", "com",
+)
+# Handle tails that are venue category words — peel them to expose the head.
+_TAIL_WORDS = (
+    "restaurants", "restaurant", "coffeehouse", "coffee", "cafe", "kitchen",
+    "bakery", "bar", "house", "grill", "pizzeria", "teaco", "tea", "creamery",
+    "deli", "eatery", "tavern", "market", "club", "lounge", "company",
+)
+
 
 def _titlecase(parts: list[str]) -> str:
     return " ".join(p[:1].upper() + p[1:] for p in parts if p)
+
+
+def _strip_geo_suffix(core: str) -> str:
+    for _ in range(2):
+        for suf in _GEO_SUFFIXES:
+            if core.endswith(suf) and len(core) - len(suf) >= 4:
+                core = core[: -len(suf)]
+                break
+        else:
+            break
+    return core
+
+
+def _peel_tail(core: str) -> list[str]:
+    """'bjsrestaurants' -> ['bjs','restaurants']; 'sapocoffeehouse' -> ['sapo','coffee','house']."""
+    tail: list[str] = []
+    for _ in range(3):
+        for w in _TAIL_WORDS:
+            if core.endswith(w) and len(core) - len(w) >= 3:
+                tail.insert(0, w)
+                core = core[: -len(w)]
+                break
+        else:
+            break
+    return ([core] if core else []) + tail
 
 
 def split_handle(handle: str) -> str:
@@ -66,11 +112,15 @@ def split_handle(handle: str) -> str:
     core = handle.strip().lstrip("@").split("/")[0].lower()
     if not core:
         return ""
-    # Explicit separators first — trivially correct.
     if any(c in core for c in "._-"):
-        import re
+        parts = re.split(r"[._\-]+", core)
+        if len(parts) > 1 and len(parts[-1]) <= 3 and _strip_geo_suffix("".join(parts)) != "".join(parts):
+            parts = parts[:-1] or parts     # drop a trailing "la"/"sd"/"oc"
+        return _titlecase(parts)
 
-        return _titlecase(re.split(r"[._\-]+", core))
+    stripped = _strip_geo_suffix(core)
+    if stripped != core and len(stripped) >= 4:
+        core = stripped
     if core in _WORDS or len(core) <= 4:
         return core[:1].upper() + core[1:]
 
@@ -82,7 +132,7 @@ def split_handle(handle: str) -> str:
                 parts.append(core[i : i + length])
                 i += length
                 break
-        else:  # no word matched at this position → give up, keep the whole handle
-            return core[:1].upper() + core[1:]
-    # Only trust a multi-word split (a single "word" is just the whole handle).
+        else:
+            peeled = _peel_tail(core)          # greedy failed — try peeling a tail word
+            return _titlecase(peeled) if len(peeled) >= 2 else core[:1].upper() + core[1:]
     return _titlecase(parts) if len(parts) >= 2 else core[:1].upper() + core[1:]
