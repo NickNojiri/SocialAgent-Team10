@@ -62,9 +62,9 @@ _PIN_SENTENCE = re.compile(r"(?:\.\s|\s{2,}| is | are | just | located | serves?
 # start (first ~2 lines) so a mid-caption dash doesn't trigger it.
 _NAME_DASH_CITY = re.compile(
     r"^(?:\s*[^\w\s#@]{0,4}\s*)?"                       # leading emoji(s), optional
-    r"(?P<venue>[A-Z][\w'’&.\-]*(?:\s+[A-Za-z'’&.\-]+){0,5}?)\s*"
+    r"(?P<venue>[A-Za-z][\w'’&.\-]*(?:\s+[A-Za-z'’&.\-]+){0,4}?)\s*"
     r"[—–\-|]\s+"
-    r"(?P<city>[A-Z][\w'’.\-]*(?:[ ,]+[A-Z][\w'’.\-]*){0,3})",
+    r"(?P<city>[A-Za-z][\w'’.\-]*(?:[ ,]+[A-Za-z][\w'’.\-]*){0,3})",
 )
 # "[ naisnow ] monterey park , ca" / "(frankie greek yogurt) los angeles, ca"
 _BRACKET_CITY = re.compile(
@@ -94,7 +94,14 @@ _REGION_STOP = {
     "socal", "southern california", "orange county", "los angeles",
 }
 _CITY_COMMA_ST = re.compile(r",\s*(?:ca|california|[a-z]{2})\b", re.IGNORECASE)
-_AT_VENUE = re.compile(r"\bat\s+(?:the\s+)?(?P<venue>[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){0,4})")
+_AT_VENUE = re.compile(r"\bat\s+(?:the\s+)?(?P<venue>[A-Z][\w'’&-]*(?:\s+[A-Z][\w'’&-]*){0,4})")
+# A 📍 line that IS the venue: 2–5 Title-case tokens, no digits, ends in a venue
+# category word (or letter-matches an @mention — checked in _venue_slot).
+_PIN_VENUE_KW = re.compile(
+    r"\b(cafe|café|coffee|coffeehouse|bakery|kitchen|bar|house|grill|pizzeria|"
+    r"restaurant|creamery|tea|teahouse|deli|club|lounge|eatery|tavern|bistro|"
+    r"parlor|parlour|market|shop|co)$", re.IGNORECASE,
+)
 # A street address, not a venue name: leading number, or a street-type token.
 _ADDRESS_RE = re.compile(
     r"^\s*\d{1,6}\s+\S|"
@@ -115,7 +122,7 @@ _PERSON_LEAD = re.compile(r"^(chef|owner|founder|my|the|our|host|dj)\b", re.IGNO
 _OWNER_OF = re.compile(r"\bowner of\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
 # A Title-Case proper name in real double quotes — usually a pop-up / event /
 # branded item. Apostrophes/single quotes excluded (they match "she's back").
-_QUOTED_NAME = re.compile(r"[\"“”]([A-Z][\w&'.-]*(?:\s+[\w&'.-]+){0,4})[\"“”]")
+_QUOTED_NAME = re.compile(r"[\"“”]([A-Z][\w&'’.-]*(?:\s+[\w&'’.-]+){0,4})[\"“”]")
 _FROM_HANDLE = re.compile(r"\b(?:from|by|at)\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
 _ANY_HANDLE = re.compile(r"(?<![\w.])@(?P<handle>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})")
 # Food-blogger / reviewer handles — a mention of one is not a venue.
@@ -128,10 +135,11 @@ _BLOGGER_HANDLE = re.compile(
 _FIRST_PERSON = re.compile(
     r"\bour\s+(?:\w+\s+){0,2}"
     r"(?:menu|bar|patio|shop|store|cafe|café|kitchen|location|spot|place|team|doors|"
-    r"opening|bakery|restaurant|counter|window|stand|booth|kiosk|truck|cart)\b"
-    r"|\bour\s+new\s+\w+"
+    r"opening|bakery|restaurant|counter|window|stand|booth|kiosk|truck|cart|famous)\b"
+    r"|\bour\s+new\s+\w+|\bour\s+\w+\s+location\b"
     r"|\bcome (?:to|see|visit) (?:us|our)\b|\bvisit us\b|\bwe'?re (?:open|now open|back)\b"
-    r"|\badd(?:ed)? (?:this )?to (?:our|the) menu\b",
+    r"|\bwelcome to\b|\bjoin us for our\b|\byou('?ve| have) (?:tried|been to) us\b"
+    r"|\badd(?:ed)? (?:this )?to (?:our|the) menu\b|\bthere('?s| is) always a seat\b",
     re.IGNORECASE,
 )
 # Named complexes that are never the venue on their own — kept as context.
@@ -421,6 +429,17 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if _FIRST_PERSON.search(caption) and getattr(raw, "author_handle", None):
         return _caption_spelling(_handle_to_name(raw.author_handle), caption), "first_person"
 
+    pm = _PIN_LINE.search(caption)                # "📍 Grounded Coffee House"
+    if pm:
+        pin = _clean_pin(pm.group("loc")) or ""
+        toks = pin.split()
+        flat = re.sub(r"[^a-z0-9]", "", pin.lower())
+        if (2 <= len(toks) <= 5 and not re.search(r"\d", pin)
+                and not _is_container(pin) and not _is_region(pin)
+                and (_PIN_VENUE_KW.search(pin)
+                     or flat in {re.sub(r"[^a-z0-9]", "", m) for m in mentions})):
+            return _titlecase_if_flat(pin.strip(" .,")), "at_venue"
+
     at_match = _AT_VENUE.search(caption)
     if at_match and not _is_container(at_match.group("venue")) and not _is_region(at_match.group("venue")):
         return at_match.group("venue").strip(), "at_venue"
@@ -479,6 +498,12 @@ _MUSIC_GENRE_TAGS = {
     "rap", "rnb", "indiemusic", "rockmusic", "djlife", "producerlife", "speedgarage",
     "garage", "dnb", "dubstep", "trap", "afrobeats",
 }
+# Any hint the post is actually about food/a venue — gates the real-estate rule.
+_FOOD_HINT = re.compile(
+    r"\b(food|eat|eats|restaurant|cafe|coffee|bakery|menu|dish|brunch|lunch|dinner|"
+    r"tacos?|pizza|ramen|sushi|matcha|boba|dessert|bar|drinks?|foodie|bite)\b",
+    re.IGNORECASE,
+)
 
 
 def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slot="none") -> bool:
@@ -502,10 +527,24 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
             return True
     if _TOURISM_HANDLE.match(handle):
         return True
+    # Real-estate / mortgage marketing that borrows food-post styling.
+    if re.search(r"(realestate|realtor|homeloans?|mortgage|loanofficer|lender|dueteam)$",
+                 handle, re.IGNORECASE) and not _FOOD_HINT.search(text):
+        return True
+    if re.search(r"\b(manifesting|watch what i attract|pre-?approved|open house|"
+                 r"now listed|for sale|before their lease renews?)\b", caption, re.IGNORECASE) \
+            and not venue and category is EventCategory.OTHER:
+        return True
 
     if venue or geo.place_names or candidate_times or category is not EventCategory.OTHER:
         return False
     if _AD_MARKERS.search(text):
+        return True
+    # Pure hype from a place's own account with no location anywhere.
+    if len(caption) < 120 and re.search(
+        r"\b(is back|back!|now open|limited time|last chance|don'?t miss|lock (?:it |them )?down)\b",
+        caption, re.IGNORECASE,
+    ):
         return True
     tags = {re.sub(r"[^a-z0-9]", "", t.lower()) for t in (raw.hashtags or [])}
     return len(tags & _MUSIC_GENRE_TAGS) >= 2
@@ -565,11 +604,16 @@ def _clean_pin(loc: str) -> Optional[str]:
 
 
 def _in_city(caption: str) -> Optional[str]:
-    m = _IN_CITY.search(caption)
-    if not m:
+    """First 'in <City>' that isn't a country/macro-region; a gazetteer city wins."""
+    _drop = _PIN_COUNTRY | {"socal", "southern california", "bay area", "the bay", "east bay"}
+    cands = [m.group("city").strip() for m in _IN_CITY.finditer(caption)]
+    cands = [c for c in cands if c.lower() not in _drop]
+    if not cands:
         return None
-    city = m.group("city").strip()
-    return None if city.lower() in _PIN_COUNTRY else city
+    for c in cands:
+        if c.lower() in _AREA_CITY_SET:
+            return c
+    return cands[0]
 
 
 def _geo_context(raw: RawPostSnapshot, caption: str) -> GeoContext:

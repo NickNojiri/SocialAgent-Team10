@@ -29,12 +29,16 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #   + round 3 (OUTDOORS keywords · _CALLED + region stoplist · pin-line clean ·
 #      bracket [name] city · Spanish-recipe vague · handle geo-suffix strip +
 #      tail-word peel + vocab · _FROM_VENUE de/del connectors · blogger-handle skip):
-#   round-3                            : venue exact 66/158 · fuzzy 77/158 · category 119/161 · city 85/130 · vague 7/12
-_FLOOR_VENUE_EXACT = 66
+#   round-3 (items 1-6,9a)             : venue exact 66/158 · fuzzy 77/158 · category 119/161 · city 85/130 · vague 7/12
+#   + round-3 items 7-10 (lowercase dash-city head · pin-line-as-venue slot ·
+#     real-estate/hype vague · _IN_CITY multi-match + region demotion · curly
+#     apostrophes · _FIRST_PERSON widening):
+#   round-3 full                       : venue exact 67/158 · fuzzy 77/158 · category 119/161 · city 86/130 · vague 8/12
+_FLOOR_VENUE_EXACT = 67
 _FLOOR_VENUE_FUZZY = 77
 _FLOOR_CATEGORY = 119
-_FLOOR_CITY = 85
-_FLOOR_VAGUE = 7
+_FLOOR_CITY = 86
+_FLOOR_VAGUE = 8
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.
