@@ -82,7 +82,15 @@ def main() -> None:
     ap.add_argument("--sleep", type=float, default=2.0, help="seconds between fetches (be polite)")
     ap.add_argument("--skip-existing", action="store_true",
                     help="skip URLs whose shortcode is already in fixtures/labels.jsonl")
+    ap.add_argument("--transcribe", action="store_true",
+                    help="also Whisper the reel audio into input.transcript "
+                         "(needs faster-whisper + ffmpeg; set WHISPER_MODEL=tiny)")
     args = ap.parse_args()
+
+    transcriber = None
+    if args.transcribe:
+        from src.ingestion.pipeline.transcriber import Transcriber
+        transcriber = Transcriber(IngestionSettings())
 
     urls = [u.strip() for u in args.urls.read_text().splitlines() if u.strip()]
     if args.skip_existing:
@@ -110,10 +118,16 @@ def main() -> None:
                          "verdict": {}, "note": "FETCH FAILED — recapture", "needs_recapture": True})
             print(f"  [{i}/{len(urls)}] {url}  -> fetch failed", file=sys.stderr)
         else:
+            if transcriber is not None and getattr(raw, "video_url", None):
+                try:
+                    raw.transcript = transcriber.transcribe_url(raw.video_url) or raw.transcript
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  [{i}] transcribe failed: {type(exc).__name__}", file=sys.stderr)
             cand = normalize(raw)
             rows.append(_row(url, raw, cand))
             print(f"  [{i}/{len(urls)}] {url}  -> venue={cand.get('venue_name')!r} "
-                  f"conf={cand.get('venue_confidence')} slot={cand.get('venue_slot')}", file=sys.stderr)
+                  f"conf={cand.get('venue_confidence')} slot={cand.get('venue_slot')}"
+                  f"{' [t]' if getattr(raw, 'transcript', None) else ''}", file=sys.stderr)
         time.sleep(args.sleep)
 
     args.out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")

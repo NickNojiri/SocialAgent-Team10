@@ -225,7 +225,12 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
 
     # 1. Heuristic baseline — always computed, deterministic, cheap.
     venue, venue_slot = _venue_slot(raw, caption)
-    geo = _geo_context(raw, caption)
+    if venue is None and raw.transcript:
+        # spoken-only venue: run the mention/from/at/called slots over the transcript
+        t_venue, _ = _venue_slot(raw, raw.transcript)
+        if t_venue:
+            venue, venue_slot = t_venue, "transcript"
+    geo = _geo_context(raw, caption if not raw.transcript else f"{caption}\n{raw.transcript}")
     if venue is None and geo.raw_location_text:
         guess = geo.raw_location_text.split(",")[0].strip() or None
         if guess and not _ADDRESS_RE.search(guess) and not _is_container(guess):
@@ -297,7 +302,7 @@ def _is_container(name: Optional[str]) -> bool:
 # (route low-confidence to human review; spend the LLM only on the uncertain tail).
 VENUE_CONF = {
     "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
-    "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55,
+    "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55, "transcript": 0.5,
     "title_fallback": 0.3, "llm_fill": 0.35, "none": 0.0,
 }
 
