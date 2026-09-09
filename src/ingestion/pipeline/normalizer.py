@@ -49,8 +49,32 @@ _CATEGORY_KEYWORDS: list[tuple[EventCategory, tuple[str, ...]]] = [
     )),
 ]
 
-_PIN_LINE = re.compile(r"📍\s*(?P<loc>[^\n#@—!]+)")
-_AT_VENUE = re.compile(r"\bat\s+(?P<venue>[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){0,4})")
+_PIN_LINE = re.compile(r"📍\s*(?P<loc>[^\n#@—!|:]+)")
+# Food-blogger standard: an optional emoji, the venue name, then " — City" /
+# " | City" / " - City". Captured before the dash. Anchored near the caption
+# start (first ~2 lines) so a mid-caption dash doesn't trigger it.
+_NAME_DASH_CITY = re.compile(
+    r"^(?:\s*[^\w\s#@]{0,4}\s*)?"                       # leading emoji(s), optional
+    r"(?P<venue>[A-Z][\w'’&.\-]*(?:\s+[A-Za-z'’&.\-]+){0,5}?)\s*"
+    r"[—–\-|]\s+"
+    r"(?P<city>[A-Z][\w'’.\-]*(?:[ ,]+[A-Z][\w'’.\-]*){0,3})",
+)
+# "... it's called X" / "a spot called X" / "called X" — venue named after the vibe.
+_CALLED = re.compile(r"\b(?:it'?s |it is |place |spot |restaurant |called )called\s+(?P<venue>[A-Z][\w'’&.\-]*(?:\s+[A-Z][\w'’&.\-]*){0,4})")
+# Recipe / brand-content / tourism-board posts — not a specific place.
+_RECIPE_RE = re.compile(
+    r"\b(recipe|ingredients?|ingredientes|receta|here'?s how|step 1|preheat|"
+    r"tbsp|tsp|mix (?:together|in)|stir until)\b", re.IGNORECASE,
+)
+_TOURISM_HANDLE = re.compile(r"^(visit|discover|explore|experience|see|go)[a-z]", re.IGNORECASE)
+_AT_VENUE = re.compile(r"\bat\s+(?:the\s+)?(?P<venue>[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*){0,4})")
+# A street address, not a venue name: leading number, or a street-type token.
+_ADDRESS_RE = re.compile(
+    r"^\s*\d{1,6}\s+\S|"
+    r"\b\d{1,6}\s+[\w.]+\s+(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|"
+    r"way|ln|lane|ct|court|hwy|pkwy|pl|place)\b",
+    re.IGNORECASE,
+)
 # "from / by <Venue>" and "from / by @handle" — the venue-mention slot. Handled
 # separately from `at` so a preposition-specific priority is possible and so the
 # @handle branch can survive (an @mention has no leading capital).
@@ -60,13 +84,20 @@ _FROM_VENUE = re.compile(
 # A person, not a venue, when the mention starts with one of these.
 _PERSON_LEAD = re.compile(r"^(chef|owner|founder|my|the|our|host|dj)\b", re.IGNORECASE)
 _OWNER_OF = re.compile(r"\bowner of\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
-# A Title-Case proper name in quotes — usually a pop-up / event / branded item.
-_QUOTED_NAME = re.compile(r"[\"“”‘’']([A-Z][\w&'.-]*(?:\s+[\w&'.-]+){0,4})[\"“”‘’']")
+# A Title-Case proper name in real double quotes — usually a pop-up / event /
+# branded item. Apostrophes/single quotes excluded (they match "she's back").
+_QUOTED_NAME = re.compile(r"[\"“”]([A-Z][\w&'.-]*(?:\s+[\w&'.-]+){0,4})[\"“”]")
 _FROM_HANDLE = re.compile(r"\b(?:from|by|at)\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
 _ANY_HANDLE = re.compile(r"(?<![\w.])@(?P<handle>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})")
-# First person → the posting account IS the venue ("our menu", "come see us").
+# First person POSSESSIVE of the place → the posting account is the venue.
+# Deliberately narrow: "we've been waiting for <other venue>" must NOT match.
 _FIRST_PERSON = re.compile(
-    r"\b(our|we're|we are|we've|come (?:to|see)|visit us|on (?:our|the) menu|to the menu)\b",
+    r"\bour\s+(?:\w+\s+){0,2}"
+    r"(?:menu|bar|patio|shop|store|cafe|café|kitchen|location|spot|place|team|doors|"
+    r"opening|bakery|restaurant|counter|window|stand|booth|kiosk|truck|cart)\b"
+    r"|\bour\s+new\s+\w+"
+    r"|\bcome (?:to|see|visit) (?:us|our)\b|\bvisit us\b|\bwe'?re (?:open|now open|back)\b"
+    r"|\badd(?:ed)? (?:this )?to (?:our|the) menu\b",
     re.IGNORECASE,
 )
 # Named complexes that are never the venue on their own — kept as context.
@@ -160,9 +191,9 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     venue, venue_slot = _venue_slot(raw, caption)
     geo = _geo_context(raw, caption)
     if venue is None and geo.raw_location_text:
-        venue = geo.raw_location_text.split(",")[0].strip() or None
-        if venue:
-            venue_slot = "at_venue"  # a bare location string is a weak venue guess
+        guess = geo.raw_location_text.split(",")[0].strip() or None
+        if guess and not _ADDRESS_RE.search(guess) and not _is_container(guess):
+            venue, venue_slot = guess, "at_venue"  # weak: a bare location string
     candidate_times = _heuristic_times(searchable, raw.start_date_raw)
     category = _categorize(searchable.lower())
     core_theme = _core_theme(raw, caption)
@@ -235,17 +266,73 @@ VENUE_CONF = {
 }
 
 
+_VENUE_COLON = re.compile(r"^\s*(?P<venue>[A-Z][\w &'’.\-]{2,45}?):\s*\$")
+
+
+def _clean_venue_tag(text: str) -> Optional[str]:
+    """A platform/JSON-LD location tag is often 'Name 1234 Some St' or just an
+    address. Keep the name, drop a pure address."""
+    s = text.strip()
+    m = re.search(r"\s\d{1,6}\s", s)          # split before the address run
+    if m:
+        head = s[: m.start()].strip(" ,·-")
+        if head and not _ADDRESS_RE.search(head):
+            return head
+    return None if _ADDRESS_RE.search(s) else s
+
+
+def _caption_spelling(name: str, caption: str) -> str:
+    """A run-together @handle name ('Hironoriramen') → the caption's real spacing
+    ('Hironori Craft Ramen') when the same letters appear there as words."""
+    target = re.sub(r"[^a-z0-9]", "", name.lower())
+    if len(target) < 5:
+        return name
+    words = caption.split()
+    for n in range(1, 6):
+        for i in range(len(words) - n + 1):
+            span = " ".join(words[i : i + n])
+            if "@" in span or "#" in span:
+                continue                       # the handle/tag itself, not prose
+            if re.sub(r"[^a-z0-9]", "", span.lower()) == target:
+                span = span.strip(" .,!?:;\"'()")
+                return span.title() if span.islower() else span
+    return name
+
+
+def _name_dash_city(caption: str) -> tuple[Optional[str], Optional[str]]:
+    """'🍕 Folks Pizzeria — Culver City, LA' → ('Folks Pizzeria', 'Culver City')."""
+    for line in caption.splitlines()[:3]:
+        m = _NAME_DASH_CITY.match(line.strip())
+        if not m:
+            continue
+        venue = m.group("venue").strip(" .,!?:;-–—")
+        if venue and not _is_container(venue) and len(venue) >= 3 and " " in caption:
+            city = m.group("city").split(",")[0].strip()
+            return venue, city or None
+    return None, None
+
+
 def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]:
     """(venue, slot-name). Slot-first: structured > venue-mention (from/by/@handle)
     > first-person poster > 'at <Venue>' > account title. Named complexes
     ('Disneyland') never win on their own — they're context, not the venue."""
     if raw.venue_candidate:
-        return raw.venue_candidate.strip(), "jsonld"
+        cleaned = _clean_venue_tag(raw.venue_candidate)
+        if cleaned:
+            return cleaned, "jsonld"
+
+    dash_venue, _ = _name_dash_city(caption)  # "🍕 Folks Pizzeria — Culver City"
+    if dash_venue:
+        return dash_venue, "from_titlecase"
+
+    m = _VENUE_COLON.match(caption)          # "Onn Cafe: $ 📍…" review-post style
+    if m and not _is_container(m.group("venue")):
+        return m.group("venue").strip(), "at_venue"
 
     for pattern in (_OWNER_OF, _FROM_HANDLE):
         m = pattern.search(caption)
         if m:
-            return _handle_to_name(m.group("handle")), "handle_from"
+            return _caption_spelling(_handle_to_name(m.group("handle")), caption), "handle_from"
     m = _FROM_VENUE.search(caption)
     if m:
         cand = m.group("venue").strip(" .,!?:;")
@@ -259,10 +346,10 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
     mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption)) if h.lower() != author]
     if len(mentions) == 1:
-        return _handle_to_name(mentions[0]), "bare_mention"
+        return _caption_spelling(_handle_to_name(mentions[0]), caption), "bare_mention"
 
     if _FIRST_PERSON.search(caption) and getattr(raw, "author_handle", None):
-        return _handle_to_name(raw.author_handle), "first_person"
+        return _caption_spelling(_handle_to_name(raw.author_handle), caption), "first_person"
 
     at_match = _AT_VENUE.search(caption)
     if at_match and not _is_container(at_match.group("venue")):
@@ -290,9 +377,16 @@ def _core_theme(raw: RawPostSnapshot, caption: str) -> Optional[str]:
     return None
 
 
+# Word-boundary match per category so "#longbeach" no longer trips "beach", etc.
+_CATEGORY_RE = [
+    (cat, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in kws) + r")\b", re.IGNORECASE))
+    for cat, kws in _CATEGORY_KEYWORDS
+]
+
+
 def _categorize(lowered_text: str) -> EventCategory:
-    for category, keywords in _CATEGORY_KEYWORDS:
-        if any(keyword in lowered_text for keyword in keywords):
+    for category, pattern in _CATEGORY_RE:
+        if pattern.search(lowered_text):
             return category
     return EventCategory.OTHER
 
@@ -321,9 +415,24 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times) -> 
     """In-house stand-in for the LLM's is_vague: True when a post isn't clearly
     about a place/event, so product ads and music clips don't enter the catalog.
     Conservative — it only fires when EVERY place signal is absent."""
+    caption = raw.caption or ""
+    text = f"{caption} {' '.join(raw.hashtags or [])}"
+    handle = (getattr(raw, "author_handle", "") or "").lstrip("@")
+
+    # "Not a place" signals strong enough to fire even if a (likely bogus) venue
+    # was pulled: a cooking-instructions post, or a tourism-board account.
+    if not raw.venue_candidate:
+        recipe_hits = len(set(m.group(0).lower() for m in _RECIPE_RE.finditer(caption)))
+        if recipe_hits >= 2 or (
+            re.search(r"\brecipe\b", caption, re.I)
+            and re.search(r"\bingredient|receta|ingrediente\b", caption, re.I)
+        ):
+            return True
+    if _TOURISM_HANDLE.match(handle):
+        return True
+
     if venue or geo.place_names or candidate_times or category is not EventCategory.OTHER:
         return False
-    text = f"{raw.caption or ''} {' '.join(raw.hashtags or [])}"
     if _AD_MARKERS.search(text):
         return True
     tags = {re.sub(r"[^a-z0-9]", "", t.lower()) for t in (raw.hashtags or [])}

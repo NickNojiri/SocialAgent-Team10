@@ -18,15 +18,15 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #   2026-09-08 seed baseline          : venue exact 3/11 · fuzzy 3/11 · category 10/14 · city 0/8
 #   + rule set 1 (@handle / from X / quoted-name / container-demote)
 #                                     : venue exact 7/11 · fuzzy 7/11 · category 10/14 · city 1/8
-#   + rule set 2 (category keywords + area-hashtag/container gazetteer)
-#                                     : venue exact 7/11 · fuzzy 7/11 · category 14/14 · city 7/8
-#   + handle word-split (in-house, handle_split.py)
-#                                     : venue exact 8/11 · fuzzy 8/11 · category 14/14 · city 7/8
-#   + looks_vague() catalog-inclusion gate : + promo rejected 3/3
-_FLOOR_VENUE_EXACT = 8
-_FLOOR_VENUE_FUZZY = 8
-_FLOOR_CATEGORY = 14
-_FLOOR_CITY = 7
+#   + rule set 2 / handle-split / looks_vague : venue 8/11 · cat 14/14 · city 7/8 · vague 3/3
+#   ── corpus grown 15 -> 49 (34 real reels from DMs); honest numbers, plus a
+#      bug-fix pass (address/IG-tag cleanup, @handle spelling from caption, beach
+#      word-boundary, quoted double-quotes only, first-person possessive, "at the"):
+#   49-row baseline                    : venue 20/41 · category 35/44 · city 27/35 · vague 3/6
+_FLOOR_VENUE_EXACT = 20
+_FLOOR_VENUE_FUZZY = 20
+_FLOOR_CATEGORY = 35
+_FLOOR_CITY = 27
 _FLOOR_VAGUE = 3
 
 # Regression guards: venue name is a run-together @handle in the caption and the

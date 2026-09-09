@@ -66,7 +66,12 @@ class AuthedInstagramSource:
             return None
         try:
             client = self._get_client()
-            media = client.media_info_by_shortcode(shortcode)
+            if hasattr(client, "media_info_by_shortcode"):
+                media = client.media_info_by_shortcode(shortcode)  # older instagrapi
+            else:
+                # instagrapi >= ~2.x: decode the shortcode to a pk (no network),
+                # then fetch. media_pk_from_code is a pure function.
+                media = client.media_info(client.media_pk_from_code(shortcode))
         except Exception as exc:  # LoginRequired/ClientError/network — degrade
             if self._client is None:  # never logged in → the failure was the login itself
                 self._login_failed = True

@@ -37,7 +37,9 @@ def load_labels(path: Path = LABELS_PATH) -> list[dict]:
     if not path.exists():
         raise SystemExit(f"no label corpus at {path} — see docs/EXTRACTION_ACCURACY.md")
     rows = []
-    for i, line in enumerate(path.read_text().splitlines(), 1):
+    # split on \n only — str.splitlines() also breaks on U+2028/U+2029, which
+    # appear inside caption text and would shred a JSONL row.
+    for i, line in enumerate(path.read_text().split("\n"), 1):
         line = line.strip()
         if not line:
             continue
@@ -60,6 +62,10 @@ def raw_from_input(url: str, inp: dict) -> RawPostSnapshot:
         frame_text=inp.get("ocr") or None,
         transcript=inp.get("transcript") or None,
         hashtags=list(inp.get("hashtags") or []),
+        venue_candidate=inp.get("venue_candidate") or None,
+        location_text=inp.get("location_text") or None,
+        lat=inp.get("lat"),
+        lng=inp.get("lng"),
     )
 
 
