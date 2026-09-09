@@ -38,10 +38,15 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #     SoCal · profile-name capture): venue partly corpus-fitted via aliases —
 #     the honest gain is city (gazetteer). Real number comes from the train/test split.
 #   round-4                            : venue exact 82/158 · fuzzy 88/158 · category 119/161 · city 102/130 · vague 8/12
-_FLOOR_VENUE_EXACT = 82
-_FLOOR_VENUE_FUZZY = 88
-_FLOOR_CATEGORY = 119
-_FLOOR_CITY = 102
+#   2026-09-09 corpus 433 (186 labeled: 139 train / 47 test), + _looks_like_list,
+#     alias table regenerated, train/test split added to eval.py.
+#   ── HONEST held-out (--split test, 46-47 rows): venue exact 47.8% · fuzzy 52.2%
+#      · category 66.0% · city 62.2%. The floors below are on ALL labeled rows.
+#   all-split                          : venue exact 96/185 · fuzzy 104/185 · category 134/186 · city 114/151 · vague 8/16
+_FLOOR_VENUE_EXACT = 96
+_FLOOR_VENUE_FUZZY = 104
+_FLOOR_CATEGORY = 134
+_FLOOR_CITY = 114
 _FLOOR_VAGUE = 8
 
 # Regression guards: venue name is a run-together @handle in the caption and the

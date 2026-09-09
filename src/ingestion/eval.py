@@ -27,6 +27,16 @@ from src.ingestion.schemas.snapshot import RawPostSnapshot
 LABELS_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "labels.jsonl"
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def split_of(url: str) -> str:
+    """Deterministic 70/30 train/test by URL hash — stable as the corpus grows,
+    so rules are tuned on `train` and the honest number is `test`."""
+    import hashlib
+
+    code = url.rstrip("/").split("/")[-1]
+    h = int(hashlib.md5(code.encode()).hexdigest()[:8], 16)
+    return "test" if h % 100 < 30 else "train"
 _SCOREABLE_VERDICTS = {"right", "wrong", "missing"}   # 'needs_review' is excluded from pass/fail
 
 
@@ -295,6 +305,8 @@ def main() -> None:
     ap.add_argument("--table", action="store_true", help="print the per-row table")
     ap.add_argument("--stage", choices=["extract", "geocode"], default="extract",
                     help="which pipeline stage to score (default: extract)")
+    ap.add_argument("--split", choices=["all", "train", "test"], default="all",
+                    help="score only this split (deterministic 70/30 by URL hash)")
     args = ap.parse_args()
 
     import os
@@ -304,14 +316,16 @@ def main() -> None:
         ollama_model=args.model or os.getenv("OLLAMA_MODEL", "llama3.2"),
     )
     rows = load_labels()
-    print(f"corpus: {len(rows)} labeled rows  ({LABELS_PATH})\n")
+    if args.split != "all":
+        rows = [r for r in rows if split_of(r["url"]) == args.split]
+    print(f"corpus: {len(rows)} labeled rows  ({LABELS_PATH}, split={args.split})\n")
 
     if args.stage == "geocode":
         score_geocode(rows)
         return
 
     baseline = score(rows, use_llm=False, settings=settings)
-    print(baseline.report("heuristic baseline (no LLM)"))
+    print(baseline.report(f"heuristic baseline — {args.split}"))
     if args.table:
         print(baseline.table())
 

@@ -359,7 +359,7 @@ def _clean_display_name(name: Optional[str]) -> Optional[str]:
 VENUE_CONF = {
     "alias": 0.9, "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
     "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55, "transcript": 0.5,
-    "title_fallback": 0.3, "llm_fill": 0.35, "none": 0.0,
+    "title_fallback": 0.3, "llm_fill": 0.35, "list": 0.0, "none": 0.0,
 }
 
 # Learned corrections: normalize(predicted) -> canonical venue. Regenerate with
@@ -444,10 +444,32 @@ def _name_dash_city(caption: str) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+_LIST_PHRASE = re.compile(
+    r"\b(top\s?\d+|\d+\s+best|best\s+\d+|my\s+(?:top|favou?rite)\s+\d+|ranked|tier\s?list|"
+    r"\d+\s+(?:spots?|places?|restaurants?|cafes?|bars?|bakeries)\s+(?:in|to|for|you)|"
+    r"bucket\s?list|current\s+rankings?|places?\s+to\s+try\s+in)\b",
+    re.IGNORECASE,
+)
+_LIST_ITEM = re.compile(r"^\s*(?:\d{1,2}[.):]\s|[①-⑳]|[-•*✅]\s*[A-Z]|🥇|🥈|🥉)", re.MULTILINE)
+
+
+def _looks_like_list(raw: RawPostSnapshot, caption: str) -> bool:
+    """A ranking / roundup of several venues — there's no single answer."""
+    author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
+    mentions = {h.lower() for h in _ANY_HANDLE.findall(caption) if h.lower() != author}
+    items = len(_LIST_ITEM.findall(caption))
+    pins = caption.count("📍")
+    if _LIST_PHRASE.search(caption) and (items >= 2 or len(mentions) >= 3 or pins >= 3):
+        return True
+    return items >= 4 or len(mentions) >= 5 or pins >= 4
+
+
 def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]:
     """(venue, slot-name). Slot-first: structured > venue-mention (from/by/@handle)
     > first-person poster > 'at <Venue>' > account title. Named complexes
     ('Disneyland') never win on their own — they're context, not the venue."""
+    if _looks_like_list(raw, caption):
+        return None, "list"
     if raw.venue_candidate:
         cleaned = _clean_venue_tag(raw.venue_candidate)
         if cleaned:
