@@ -10,6 +10,7 @@ provenance stay code-owned (merged, never delegated).
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -364,12 +365,29 @@ VENUE_CONF = {
 
 # Learned corrections: normalize(predicted) -> canonical venue. Regenerate with
 # scripts/build_aliases.py after any change to fixtures/labels.jsonl.
-try:
-    _ALIASES: dict[str, str] = json.loads(
-        (Path(__file__).resolve().parents[3] / "fixtures" / "venue_aliases.json").read_text()
-    )
-except Exception:  # noqa: BLE001
-    _ALIASES = {}
+#
+# The default table is built from the WHOLE corpus, which is right for the product
+# (a user's correction should stick) and wrong for scoring: a test row's own gold
+# label ends up compiled into the extractor that scores it. `eval.py` therefore
+# swaps in the train-only table via `reload_aliases()` before reporting held-out
+# numbers — see docs/ML_REVIEW_QUESTIONS.md finding 1.
+_FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
+ALIASES_PATH = Path(os.getenv("VENUE_ALIASES_PATH") or _FIXTURES / "venue_aliases.json")
+
+_ALIASES: dict[str, str] = {}
+
+
+def reload_aliases(path: Optional[Path] = None) -> int:
+    """Point the alias table at `path` (default: `ALIASES_PATH`). Returns its size."""
+    global _ALIASES
+    try:
+        _ALIASES = json.loads(Path(path or ALIASES_PATH).read_text())
+    except Exception:  # noqa: BLE001 - a missing/!unreadable table just means no overrides
+        _ALIASES = {}
+    return len(_ALIASES)
+
+
+reload_aliases()
 
 
 def _norm_alias(s: Optional[str]) -> str:

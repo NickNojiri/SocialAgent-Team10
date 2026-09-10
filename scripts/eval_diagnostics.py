@@ -3,30 +3,27 @@
     python scripts/eval_diagnostics.py            # test split (the honest one)
     python scripts/eval_diagnostics.py --split all
 
-`src.ingestion.eval` reports point estimates. This adds the four things that
-decide whether those point estimates mean anything:
+`src.ingestion.eval` reports point estimates. This adds the things that decide
+whether those point estimates mean anything:
 
-1. **Alias leakage** — `fixtures/venue_aliases.json` is built from the *whole*
-   corpus (`build_aliases.py`), so test rows contribute `predicted -> gold`
-   overrides keyed on their own gold label. Re-scores the test split with those
-   test-derived aliases removed.
-2. **Confidence intervals** (Wilson, 95%) — with n≈115 a 3-point round-over-round
+1. **Alias leakage** — what the whole-corpus alias table is worth on the test
+   split versus the train-only table `eval.py` now defaults to.
+2. **Confidence intervals** (Wilson, 95%) — at n≈115 a 3-point round-over-round
    gain is inside the noise band.
 3. **Baselines + per-class breakdown** for category — micro accuracy over a corpus
    that is 91% two classes flatters the parser; the majority-class rate is the
    number to beat.
-4. **is_vague as a classifier** — the scorecard reports recall only. Precision
-   says what rejecting more promo posts costs in real places thrown away.
-
-Also reports group overlap across the train/test split (same venue / same poster
-handle on both sides), which the URL-hash split does not control for.
+4. **is_vague precision**, per-class, with the confusion matrix behind it.
+5. **Group overlap** across the split — same venue / same poster on both sides.
+6. **The extractive ceiling** — how often the gold venue is literally present in
+   the stored input at all. No parser, model, or prompt can exceed this; it is the
+   number accuracy should be read against.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
-import json
 import math
 import re
 import sys
@@ -35,15 +32,20 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from src.ingestion.config import IngestionSettings  # noqa: E402
 from src.ingestion.eval import (  # noqa: E402
-    LABELS_PATH, _SCOREABLE_VERDICTS, _norm, load_labels, raw_from_input, split_of,
+    LABELS_PATH, _SCOREABLE_VERDICTS, _norm, load_labels, raw_from_input, score,
+    split_of, use_aliases,
 )
+from src.ingestion.pipeline.normalizer import normalize  # noqa: E402
 
-ALIASES = REPO / "fixtures" / "venue_aliases.json"
+SETTINGS = IngestionSettings()
+RULE = "─"
 
 
-def _akey(s: str | None) -> str:
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+def head(n: int, title: str) -> None:
+    line = f"── {n} · {title} "
+    print(f"\n{line}{RULE * max(0, 70 - len(line))}")
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -57,6 +59,8 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def ci_line(name: str, k: int, n: int) -> str:
+    if not n:
+        return f"  {name:<26}   n/a"
     lo, hi = wilson(k, n)
     return (f"  {name:<26} {k:>3}/{n:<3} = {k / n:5.1%}   95% CI [{lo:5.1%}, {hi:5.1%}]"
             f"   width {100 * (hi - lo):.0f}pts")
@@ -65,86 +69,31 @@ def ci_line(name: str, k: int, n: int) -> str:
 # ── 1 · alias leakage ─────────────────────────────────────────────────────────
 
 
-def alias_provenance(rows: list[dict]) -> tuple[dict, set[str]]:
-    """Which corpus rows justify each alias key, and which keys train alone justifies."""
-    aliases = json.loads(ALIASES.read_text())
-    train_justified: set[str] = set()
-    by_split: collections.Counter = collections.Counter()
-    for r in rows:
-        pred = (r.get("predicted") or {}).get("venue")
-        gold = (r.get("gold") or {}).get("venue")
-        if not (pred and gold) or r.get("verdict", {}).get("venue") != "wrong":
-            continue
-        k = _akey(pred)
-        if aliases.get(k) != gold:
-            continue
-        by_split[split_of(r["url"])] += 1
-        if split_of(r["url"]) == "train":
-            train_justified.add(k)
-    return aliases, train_justified
+def alias_leakage(test_rows: list[dict]) -> None:
+    head(1, "what the whole-corpus alias table is worth on test")
+    n_all = use_aliases("all")
+    before = score(test_rows, use_llm=False, settings=SETTINGS)
+    n_train = use_aliases("train")
+    after = score(test_rows, use_llm=False, settings=SETTINGS)
 
-
-def rescore_without_test_aliases(rows: list[dict], test_rows: list[dict]) -> None:
-    from src.ingestion import eval as ev
-
-    aliases, train_only = alias_provenance(rows)
-    leaked = {k: v for k, v in aliases.items() if k not in train_only}
-    test_keys = {_akey((r.get("predicted") or {}).get("venue")) for r in test_rows}
-
-    print("── 1 · alias-table leakage " + "─" * 44)
-    print(f"  aliases in table                : {len(aliases)}")
-    print(f"  justified only by a TEST row    : {len(leaked)}")
-    print(f"  test rows keyed by an alias     : {len(test_keys & set(aliases))} / {len(test_rows)}")
-
-    settings = _settings()
-    before = ev.score(test_rows, use_llm=False, settings=settings)
-
-    backup = ALIASES.read_text()
-    try:
-        ALIASES.write_text(json.dumps({k: aliases[k] for k in sorted(train_only)},
-                                      indent=2, ensure_ascii=False) + "\n")
-        _reload_normalizer()
-        after = ev.score(test_rows, use_llm=False, settings=settings)
-    finally:
-        ALIASES.write_text(backup)
-        _reload_normalizer()
-
-    print()
-    print(f"  {'metric':<26} {'as reported':>12} {'train-only aliases':>20} {'delta':>8}")
+    print(f"  overrides: all-corpus table {n_all}, train-only table {n_train} "
+          f"({n_all - n_train} exist only because a test row contributed them)\n")
+    print(f"  {'metric':<26} {'all-corpus':>12} {'train-only':>12} {'delta':>9}")
+    den = before.venue_scored
     for label, attr in (("venue exact", "venue_exact"), ("venue fuzzy", "venue_fuzzy")):
         b, a = getattr(before, attr), getattr(after, attr)
-        den = before.venue_scored
-        print(f"  {label:<26} {b / den:>11.1%} {a / den:>20.1%} {(a - b) / den:>+8.1%}")
-    print("\n  ^ the gap is memorised test gold, not extraction skill.")
-
-
-def _settings():
-    from src.ingestion.config import IngestionSettings
-
-    return IngestionSettings(ollama_url="http://localhost:11434", ollama_model="llama3.2")
-
-
-def _reload_normalizer() -> None:
-    """`_ALIASES` is loaded at import time — re-import so the swap takes effect."""
-    import importlib
-
-    from src.ingestion import eval as ev
-    from src.ingestion.pipeline import normalizer
-
-    importlib.reload(normalizer)
-    importlib.reload(ev)
+        print(f"  {label:<26} {b / den:>11.1%} {a / den:>12.1%} {(a - b) / den:>+9.1%}")
+    print("\n  ^ the gap is memorised test gold, not extraction skill. `eval.py --split test`\n"
+          "    now defaults to the train-only table, so its headline is the right-hand column.")
 
 
 # ── 2-4 · intervals, baselines, is_vague ──────────────────────────────────────
 
 
 def breakdown(rows: list[dict]) -> None:
-    from src.ingestion.eval import score
-    from src.ingestion.pipeline.normalizer import normalize
+    t = score(rows, use_llm=False, settings=SETTINGS)
 
-    t = score(rows, use_llm=False, settings=_settings())
-
-    print("\n── 2 · how wide is the noise band " + "─" * 37)
+    head(2, "how wide is the noise band")
     print(ci_line("venue exact", t.venue_exact, t.venue_scored))
     print(ci_line("category", t.cat_hit, t.cat_scored))
     print(ci_line("city in geo text", t.city_hit, t.city_scored))
@@ -153,7 +102,6 @@ def breakdown(rows: list[dict]) -> None:
 
     per_class: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
     confusions: collections.Counter = collections.Counter()
-    vague_cm: collections.Counter = collections.Counter()
     for r in rows:
         gold, verdict = r.get("gold", {}), r.get("verdict", {})
         cand = normalize(raw_from_input(r["url"], r.get("input", {})))
@@ -162,41 +110,39 @@ def breakdown(rows: list[dict]) -> None:
             per_class[gold["category"]][1] += 1
             per_class[gold["category"]][0] += int(_norm(pred_cat) == _norm(gold["category"]))
             confusions[(gold["category"], pred_cat)] += 1
-        if gold.get("in_catalog") is not None:
-            vague_cm[(bool(gold["in_catalog"]), bool(cand.get("is_vague")))] += 1
 
-    print("\n── 3 · category vs. a trivial baseline " + "─" * 32)
+    head(3, "category vs. a trivial baseline")
     total = sum(n for _, n in per_class.values())
     biggest = max((n for _, n in per_class.values()), default=0)
     for cls, (hit, n) in sorted(per_class.items(), key=lambda kv: -kv[1][1]):
         print(f"  {cls:<16} {hit:>3}/{n:<3} = {hit / n:5.0%}")
     print(f"  {'-' * 34}")
-    print(f"  {'parser (micro)':<16} {sum(h for h, _ in per_class.values()):>3}/{total:<3} = "
-          f"{sum(h for h, _ in per_class.values()) / total:5.1%}")
+    hits = sum(h for h, _ in per_class.values())
+    print(f"  {'parser (micro)':<16} {hits:>3}/{total:<3} = {hits / total:5.1%}")
     print(f"  {'always-majority':<16} {biggest:>3}/{total:<3} = {biggest / total:5.1%}   <- the number to beat")
     macro = sum(h / n for h, n in per_class.values()) / len(per_class)
-    print(f"  {'macro-average':<16}     {'':<3}   {macro:5.1%}   <- what imbalance hides")
+    print(f"  {'macro-average':<16} {'':>3} {'':<3}   {macro:5.1%}   <- what the imbalance hides")
     worst = [f"{a} -> {b}: {c}" for (a, b), c in confusions.most_common(6) if a != b]
     print(f"  top confusions   : {', '.join(worst)}")
 
-    print("\n── 4 · is_vague as a classifier " + "─" * 39)
-    tp, fn = vague_cm[(False, True)], vague_cm[(False, False)]
-    fp, tn = vague_cm[(True, True)], vague_cm[(True, False)]
-    print(f"  correctly rejected promo   (TP): {tp}")
-    print(f"  promo let through          (FN): {fn}")
-    print(f"  REAL PLACE wrongly rejected(FP): {fp}   <- never reported by the scorecard")
-    print(f"  real place kept            (TN): {tn}")
+    head(4, "is_vague as a classifier")
+    tp, fp, fn = t.vague_hit, t.vague_fp, t.vague_scored - t.vague_hit
+    tn = t.vague_kept - t.vague_fp
+    print(f"  correctly rejected promo    (TP): {tp}")
+    print(f"  promo let through           (FN): {fn}")
+    print(f"  REAL PLACE wrongly rejected (FP): {fp}   <- the cost of pushing recall up")
+    print(f"  real place kept             (TN): {tn}")
     if tp + fn:
-        print(f"  recall    : {tp / (tp + fn):.1%}   (this is the scorecard's 'promo rejected')")
+        print(f"  recall    : {tp / (tp + fn):.1%}")
     if tp + fp:
-        print(f"  precision : {tp / (tp + fp):.1%}   (half of what it rejects is a real place)")
+        print(f"  precision : {tp / (tp + fp):.1%}")
 
 
-# ── 5 · group overlap across the split ────────────────────────────────────────
+# ── 5 · group overlap ─────────────────────────────────────────────────────────
 
 
 def group_overlap(rows: list[dict]) -> None:
-    print("\n── 5 · what the URL-hash split does not separate " + "─" * 22)
+    head(5, "what the URL-hash split does not separate")
     for field, get in (("gold venue", lambda r: (r.get("gold") or {}).get("venue")),
                        ("poster handle", lambda r: (r.get("input") or {}).get("handle"))):
         seen: dict = collections.defaultdict(set)
@@ -209,6 +155,68 @@ def group_overlap(rows: list[dict]) -> None:
     print("  ^ rows sharing a venue or a poster are not independent draws.")
 
 
+# ── 6 · extractive ceiling ────────────────────────────────────────────────────
+
+_FIELDS = ("caption", "transcript", "handle", "hashtags", "og_title", "location_text")
+
+
+def _loose(s: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", " ", (s or "").lower()).strip()
+
+
+def _tight(s: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _present(gold: str, inp: dict, field: str) -> bool:
+    if field == "handle":                       # run-together, so compare compacted
+        return bool(_tight(gold)) and _tight(gold) in _tight(inp.get("handle"))
+    value = " ".join(inp.get("hashtags") or []) if field == "hashtags" else inp.get(field)
+    return bool(_loose(gold)) and _loose(gold) in _loose(value)
+
+
+def ceiling(rows: list[dict]) -> None:
+    head(6, "the extractive ceiling — is the answer even in the input?")
+    scored = [r for r in rows
+              if (r.get("gold") or {}).get("venue")
+              and r.get("verdict", {}).get("venue") in _SCOREABLE_VERDICTS]
+    if not scored:
+        print("  no scoreable rows with a gold venue")
+        return
+
+    hits = collections.Counter()
+    nowhere = []
+    for r in scored:
+        gold, inp = r["gold"]["venue"], r.get("input", {})
+        found = [f for f in _FIELDS if _present(gold, inp, f)]
+        hits.update(found)
+        if found:
+            hits["ANY"] += 1
+        else:
+            nowhere.append(r)
+
+    n = len(scored)
+    print(f"  gold venue present as a literal substring of the stored input  (n={n})\n")
+    for f in _FIELDS:
+        print(f"    in {f:<14}: {hits[f]:>3}  ({hits[f] / n:4.0%})")
+    print(f"    {'-' * 30}")
+    print(f"    in ANY of them : {hits['ANY']:>3}  ({hits['ANY'] / n:4.0%})   <- no extractive method can beat this")
+    print(f"    nowhere        : {len(nowhere):>3}  ({len(nowhere) / n:4.0%})   <- canonicalisation, or a source we don't capture")
+
+    t = score(rows, use_llm=False, settings=SETTINGS)
+    if t.venue_scored and hits["ANY"]:
+        got = t.venue_exact / t.venue_scored
+        cap = hits["ANY"] / n
+        print(f"\n  venue exact {got:.1%} against a {cap:.0%} ceiling = {got / cap:.0%} of what is reachable;"
+              f"\n  {cap - got:.0%} of the corpus is headroom the current rules leave on the table.")
+
+    print("\n  a few 'nowhere' rows — check whether each is really missing or just uncanonical:")
+    for r in nowhere[:5]:
+        inp = r.get("input", {})
+        cap_txt = (inp.get("caption") or "").replace("\n", " ")[:54]
+        print(f"    gold={r['gold']['venue']!r:<32} handle=@{inp.get('handle') or '':<20} {cap_txt!r}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["all", "train", "test"], default="test")
@@ -216,12 +224,18 @@ def main() -> None:
 
     rows = load_labels()
     scored = [r for r in rows if args.split == "all" or split_of(r["url"]) == args.split]
-    print(f"corpus: {len(rows)} rows ({LABELS_PATH.name}), scoring split={args.split} ({len(scored)} rows)\n")
+    print(f"corpus: {len(rows)} rows ({LABELS_PATH.name}), scoring split={args.split} ({len(scored)} rows)")
 
-    if args.split == "test":
-        rescore_without_test_aliases(rows, scored)
-    breakdown(scored)
-    group_overlap(rows)
+    try:
+        if args.split == "test":
+            alias_leakage(scored)
+        use_aliases("train" if args.split == "test" else "all")
+        print(f"\n(sections below use the {'train-only' if args.split == 'test' else 'all-corpus'} alias table)")
+        breakdown(scored)
+        group_overlap(rows)
+        ceiling(scored)
+    finally:
+        use_aliases("all")
 
 
 if __name__ == "__main__":

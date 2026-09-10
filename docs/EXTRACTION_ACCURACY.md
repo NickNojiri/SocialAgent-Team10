@@ -102,8 +102,21 @@ Run over a held-out slice of `labels.jsonl`:
 - **venue exact** (normalized) and **venue fuzzy** (token overlap ≥ 0.6)
 - **city / geo** match (within ~5 km when coords exist)
 - **category** accuracy
-- **catalog-inclusion** precision/recall (did `is_vague` catch promo posts)
+- **catalog-inclusion** precision *and* recall (did `is_vague` catch promo posts —
+  and what did it throw away doing it; the scorecard reported recall only until
+  2026-09-10)
+- **extractive ceiling** — how often the gold venue is a literal substring of the
+  stored input at all (78% on test). Accuracy is only meaningful against this.
 - breakdown by failure bucket
+
+> ⚠️ **2026-09-10 — read this before any number below.** Every venue figure recorded
+> from round 4 onward was scored with an alias table built from the *whole* corpus,
+> including the rows being scored. On the held-out split that was worth 12 points
+> (49.6% → 37.4%). `eval.py --split test` now defaults to a train-only table and the
+> CI ratchet floors on `--split train`. The corrected numbers are in
+> `docs/HANDOFF.md`; the analysis is `docs/ML_REVIEW_QUESTIONS.md`; reproduce with
+> `python scripts/eval_diagnostics.py`. Round-by-round history below is kept as-is —
+> the *relative* gains within a round are still informative, the absolutes are not.
 
 ## Measured results (15-row seed corpus, `python -m src.ingestion.eval`)
 

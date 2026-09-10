@@ -10,7 +10,7 @@ slice 3+), raise the floors and delete the xfail markers as rows start passing.
 import pytest
 
 from src.ingestion.config import IngestionSettings
-from src.ingestion.eval import load_labels, score
+from src.ingestion.eval import load_labels, score, split_of, use_aliases
 
 _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 
@@ -46,12 +46,24 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #   2026-09-09 label-loop pass: +231 hand-labeled DM-harvest rows (16 more left
 #     needs_review), aliases regenerated (63). Heuristic-only on all 433 rows,
 #     --split all numerators below:
-#   all-split (433, 417 labeled)       : venue 207/415 · fuzzy 217/415 · category 284/417 · city 262/341 · vague 15/51  |  HONEST test: venue 49.6% · cat 63.2% · city 73.1%
-_FLOOR_VENUE_EXACT = 207
-_FLOOR_VENUE_FUZZY = 217
-_FLOOR_CATEGORY = 284
-_FLOOR_CITY = 262
-_FLOOR_VAGUE = 15
+#   all-split (433, 417 labeled)       : venue 207/415 · fuzzy 217/415 · category 284/417 · city 262/341 · vague 15/51
+#   ── 2026-09-10 the ratchet moved OFF --split all. Two reasons:
+#      (a) the old floors were scored with the whole-corpus alias table, which
+#          contains each test row's own gold label — that was worth 12 points of
+#          venue accuracy (49.6% -> 37.4% without it). See docs/ML_REVIEW_QUESTIONS.md.
+#      (b) flooring on `all` meant every round's keep/drop decision was informed by
+#          test performance. Six rounds of that is adaptive overfitting; the test
+#          split stops being a held-out set.
+#      So: CI ratchets on TRAIN with the TRAIN-ONLY alias table. Tune against this
+#      freely. The held-out number is `--split test` and is NOT asserted here — run
+#      it deliberately, and sparingly.
+#   train-split (311 rows, train aliases) : venue 150/300 · fuzzy 158/300 · category 210/300 · city 194/248 · vague 11/34
+#      for reference, honest held-out at the same commit: venue 37.4% · cat 63.2% · city 73.1% · vague 23.5% (precision 50%)
+_FLOOR_VENUE_EXACT = 150
+_FLOOR_VENUE_FUZZY = 158
+_FLOOR_CATEGORY = 210
+_FLOOR_CITY = 194
+_FLOOR_VAGUE = 11
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.
@@ -65,6 +77,15 @@ def rows():
     return load_labels()
 
 
+@pytest.fixture          # function-scoped: the alias swap must not leak into other tests
+def train_rows(rows):
+    """The ratchet's rows: train split, scored with the train-only alias table so no
+    test row's gold label reaches the extractor. See the floors block above."""
+    use_aliases("train")
+    yield [r for r in rows if split_of(r["url"]) == "train"]
+    use_aliases("all")          # restore the shipped table for any later test
+
+
 def test_corpus_is_wellformed(rows):
     assert rows, "label corpus is empty"
     for r in rows:
@@ -75,8 +96,8 @@ def test_corpus_is_wellformed(rows):
             assert v in _VALID_VERDICTS, f"{r['url']}: bad verdict.{field_} = {v!r}"
 
 
-def test_heuristic_baseline_does_not_regress(rows):
-    t = score(rows, use_llm=False, settings=IngestionSettings())
+def test_heuristic_baseline_does_not_regress(train_rows):
+    t = score(train_rows, use_llm=False, settings=IngestionSettings())
     assert t.venue_exact >= _FLOOR_VENUE_EXACT, (
         f"venue exact regressed: {t.venue_exact}/{t.venue_scored} < floor {_FLOOR_VENUE_EXACT}"
     )

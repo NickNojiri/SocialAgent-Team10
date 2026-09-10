@@ -15,16 +15,29 @@ against a hand-labeled corpus with a frozen train/test split. No LLM in the path
 (all genuinely gatekept — venue nowhere in caption/transcript/tag). Train/test
 split is deterministic by URL hash (`eval.py::split_of`), ~70/30.
 
-**Honest held-out numbers** (`python -m src.ingestion.eval --offline --split test`,
-115 scored rows — train≈test, so this is real, not corpus-fitted):
+**Held-out numbers** (`python -m src.ingestion.eval --offline --split test`, 115
+scored rows).
 
-| metric | test | all (417) |
-|---|---|---|
-| venue exact | **49.6%** | 49.9% |
-| venue fuzzy | 51.3% | 52.3% |
-| category | **63.2%** | 68.1% |
-| city | **73.1%** | 76.8% |
-| promo-rejection (is_vague) | **23.5%** | 29.4% |
+> ⚠️ **Corrected 2026-09-10.** The venue numbers first recorded here (49.6% exact /
+> 51.3% fuzzy) were inflated. `build_aliases.py` built the alias table from the
+> *whole* corpus, so each test row's own gold label was compiled into the extractor
+> that scored it — 20 of 63 overrides came from test rows. `eval.py --split test`
+> now defaults to the train-only table; the honest figures are below. Full write-up:
+> `docs/ML_REVIEW_QUESTIONS.md`; reproduce with `python scripts/eval_diagnostics.py`.
+
+| metric | test (train-only aliases) | was reported | train |
+|---|---|---|---|
+| venue exact | **37.4%** | ~~49.6%~~ | 50.0% |
+| venue fuzzy | 40.9% | ~~51.3%~~ | 52.7% |
+| category | **63.2%** | 63.2% | 70.0% |
+| city | **73.1%** | 73.1% | 78.2% |
+| promo-rejection recall | **23.5%** | 23.5% | 32.4% |
+| promo-rejection *precision* | **50.0%** | not reported | 78.6% |
+
+Read venue against its ceiling, not against 100%: the gold venue is a literal
+substring of the stored input in only **78%** of test rows, so 37.4% is roughly
+**half of what any extractive method could reach** — the headroom is in the rules,
+not in the model. `eval_diagnostics.py` section 6 prints this.
 
 **237 tests pass.** Nothing uncommitted. **NOTE:** the last ~7 commits (round 5,
 the +231 label merge, the `review.py` improvements, this doc) are committed but
@@ -47,10 +60,17 @@ venv/bin/python -m src.ingestion.eval --offline --split all --table   # per-row 
    `normalizer.py`) has plateaued. Fix: embedding-nearest classifier — embed the
    caption with the local `mxbai-embed-large` (Ollama), compare to per-category
    centroids built from the labeled corpus, pick nearest. Plausibly 63% → ~78%.
+   ⚠️ That target sits inside the current 95% CI ([54.2%, 71.4%], 17pts wide at
+   n=117), and 63.2% is only 8.5 points above always-guessing `food_drink` (54.7%).
+   27 of the 43 category errors are `→ other` — no keyword matched at all, which is
+   table coverage, not a representation problem. Build centroids from **train only**.
 2. **promo-rejection — 24% held-out.** `looks_vague()` can't tell a no-name food
    post from a real place. This is genuinely an LLM job, not regex. Leave it for
    the Haiku pass.
-3. **venue — 50%.** Ceiling is gatekept + spoken-only reels. In-house headroom
+3. **venue — 37.4% held-out** (not 50%; see the correction above). Ceiling is
+   gatekept + spoken-only reels — measured at 78%, and a chunk of the missing 22%
+   is canonicalisation rather than absence (`@cafefrancala` is right there in the
+   caption for gold `Cafe Franca LA`). In-house headroom
    is small (~50→55 with more alias-table growth from corrections). Past that
    needs the LLM.
 4. **Gatekept reels** (name only in comments): add a comment-scrape step to the
@@ -109,9 +129,12 @@ Then label the new rows (`review.py`) or spin a labeling agent like this session
 
 ## Rules of the road
 
-- Every parser change: `eval.py --split test` before/after. Tune on train, report test.
-- After any `labels.jsonl` change: `python scripts/build_aliases.py`, then bump the
-  floors in `test_extraction_labels.py` to the new `--split all` numerators.
+- Every parser change: tune against `--split train`; look at `--split test` rarely
+  and deliberately. It has already absorbed six rounds of tuning decisions.
+- After any `labels.jsonl` change: `python scripts/build_aliases.py` (writes **both**
+  tables — shipped and train-only), then bump the floors in
+  `test_extraction_labels.py` to the new **`--split train`** numerators. The ratchet
+  no longer floors on `--split all`; that was what let test drift optimistic.
 - `docs/EXTRACTION_ACCURACY.md` has the full round-by-round history if you need context.
 
 ## Also on this branch (not extraction)

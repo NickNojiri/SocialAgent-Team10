@@ -123,6 +123,10 @@ class Tally:
     city_scored: int = 0
     vague_hit: int = 0
     vague_scored: int = 0
+    # is_vague false positives: gold says this IS a place and we rejected it. The
+    # recall line alone hides the cost of rejecting more aggressively.
+    vague_fp: int = 0
+    vague_kept: int = 0
     # LLM-targeting view: venue rows below the confidence bar, and how many of
     # those are currently wrong (that wrong slice is the LLM's addressable upside).
     lowconf: int = 0
@@ -142,7 +146,9 @@ class Tally:
             f"  venue fuzzy (>=.6): {self.pct(self.venue_fuzzy, self.venue_scored)}",
             f"  category          : {self.pct(self.cat_hit, self.cat_scored)}",
             f"  city in geo text  : {self.pct(self.city_hit, self.city_scored)}",
-            f"  promo rejected    : {self.pct(self.vague_hit, self.vague_scored)}  (gold in_catalog=false → is_vague)",
+            f"  promo rejected    : {self.pct(self.vague_hit, self.vague_scored)}  (recall — gold in_catalog=false → is_vague)",
+            f"  ...its precision  : {self.pct(self.vague_hit, self.vague_hit + self.vague_fp)}  "
+            f"({self.vague_fp} real place{'' if self.vague_fp == 1 else 's'} wrongly rejected)",
             f"  low-conf venue    : {self.lowconf} rows < {self.LOWCONF_BAR}  "
             f"({self.lowconf_wrong} wrong → the LLM's addressable upside)",
         ]
@@ -208,6 +214,9 @@ def score(rows: list[dict], *, use_llm: bool, settings: IngestionSettings) -> Ta
         if gold.get("in_catalog") is False:
             t.vague_scored += 1
             t.vague_hit += int(is_vague)
+        elif gold.get("in_catalog") is True:
+            t.vague_kept += 1
+            t.vague_fp += int(is_vague)
 
         conf = float(cand.get("venue_confidence") or 0.0)
         slot = cand.get("venue_slot") or "none"
@@ -288,6 +297,18 @@ def score_geocode(rows: list[dict]) -> None:
 # ── cli ───────────────────────────────────────────────────────────────────────
 
 
+def use_aliases(which: str) -> int:
+    """Point the extractor's learned-correction table at 'all' | 'train' | 'none'."""
+    from src.ingestion.pipeline import normalizer
+
+    paths = {
+        "all": LABELS_PATH.parent / "venue_aliases.json",
+        "train": LABELS_PATH.parent / "venue_aliases.train.json",
+        "none": LABELS_PATH.parent / "does-not-exist.json",
+    }
+    return normalizer.reload_aliases(paths[which])
+
+
 def _ollama_up(settings: IngestionSettings) -> bool:
     import httpx
 
@@ -307,6 +328,10 @@ def main() -> None:
                     help="which pipeline stage to score (default: extract)")
     ap.add_argument("--split", choices=["all", "train", "test"], default="all",
                     help="score only this split (deterministic 70/30 by URL hash)")
+    ap.add_argument("--aliases", choices=["all", "train", "none"],
+                    help="which learned-correction table the extractor may use. Default: "
+                         "'train' when --split test (so a test row's own gold label is not "
+                         "compiled into the extractor scoring it), 'all' otherwise.")
     args = ap.parse_args()
 
     import os
@@ -315,10 +340,17 @@ def main() -> None:
         ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
         ollama_model=args.model or os.getenv("OLLAMA_MODEL", "llama3.2"),
     )
+    which = args.aliases or ("train" if args.split == "test" else "all")
+    n_aliases = use_aliases(which)
+
     rows = load_labels()
     if args.split != "all":
         rows = [r for r in rows if split_of(r["url"]) == args.split]
-    print(f"corpus: {len(rows)} labeled rows  ({LABELS_PATH}, split={args.split})\n")
+    print(f"corpus: {len(rows)} labeled rows  ({LABELS_PATH}, split={args.split})")
+    print(f"aliases: {which} ({n_aliases} overrides)"
+          + ("   <- held-out: no test row contributes an override" if which == "train" else "")
+          + ("   <- includes test rows; NOT a held-out number" if which == "all" and args.split == "test" else "")
+          + "\n")
 
     if args.stage == "geocode":
         score_geocode(rows)
