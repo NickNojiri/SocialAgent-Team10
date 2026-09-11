@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @page { margin: 14mm; }
+  @media print {
+    :root { --paper:#FFFFFF !important; --surface:#FFFFFF !important; }
+    .nav, .filter, .copy { display: none !important; }
+    body { background: #fff !important; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section { break-inside: auto; padding-top: 22px !important; }
+    .sec-head { break-after: avoid; }
+    .sprint, .rcard, .prompt, .prio-grp, .rules li { break-inside: avoid; }
+    .tbl-wrap { break-inside: auto; overflow: visible !important; }
+    table { min-width: 0 !important; }
+    a { text-decoration: none; }
+    .mast-in { padding-top: 0 !important; }
+  }
+</style>
+</head>
+<body>
+<title>SpotBot Capstone Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --paper:#F5F4F8; --surface:#FFFFFF; --surface-2:#EDEBF3; --sunken:#E7E4EE;
+  --ink:#17161F; --ink-2:#4B4857; --ink-3:#76737F;
+  --line:#DEDBE7; --line-2:#C6C2D3;
+  --accent:#4F46A8; --accent-soft:#E9E7F8;
+  --crit:#A6291F; --crit-soft:#F7E4E1;
+  --t-nick:#4F46A8; --t-nick-bg:#E9E7F8;
+  --t-a:#0B6E86;   --t-a-bg:#DDEEF3;
+  --t-b:#8A5E00;   --t-b-bg:#F6EBD5;
+  --t-c:#A32F55;   --t-c-bg:#F8E3EA;
+  --t-d:#41600F;   --t-d-bg:#E7F0D8;
+  --measure:68ch;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#121118; --surface:#1B1A23; --surface-2:#23212D; --sunken:#0D0C12;
+    --ink:#EEECF3; --ink-2:#B5B1C3; --ink-3:#85818F;
+    --line:#2F2D3A; --line-2:#403D4E;
+    --accent:#ABA4F1; --accent-soft:#272443;
+    --crit:#F0968E; --crit-soft:#3A1F1C;
+    --t-nick:#ABA4F1; --t-nick-bg:#272443;
+    --t-a:#5FC6DC;   --t-a-bg:#10323B;
+    --t-b:#E0AC4E;   --t-b-bg:#3A2C0F;
+    --t-c:#EF8AA8;   --t-c-bg:#3D1C27;
+    --t-d:#A8CF6B;   --t-d-bg:#26330F;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121118; --surface:#1B1A23; --surface-2:#23212D; --sunken:#0D0C12;
+  --ink:#EEECF3; --ink-2:#B5B1C3; --ink-3:#85818F;
+  --line:#2F2D3A; --line-2:#403D4E;
+  --accent:#ABA4F1; --accent-soft:#272443;
+  --crit:#F0968E; --crit-soft:#3A1F1C;
+  --t-nick:#ABA4F1; --t-nick-bg:#272443;
+  --t-a:#5FC6DC;   --t-a-bg:#10323B;
+  --t-b:#E0AC4E;   --t-b-bg:#3A2C0F;
+  --t-c:#EF8AA8;   --t-c-bg:#3D1C27;
+  --t-d:#A8CF6B;   --t-d-bg:#26330F;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.prose{max-width:var(--measure)}
+h1,h2,h3,h4{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;text-wrap:balance;margin:0}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+code,kbd{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+
+/* ── masthead ─────────────────────────────── */
+.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+.mast-in{max-width:1080px;margin:0 auto;padding:52px 24px 40px;display:flex;flex-direction:column;gap:20px}
+.mast h1{font-size:clamp(34px,5.2vw,52px);font-weight:700;letter-spacing:-.022em;line-height:1.05}
+.mast .sub{max-width:60ch;color:var(--ink-2);font-size:17px}
+.mast .meta{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.pill{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.04em;
+  border:1px solid var(--line-2);border-radius:999px;padding:4px 11px;color:var(--ink-2);
+  background:var(--surface-2);white-space:nowrap;
+}
+.thesis{
+  border-left:3px solid var(--accent);padding:14px 0 14px 18px;margin:0;
+  font-size:18px;line-height:1.5;color:var(--ink);max-width:60ch;
+}
+.thesis strong{font-weight:600}
+
+/* ── nav ──────────────────────────────────── */
+.nav{
+  position:sticky;top:0;z-index:40;background:var(--paper);
+  border-bottom:1px solid var(--line);
+}
+.nav-in{
+  max-width:1080px;margin:0 auto;padding:0 24px;display:flex;gap:4px;
+  overflow-x:auto;scrollbar-width:thin;
+}
+.nav a{
+  flex:none;padding:12px 11px;font-size:13px;color:var(--ink-2);text-decoration:none;
+  border-bottom:2px solid transparent;white-space:nowrap;
+}
+.nav a:hover{color:var(--ink);border-bottom-color:var(--line-2)}
+
+/* ── sections ─────────────────────────────── */
+section{padding:52px 0 8px}
+.sec-head{display:flex;flex-direction:column;gap:7px;margin-bottom:22px}
+.sec-head h2{font-size:27px;font-weight:600;letter-spacing:-.014em}
+.sec-head p{margin:0;color:var(--ink-2);max-width:var(--measure)}
+p{margin:0 0 14px}
+
+/* ── track filter ─────────────────────────── */
+.filter{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+}
+.filter .lbl{font-size:13px;color:var(--ink-2);margin-right:2px}
+.chip{
+  font-family:"IBM Plex Sans",sans-serif;font-size:13px;font-weight:500;
+  border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink-2);
+  border-radius:999px;padding:6px 13px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;
+}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.chip:hover{border-color:var(--ink-3)}
+.chip[data-track="nick"]{color:var(--t-nick)} .chip[data-track="a"]{color:var(--t-a)}
+.chip[data-track="b"]{color:var(--t-b)} .chip[data-track="c"]{color:var(--t-c)}
+.chip[data-track="d"]{color:var(--t-d)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .chip.on{color:#15131f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip.on{color:#15131f}}
+.chip.on .dot{background:currentColor}
+.filtering [data-track]:not(.keep){opacity:.2}
+.filtering .owner-row:not(.keep){opacity:.2}
+
+/* ── team table ───────────────────────────── */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14.5px}
+th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+th{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;background:var(--surface-2);
+}
+tbody tr:last-child td{border-bottom:none}
+td .claim{color:var(--ink-2);font-style:italic}
+.tag{
+  display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;letter-spacing:.06em;border-radius:5px;padding:3px 8px;font-weight:500;white-space:nowrap;
+}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.tag.nick{color:var(--t-nick);background:var(--t-nick-bg)}
+.tag.a{color:var(--t-a);background:var(--t-a-bg)}
+.tag.b{color:var(--t-b);background:var(--t-b-bg)}
+.tag.c{color:var(--t-c);background:var(--t-c-bg)}
+.tag.d{color:var(--t-d);background:var(--t-d-bg)}
+
+/* ── rules / callouts ─────────────────────── */
+.rules{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;counter-reset:r}
+.rules li{
+  counter-increment:r;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 16px 13px 48px;position:relative;font-size:15px;
+}
+.rules li::before{
+  content:counter(r);position:absolute;left:16px;top:13px;
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:500;
+}
+.note{
+  background:var(--accent-soft);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px 18px;font-size:14.5px;color:var(--ink);max-width:var(--measure);
+}
+.note.warn{background:var(--crit-soft)}
+.note strong{font-weight:600}
+
+/* ── sprint timeline ──────────────────────── */
+.sem{margin-bottom:14px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+     padding-bottom:10px;border-bottom:2px solid var(--ink)}
+.sem h3{font-size:21px;font-weight:600}
+.sem .theme{font-size:14px;color:var(--ink-2);font-style:italic}
+.sprints{display:flex;flex-direction:column;gap:12px;margin:0 0 34px}
+.sprint{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  display:grid;grid-template-columns:118px 1fr;overflow:hidden;
+}
+.sprint > .sp-side{
+  background:var(--surface-2);border-right:1px solid var(--line);padding:14px 14px;
+  display:flex;flex-direction:column;gap:3px;
+}
+.sp-no{font-family:Archivo,sans-serif;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.sp-date{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
+.sp-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.sp-title{font-family:Archivo,sans-serif;font-size:16px;font-weight:600}
+.sp-note{font-size:14px;color:var(--ink-2);margin:0}
+.owner-row{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:start;font-size:14.5px}
+.owner-row + .owner-row{padding-top:8px;border-top:1px dashed var(--line)}
+.owner-row .what{color:var(--ink-2)}
+.owner-row .what b{color:var(--ink);font-weight:600}
+.ship{
+  margin-top:2px;font-size:13px;font-family:"IBM Plex Mono",monospace;color:var(--ink);
+  background:var(--sunken);border-radius:6px;padding:7px 10px;
+}
+.ship span{color:var(--ink-3)}
+
+/* ── priority ─────────────────────────────── */
+.prio{display:flex;flex-direction:column;gap:20px}
+.prio-grp{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.prio-hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+         background:var(--surface-2)}
+.prio-hd .k{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:13px;letter-spacing:.06em}
+.prio-hd .d{font-size:13.5px;color:var(--ink-2)}
+.p0 .k{color:var(--crit)} .p1 .k{color:var(--accent)} .p2 .k{color:var(--ink-3)}
+.prio ol{margin:0;padding:12px 16px 14px 34px;display:flex;flex-direction:column;gap:7px;font-size:14.5px}
+.prio li::marker{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
+
+/* ── reading ──────────────────────────────── */
+.reading{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.rcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.rcard h4{font-size:15px;font-weight:600;margin-bottom:4px}
+.rcard .who{font-size:12.5px;color:var(--ink-3);margin-bottom:11px}
+.rcard ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.rcard li::marker{color:var(--line-2)}
+.rcard .why{color:var(--ink-3)}
+
+/* ── prompts ──────────────────────────────── */
+.prompt{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+        overflow:hidden;margin-bottom:12px}
+.prompt-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);
+           background:var(--surface-2)}
+.prompt-hd .nm{font-size:14px;font-weight:600;font-family:Archivo,sans-serif}
+.copy{
+  margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.05em;
+  background:transparent;border:1px solid var(--line-2);color:var(--ink-2);
+  border-radius:5px;padding:4px 10px;cursor:pointer;
+}
+.copy:hover{border-color:var(--ink-3);color:var(--ink)}
+pre{
+  margin:0;padding:14px;overflow-x:auto;background:var(--sunken);
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.6;color:var(--ink);
+}
+
+/* ── lists / risks ────────────────────────── */
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;max-width:var(--measure)}
+.checks li{padding-left:26px;position:relative;font-size:15px}
+.checks li::before{
+  content:"";position:absolute;left:0;top:7px;width:11px;height:11px;
+  border:1.5px solid var(--line-2);border-radius:3px;
+}
+.checks li.skip::before{border-color:var(--crit);background:var(--crit-soft)}
+.foot{
+  border-top:1px solid var(--line);margin-top:54px;padding:26px 0 60px;
+  color:var(--ink-3);font-size:13.5px;
+}
+@media (max-width:680px){
+  .sprint{grid-template-columns:1fr}
+  .sprint > .sp-side{border-right:none;border-bottom:1px solid var(--line);flex-direction:row;gap:10px;align-items:baseline}
+  .owner-row{grid-template-columns:1fr;gap:4px}
+}
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="eyebrow">CSULB Senior Project &middot; Fall 2026 → Spring 2027</div>
+    <h1>SpotBot Capstone Plan</h1>
+    <p class="sub">A seven-month build plan for four people. Paste a reel, get a votable spot card, turn a group chat into an actual plan — now with the evidence to prove it works.</p>
+    <div class="meta">
+      <span class="pill">14 sprints</span>
+      <span class="pill">4 owners</span>
+      <span class="pill">2 semesters</span>
+      <span class="pill">Working prototype → deployed system</span>
+    </div>
+    <p class="thesis">The project already has the best capstone hook available: a known but <strong>unmeasured</strong> quality gate. Capture succeeds somewhere between 40% and 70% of the time and nobody has measured it. Turning that into a measured, improved, defended number is worth more than five new features.</p>
+  </div>
+</header>
+
+<nav class="nav">
+  <div class="nav-in">
+    <a href="#team">Who owns what</a>
+    <a href="#week0">Week 0</a>
+    <a href="#fall">Fall 2026</a>
+    <a href="#spring">Spring 2027</a>
+    <a href="#priority">Priority</a>
+    <a href="#reading">Reading</a>
+    <a href="#prompts">Prompts</a>
+    <a href="#include">What to include</a>
+    <a href="#rituals">Rituals</a>
+    <a href="#risks">Risks</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<section id="team">
+  <div class="sec-head">
+    <div class="eyebrow">Section 01</div>
+    <h2>Who owns what</h2>
+    <p>Each person owns a named subsystem, a measurable claim, and a section of the final report. Nobody is &ldquo;helping.&rdquo; Ownership means you write it, test it, demo it, and answer questions about it.</p>
+  </div>
+
+  <div class="filter" id="filter">
+    <span class="lbl">Show only:</span>
+    <button class="chip" data-track="nick"><span class="dot"></span>Nick</button>
+    <button class="chip" data-track="a"><span class="dot"></span>Track A · Capture</button>
+    <button class="chip" data-track="b"><span class="dot"></span>Track B · Intelligence</button>
+    <button class="chip" data-track="c"><span class="dot"></span>Track C · Experience</button>
+    <button class="chip" data-track="d"><span class="dot"></span>Track D · Platform</button>
+    <button class="chip" id="clear">Show all</button>
+  </div>
+
+  <div class="tbl-wrap" style="margin-top:14px">
+    <table>
+      <thead><tr><th>Owner</th><th>Subsystem</th><th>The claim they defend at demo day</th></tr></thead>
+      <tbody>
+        <tr data-track="nick"><td><span class="tag nick">NICK</span><br><b>Architecture &amp; Integration</b></td>
+          <td>Pipeline orchestration, async job queue, release engineering, code review, the demo</td>
+          <td class="claim">&ldquo;I designed the ingestion architecture and made capture non-blocking at N concurrent captures.&rdquo;</td></tr>
+        <tr data-track="a"><td><span class="tag a">TRACK A</span><br><b>Capture &amp; Data Sources</b></td>
+          <td><code>sources/ig_authed.py</code>, fallback &amp; retry chain, failure taxonomy, second platform</td>
+          <td class="claim">&ldquo;I raised capture success from X% to Y% on N real posts and added a second source.&rdquo;</td></tr>
+        <tr data-track="b"><td><span class="tag b">TRACK B</span><br><b>Intelligence &amp; Evaluation</b></td>
+          <td>Golden dataset, eval harness, extraction &amp; STT accuracy, hallucination guard, ranking</td>
+          <td class="claim">&ldquo;I built the benchmark; venue precision went X→Y and hallucinated venues dropped Z%.&rdquo;</td></tr>
+        <tr data-track="c"><td><span class="tag c">TRACK C</span><br><b>Experience &amp; User Research</b></td>
+          <td>Discord UX, onboarding, web companion &amp; map, accessibility, usability studies</td>
+          <td class="claim">&ldquo;I ran a study with N users; time-to-first-card fell from X to Y and SUS rose to Z.&rdquo;</td></tr>
+        <tr data-track="d"><td><span class="tag d">TRACK D</span><br><b>Platform, Security &amp; Ops</b></td>
+          <td>Multi-tenancy, auth, CI/CD, deployment, observability, security &amp; ethics review</td>
+          <td class="claim">&ldquo;I deployed it multi-tenant, took CI from 1 to 15 suites, and led the threat model.&rdquo;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note" style="margin-top:16px"><strong>With exactly four people:</strong> Nick takes Architecture + Platform (Track D), and the three teammates take A, B, and C. Track D&rsquo;s security &amp; ethics review pairs naturally with Track B if it needs a home.</div>
+
+  <h3 style="font-size:18px;font-weight:600;margin:30px 0 12px">The anti-bottleneck rules</h3>
+  <p class="prose" style="color:var(--ink-2)">Nick built almost all of the existing system and the other three are new to this. Without guardrails the default outcome is one person writing everything — which is both a grading problem and a burnout problem. These are non-negotiable.</p>
+  <ol class="rules">
+    <li><b>Nick reviews; Nick does not implement another track&rsquo;s code.</b> If someone is stuck more than a day, Nick pairs for 45 minutes — screen shared, <em>they</em> type.</li>
+    <li><b>No self-merge.</b> Every PR needs one non-author approval. This forces cross-reading.</li>
+    <li><b>Every person demos their own work</b> at the biweekly review. If Nick demos it, it isn&rsquo;t owned.</li>
+    <li><b>Track boundaries are module boundaries.</b> A lives in <code>sources/</code>, B in <code>eval/</code>, C in <code>app/</code>, D in CI and deploy config. Low collision by design.</li>
+    <li><b>You must be able to explain any code you ship.</b> AI agents are encouraged; code you can&rsquo;t explain in review doesn&rsquo;t merge. This is the rule that protects you at demo day.</li>
+  </ol>
+</section>
+
+<section id="week0">
+  <div class="sec-head">
+    <div class="eyebrow">Section 02</div>
+    <h2>Week 0 — Bootcamp</h2>
+    <p>The highest-leverage two days of the whole project. Goal: every teammate runs the full stack locally and merges one tiny PR. A beginner who has shipped once behaves completely differently from one who hasn&rsquo;t.</p>
+  </div>
+  <ul class="checks">
+    <li>Everyone installs Python 3.11+, Git, Ollama, VS Code</li>
+    <li>Clone → <code>git checkout feature/reel-capture</code> → <code>.\scripts\setup.ps1</code> <span style="color:var(--ink-3)">(already written)</span></li>
+    <li>Everyone gets their <b>own</b> Discord bot token plus a shared test server, then runs <code>run_local.ps1</code></li>
+    <li>Everyone captures one reel and watches their own card appear</li>
+    <li><b>One tiny PR each</b> — five lines, pre-picked by Nick. Branch → PR → review → merge. The point is the ritual, not the code.</li>
+    <li>Read together: <code>README.md</code>, <code>docs/PIPELINE.md</code>, <code>docs/PRODUCT_ROADMAP.md</code></li>
+    <li>Agree on sprint cadence, standup channel, definition of done, commit convention</li>
+  </ul>
+  <div class="ship" style="max-width:var(--measure);margin-top:16px"><span>Ships:</span> 4 merged PRs · 4 working environments · <code>docs/TEAM.md</code> charter</div>
+</section>
+
+<section id="fall">
+  <div class="sec-head">
+    <div class="eyebrow">Section 03</div>
+    <h2>Fall 2026 — Prove it works</h2>
+    <p>Roughly 13 weeks, six sprints. Grade target: a measured baseline, a real architecture, a working demo. Confirm every date against your 491A syllabus.</p>
+  </div>
+
+  <div class="sem"><h3>Semester 1</h3><span class="theme">Six sprints · Sept – Dec · exit with numbers, not opinions</span></div>
+  <div class="sprints">
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S1</div><div class="sp-date">Sep 15–26</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Baseline &amp; the go/no-go number</div>
+        <p class="sp-note">The most important sprint of the semester. You cannot improve what you haven&rsquo;t measured.</p>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Run <code>test_ig_live.py</code> on all 19 known URLs unauthenticated, on a clean network. <b>Publish the real pass rate.</b> Build a failure taxonomy: login wall / no video / timeout / no venue.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Start the <b>golden dataset</b> — 60 reels hand-labeled with venue, city, category, has-speech. Two people label the same 20 to measure agreement.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what">Measure <b>time-to-card</b> today (p50/p95). Screen-record the current UX as the &ldquo;before.&rdquo;</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what"><b>Fix CI</b> — it runs only <code>test_ingestion.py</code> out of 15 test files. Run the whole offline suite, add coverage and a badge.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what">Architecture diagram plus the first three ADRs: why Chroma, why a local LLM, why Discord first.</span></div>
+        <div class="ship"><span>Ships:</span> docs/BASELINE.md — every current number in one table</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S2</div><div class="sp-date">Sep 29–Oct 10</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Requirements &amp; reliability attempt one</div>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Get <code>AuthedInstagramSource</code> working live; measure authed pass rate against the baseline.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Golden set to 100 items. Write <code>eval/run_eval.py</code> producing precision and recall for venue and category.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what"><code>/setup</code> onboarding wizard plus a live capture progress message, replacing the silent 20–40 second wait.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Finish <code>guild_id</code> scoping end to end; move channel config out of <code>channels.json</code> into the database.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what"><b>SRS / requirements doc</b> — functional and non-functional, using the measured numbers as the NFR targets. Everyone contributes their track&rsquo;s requirements.</span></div>
+        <div class="ship"><span>Ships:</span> SRS v1 submitted</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S3</div><div class="sp-date">Oct 13–24</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Accuracy &amp; the hallucination problem</div>
+        <p class="sp-note">Two real failures already sitting in your data make this sprint concrete: a <em>Modern Family</em> comedy clip was force-fit into a venue, and one summary invented a venue name that was never said aloud.</p>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Retry and fallback chain — authed → unauthenticated → embed → manual. Failure taxonomy v2.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what"><b>The &ldquo;is this even a place?&rdquo; filter.</b> Add a not-a-place gate plus a grounding check that rejects venue names absent from both caption and transcript. Measure hallucination rate before and after.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what">Manual-add modal for failed captures, error-state copy, and recruit usability study participants.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Secrets audit, rate limiting, and the <b>prompt-injection threat model</b> — reel captions are untrusted text flowing into an LLM.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what">Async job queue design doc and spike.</span></div>
+        <div class="ship"><span>Ships:</span> docs/EVAL_REPORT_v1.md with real accuracy numbers</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S4</div><div class="sp-date">Oct 27–Nov 7</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Make it usable by strangers</div>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Transcription speed: skip Whisper when the caption already names venue and location, download the smallest video variant, tune VAD and threads. Target 2–3× faster.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Geo-aware ranking — lat/lng are already stored but unused in <code>recommender.py</code>. Rank by distance from the guild&rsquo;s home city plus popularity.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what"><b>Usability study round one</b> — 6–8 participants, think-aloud protocol, SUS questionnaire.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Deploy staging to a real host. Structured logging and a metrics endpoint.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what">Implement the job queue; capture becomes non-blocking.</span></div>
+        <div class="ship"><span>Ships:</span> live staging URL · usability findings v1</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S5</div><div class="sp-date">Nov 10–21</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Integrate &amp; harden</div>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">TikTok extractor, mirroring <code>extractors/instagram.py</code> — a good pattern-copy task.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Eval round two on the improved pipeline; build the charts for the report.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what">Act on the top three study findings. Accessibility pass: contrast, alt text, screen reader.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Load test — how many concurrent captures before it degrades? Write the security review.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what">Integration freeze; all four tracks working together on staging.</span></div>
+        <div class="ship"><span>Ships:</span> load test + security review docs</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S6</div><div class="sp-date">Nov 24–Dec 12</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Midterm demo &amp; write-up</div>
+        <p class="sp-note">Feature freeze at the <em>start</em> of this sprint. Bugs and documentation only.</p>
+        <div class="owner-row"><span class="tag nick" style="background:var(--surface-2);color:var(--ink-2)">ALL</span><span class="what">Record a three-minute demo (paste reel → card → <code>/plan</code> → scheduled event). Write the semester report, each person authoring their own section. Retro, then groom the Spring backlog.</span></div>
+        <div class="ship"><span>Ships:</span> demo video · Semester 1 report · tagged release v0.1</div>
+      </div>
+    </article>
+  </div>
+
+  <div class="note"><strong>Semester 1 exit criteria:</strong> measured capture reliability · a published eval report · a live staging deployment · a completed user study · CI green on the full suite · four people who each shipped.</div>
+</section>
+
+<section id="spring">
+  <div class="sec-head">
+    <div class="eyebrow">Section 04</div>
+    <h2>Spring 2027 — Make it real</h2>
+    <p>Roughly 17 weeks, eight sprints. Grade target: a deployed product with real users, a second round of evidence, and a polished defense.</p>
+  </div>
+
+  <div class="sem"><h3>Semester 2</h3><span class="theme">Eight sprints · Jan – May · real servers, real numbers, demo day</span></div>
+  <div class="sprints">
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S7</div><div class="sp-date">Jan 19–30</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Production readiness</div>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Source reliability SLO with alerting when pass rate drops below target.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Taste profile v1 — weight by votes and attended events, diversify categories.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what">Web companion: map view with spots plotted on OSM tiles, plus category filters.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Production deploy, backups, secrets rotation, uptime monitoring.</span></div>
+        <div class="owner-row" data-track="nick"><span class="tag nick">NICK</span><span class="what">Release process, versioning, rollback plan.</span></div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S8</div><div class="sp-date">Feb 2–13</div></div>
+      <div class="sp-body">
+        <div class="sp-title">The went-there loop</div>
+        <p class="sp-note">The retention feature and the data flywheel: the day after an event, ask &ldquo;did you go? rate it.&rdquo;</p>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Screenshot/OCR capture source (stretch) or source hardening.</span></div>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Feed attendance into ranking; measure whether it actually improves pick quality.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what">Post-event prompt UX plus the weekly digest — <code>exporters/markdown_digest.py</code> already exists, wire it to a scheduler.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Privacy: retention policy, user data deletion, a <code>/privacy</code> command.</span></div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S9</div><div class="sp-date">Feb 16–27</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Beta with real groups</div>
+        <p class="sp-note">Onboard three to five real friend-group Discord servers. This is the user data your final report is built on.</p>
+        <div class="owner-row"><span class="tag nick" style="background:var(--surface-2);color:var(--ink-2)">ALL</span><span class="what">Instrument, watch, fix. Daily triage of real failures.</span></div>
+        <div class="ship"><span>Ships:</span> first real-usage telemetry</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S10</div><div class="sp-date">Mar 2–13</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Evidence round two</div>
+        <p class="sp-note">Re-run the Sprint 1 benchmark. The delta between them <em>is</em> your capstone result.</p>
+        <div class="owner-row" data-track="b"><span class="tag b">TRACK B</span><span class="what">Full re-benchmark: reliability, accuracy, latency, ranking quality, against the Sprint 1 baseline.</span></div>
+        <div class="owner-row" data-track="c"><span class="tag c">TRACK C</span><span class="what"><b>Usability study round two</b> with new participants; compare SUS against round one.</span></div>
+        <div class="owner-row" data-track="a"><span class="tag a">TRACK A</span><span class="what">Fix what the beta surfaced.</span></div>
+        <div class="owner-row" data-track="d"><span class="tag d">TRACK D</span><span class="what">Fix what the beta surfaced.</span></div>
+        <div class="ship"><span>Ships:</span> docs/EVAL_REPORT_v2.md — the before/after that anchors the final report</div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S11</div><div class="sp-date">Mar 16–27</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Depth in each track</div>
+        <p class="sp-note">Each owner picks the most impressive remaining item in their area. This is the &ldquo;make it yours&rdquo; sprint, where individual report sections get their standout result.</p>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S12</div><div class="sp-date">Mar 30–Apr 10</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Hardening &amp; accessibility</div>
+        <div class="owner-row"><span class="tag nick" style="background:var(--surface-2);color:var(--ink-2)">ALL</span><span class="what">Security review round two and fix the findings, dependency audit, WCAG pass, error-path polish. <b>Feature freeze at the end of this sprint.</b></span></div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S13</div><div class="sp-date">Apr 13–24</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Report, poster, rehearsal</div>
+        <div class="owner-row"><span class="tag nick" style="background:var(--surface-2);color:var(--ink-2)">ALL</span><span class="what">Assemble the final report — each person writes their own section, Nick edits for coherence. Poster design, demo video v2, and <b>rehearse the live demo three times with a recorded fallback.</b></span></div>
+      </div>
+    </article>
+
+    <article class="sprint">
+      <div class="sp-side"><div class="sp-no">S14</div><div class="sp-date">Apr 27–May 14</div></div>
+      <div class="sp-body">
+        <div class="sp-title">Demo day &amp; handoff</div>
+        <div class="owner-row"><span class="tag nick" style="background:var(--surface-2);color:var(--ink-2)">ALL</span><span class="what">Demo day. Tag v1.0. Publish the OSS release, README, architecture docs. Individual contribution statements and a final retrospective.</span></div>
+        <div class="ship"><span>Ships:</span> demo day · v1.0 · contribution statements</div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="priority">
+  <div class="sec-head">
+    <div class="eyebrow">Section 05</div>
+    <h2>Priority order</h2>
+    <p>When you fall behind — and you will — this is what survives.</p>
+  </div>
+  <div class="prio">
+    <div class="prio-grp p0">
+      <div class="prio-hd"><span class="k">P0</span><span class="d">Everything depends on these</span></div>
+      <ol>
+        <li>Week 0 bootcamp — four working environments, four merged PRs</li>
+        <li>Measured baseline: capture pass rate, time-to-card, accuracy</li>
+        <li>CI running the full test suite (currently 1 of 15 files)</li>
+        <li>Golden dataset of 100 labeled reels — nothing in Track B works without it</li>
+        <li>Architecture doc, ADRs, and the SRS</li>
+        <li>Authed capture reliability — the go/no-go number</li>
+      </ol>
+    </div>
+    <div class="prio-grp p1">
+      <div class="prio-hd"><span class="k">P1</span><span class="d">The substance of the grade</span></div>
+      <ol start="7">
+        <li>Hallucination guard and the &ldquo;is this a place?&rdquo; filter</li>
+        <li>Multi-tenancy finished, staging deployed</li>
+        <li>Onboarding UX, capture progress, manual-add fallback</li>
+        <li>Usability study round one</li>
+        <li>Async job queue — non-blocking capture</li>
+        <li>Geo-aware ranking</li>
+        <li>Threat model and prompt-injection defense</li>
+      </ol>
+    </div>
+    <div class="prio-grp p2">
+      <div class="prio-hd"><span class="k">P2</span><span class="d">Depth and polish — cut these first</span></div>
+      <ol start="14">
+        <li>TikTok or a second capture source</li>
+        <li>Taste profile and the went-there loop</li>
+        <li>Web map companion</li>
+        <li>Weekly digest, <code>/catalog</code> v2</li>
+        <li>OCR capture, Telegram port, growth work</li>
+      </ol>
+    </div>
+  </div>
+  <div class="note warn" style="margin-top:18px"><strong>The cut rule:</strong> if you&rsquo;re behind, drop P2 entirely and protect the evidence — the baseline, the golden set, and the eval and usability reports. A capstone with three features and real measurements beats one with ten features and no numbers.</div>
+</section>
+
+<section id="reading">
+  <div class="sec-head">
+    <div class="eyebrow">Section 06</div>
+    <h2>Required reading</h2>
+    <p>Week 0 reading is for everyone. Track reading is owned — you are the person on the team who knows this material.</p>
+  </div>
+  <div class="reading">
+    <div class="rcard">
+      <h4>Week 0</h4><div class="who">Everyone, before Sprint 1</div>
+      <ul>
+        <li><a href="https://12factor.net/">The Twelve-Factor App</a> <span class="why">— config, dependencies, deployment. Skim all twelve.</span></li>
+        <li><a href="https://www.conventionalcommits.org/">Conventional Commits</a> + <a href="https://semver.org/">Semantic Versioning</a></li>
+        <li><a href="https://adr.github.io/">Architecture Decision Records</a> <span class="why">— the format you&rsquo;ll use all year</span></li>
+        <li><a href="https://scrumguides.org/">The Scrum Guide</a> <span class="why">— ~13 pages, defines the ceremonies</span></li>
+        <li><a href="https://docs.pytest.org/en/stable/getting-started.html">pytest — getting started</a></li>
+        <li>Project docs: <code>README.md</code>, <code>PIPELINE.md</code>, <code>PRODUCT_ROADMAP.md</code></li>
+      </ul>
+    </div>
+    <div class="rcard" data-track="a">
+      <h4><span class="tag a">TRACK A</span> Capture &amp; Data Sources</h4><div class="who">Fetching reels reliably</div>
+      <ul>
+        <li><a href="https://playwright.dev/python/docs/intro">Playwright for Python</a> <span class="why">— how the current fetch works</span></li>
+        <li><a href="https://developers.facebook.com/docs/instagram-platform">Meta Instagram Platform</a> <span class="why">— the official API path</span></li>
+        <li><a href="https://help.instagram.com/581066165581870">Instagram Terms of Use</a> <span class="why">— read before writing any scraper</span></li>
+        <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP">MDN HTTP overview</a> <span class="why">— retries, status codes, caching</span></li>
+        <li>Project doc: <code>IG_AUTH_INGESTION_PLAN.md</code> <span class="why">— your spec</span></li>
+      </ul>
+    </div>
+    <div class="rcard" data-track="b">
+      <h4><span class="tag b">TRACK B</span> Intelligence &amp; Evaluation</h4><div class="who">Measuring whether it&rsquo;s right</div>
+      <ul>
+        <li><a href="https://nlp.stanford.edu/IR-book/html/htmledition/evaluation-of-unranked-retrieval-sets-1.html">Stanford IR Book — precision &amp; recall</a></li>
+        <li><a href="https://en.wikipedia.org/wiki/Word_error_rate">Word Error Rate</a> + <a href="https://github.com/jitsi/jiwer">jiwer</a> <span class="why">— for scoring transcripts</span></li>
+        <li><a href="https://arxiv.org/abs/2212.04356">Whisper paper</a> and <a href="https://github.com/SYSTRAN/faster-whisper">faster-whisper</a></li>
+        <li><a href="https://arxiv.org/abs/2005.11401">RAG paper</a> <span class="why">— the retrieval pattern behind /plan</span></li>
+        <li><a href="https://docs.trychroma.com/">Chroma docs</a> · <a href="https://docs.ragas.io/">Ragas</a> <span class="why">— faithfulness is your hallucination metric</span></li>
+        <li><a href="https://en.wikipedia.org/wiki/Cohen%27s_kappa">Cohen&rsquo;s kappa</a> <span class="why">— label agreement on the golden set</span></li>
+      </ul>
+    </div>
+    <div class="rcard" data-track="c">
+      <h4><span class="tag c">TRACK C</span> Experience &amp; User Research</h4><div class="who">Making it usable, and proving it</div>
+      <ul>
+        <li><a href="https://discordpy.readthedocs.io/en/stable/">discord.py docs</a> · <a href="https://discord.com/developers/docs/intro">Discord developer docs</a></li>
+        <li><a href="https://discord.com/developers/docs/components/reference">Discord UI components</a> <span class="why">— buttons, modals, select menus</span></li>
+        <li><a href="https://www.nngroup.com/articles/ten-usability-heuristics/">Nielsen&rsquo;s 10 usability heuristics</a></li>
+        <li><a href="https://www.nngroup.com/articles/thinking-aloud-the-1-usability-method/">Thinking-aloud testing</a></li>
+        <li><a href="https://measuringu.com/sus/">System Usability Scale</a> <span class="why">— the score you&rsquo;ll report twice</span></li>
+        <li><a href="https://www.w3.org/WAI/WCAG22/quickref/">WCAG 2.2 quick reference</a></li>
+      </ul>
+    </div>
+    <div class="rcard" data-track="d">
+      <h4><span class="tag d">TRACK D</span> Platform, Security &amp; Ops</h4><div class="who">Running it safely for other people</div>
+      <ul>
+        <li><a href="https://owasp.org/www-project-top-10-for-large-language-model-applications/">OWASP Top 10 for LLM Apps</a> <span class="why">— LLM01 prompt injection is directly relevant</span></li>
+        <li><a href="https://simonwillison.net/series/prompt-injection/">Simon Willison on prompt injection</a></li>
+        <li><a href="https://owasp.org/www-project-application-security-verification-standard/">OWASP ASVS</a> <span class="why">— use as your review checklist</span></li>
+        <li><a href="https://sre.google/sre-book/service-level-objectives/">Google SRE — SLOs</a> and <a href="https://sre.google/sre-book/postmortem-culture/">postmortem culture</a></li>
+        <li><a href="https://docs.github.com/en/actions">GitHub Actions</a> · <a href="https://docs.docker.com/compose/">Docker Compose</a> · <a href="https://opentelemetry.io/docs/">OpenTelemetry</a></li>
+        <li><a href="https://grafana.com/docs/k6/latest/">k6</a> or <a href="https://docs.locust.io/">Locust</a> · <a href="https://fastapi.tiangolo.com/tutorial/security/">FastAPI security</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="prompts">
+  <div class="sec-head">
+    <div class="eyebrow">Section 07</div>
+    <h2>Starter prompts</h2>
+    <p>Beginners ship faster with a good prompt and a hard rule: you must understand what comes back. Start every task from the house template.</p>
+  </div>
+
+  <div class="prompt">
+    <div class="prompt-hd"><span class="nm">House template</span><span class="pill">use for everything</span><button class="copy">Copy</button></div>
+<pre>You are working in the SpotBot repo (Python, FastAPI, discord.py, ChromaDB, Ollama).
+Read these files before changing anything: &lt;paths&gt;.
+Goal: &lt;one sentence&gt;.
+Constraints: match existing patterns; keep the offline test suite green
+(`pytest -q --ignore=test_ig_live.py`); add unit tests for new logic; do not
+change files outside &lt;my track's directories&gt;.
+Explain your approach in 3 sentences BEFORE writing code, then implement.</pre>
+  </div>
+
+  <div class="prompt" data-track="a">
+    <div class="prompt-hd"><span class="nm">Reliability measurement</span><span class="tag a">TRACK A</span><button class="copy">Copy</button></div>
+<pre>Read test_ig_live.py and docs/IG_AUTH_INGESTION_PLAN.md. Build a measurement
+script that runs all known reel URLs through both the unauthenticated and the
+authenticated path, and outputs a table: URL, path, outcome (ok/login_wall/
+no_video/timeout/no_venue), latency. Write results to docs/BASELINE.md.
+Do not change pipeline code — measurement only.</pre>
+  </div>
+
+  <div class="prompt" data-track="b">
+    <div class="prompt-hd"><span class="nm">Golden set &amp; eval harness</span><span class="tag b">TRACK B</span><button class="copy">Copy</button></div>
+<pre>Create eval/: a golden.jsonl of hand-labeled reels (url, true_venue, true_city,
+true_category, has_speech) and run_eval.py that runs the pipeline over them and
+reports precision/recall for venue and category, plus a hallucination rate
+(venue name that appears in NEITHER caption nor transcript). Print a summary
+table and write eval/results/&lt;date&gt;.json. Add unit tests with a fake pipeline.</pre>
+  </div>
+
+  <div class="prompt" data-track="c">
+    <div class="prompt-hd"><span class="nm">Onboarding wizard</span><span class="tag c">TRACK C</span><button class="copy">Copy</button></div>
+<pre>Read app/bot.py and app/cards.py. Add a /setup slash command: a Discord modal
+wizard that (1) picks or creates a drop channel, (2) sets the guild's home city,
+(3) saves via the admin API. Match the existing DynamicItem button patterns in
+cards.py so it survives restarts. Add tests to app/test_cards.py.</pre>
+  </div>
+
+  <div class="prompt" data-track="d">
+    <div class="prompt-hd"><span class="nm">CI &amp; security audit</span><span class="tag d">TRACK D</span><button class="copy">Copy</button></div>
+<pre>Read .github/workflows/ci.yml. It runs only test_ingestion.py, but the repo has
+15 test files. Rewrite CI to run the full offline suite with coverage reporting,
+fail under 70% coverage, and cache the Playwright browser. Then audit
+src/ingestion/serving/tenant_auth.py and list every endpoint that is not
+authenticated, as a markdown table in docs/SECURITY_REVIEW.md.</pre>
+  </div>
+
+  <div class="prompt" data-track="nick">
+    <div class="prompt-hd"><span class="nm">Async architecture</span><span class="tag nick">NICK</span><button class="copy">Copy</button></div>
+<pre>Read src/ingestion/pipeline/orchestrator.py and app/bot.py::handle_reel_capture.
+Capture is currently a synchronous 180s HTTP call. Design an async job queue
+(enqueue → worker → bot edits its status message). Write it as an ADR in
+docs/adr/ with 2 alternatives considered and a decision, BEFORE implementing.</pre>
+  </div>
+</section>
+
+<section id="include">
+  <div class="sec-head">
+    <div class="eyebrow">Section 08</div>
+    <h2>What to include — and what to skip</h2>
+    <p>Cheap things that score disproportionately well, and expensive things that score nothing.</p>
+  </div>
+  <h3 style="font-size:16px;font-weight:600;margin-bottom:12px">Include</h3>
+  <ul class="checks">
+    <li><b>ADRs</b> in <code>docs/adr/</code> — shows engineering judgment, not just coding</li>
+    <li><b>A before/after metrics table</b> — the single most persuasive slide you will have</li>
+    <li><b>A risk register</b> recording what actually went wrong and how you responded</li>
+    <li><b>Individual contribution statements</b> — protects each of you in grading</li>
+    <li><b>A 2–3 minute demo video</b> with a recorded fallback. Never live-demo without one.</li>
+    <li><b>Coverage badge and green CI</b> on the README</li>
+    <li><b>A security &amp; ethics section</b> — ToS position (user-initiated paste only, never crawling), prompt-injection defense, PII handling, data deletion. Graders reward this and most teams skip it.</li>
+    <li><b>A public artifact</b> — the OSS repo and the shareable catalog page. Something they can click.</li>
+  </ul>
+  <h3 style="font-size:16px;font-weight:600;margin:26px 0 12px">Ask your advisor early</h3>
+  <ul class="checks">
+    <li>Whether the usability study needs IRB review — class projects are often exempt, but <em>ask</em> rather than assume</li>
+    <li>Whether the scraping approach is acceptable or they&rsquo;d prefer the official Meta API. Have a written answer either way.</li>
+  </ul>
+  <h3 style="font-size:16px;font-weight:600;margin:26px 0 12px">Skip deliberately</h3>
+  <ul class="checks">
+    <li class="skip">Payments, mobile apps, custom auth systems, microservices, Kubernetes — each eats a sprint and adds nothing to the grade</li>
+  </ul>
+</section>
+
+<section id="rituals">
+  <div class="sec-head">
+    <div class="eyebrow">Section 09</div>
+    <h2>Rituals &amp; definition of done</h2>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Ritual</th><th>When</th><th>Shape</th></tr></thead>
+      <tbody>
+        <tr><td><b>Standup</b></td><td>Mon / Wed / Fri</td><td>Async in Discord, three lines: did, doing, blocked</td></tr>
+        <tr><td><b>Sprint planning</b></td><td>First Monday</td><td>45 min; each owner commits to 2–4 items</td></tr>
+        <tr><td><b>Sprint review</b></td><td>Last Friday</td><td>45 min; <b>each person demos their own work</b></td></tr>
+        <tr><td><b>Retro</b></td><td>After review</td><td>15 min; one start / stop / continue</td></tr>
+        <tr><td><b>Pair rotation</b></td><td>Once per sprint</td><td>45 min across track boundaries — kills silos, means two people can answer for every subsystem</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note" style="margin-top:16px"><strong>Definition of done:</strong> merged to main · one non-author approval · tests added · offline suite green in CI · docs or ADR updated if behavior changed · demoed at review · the owner can explain it.</div>
+</section>
+
+<section id="risks">
+  <div class="sec-head">
+    <div class="eyebrow">Section 10</div>
+    <h2>Risks</h2>
+    <p>Named honestly, with the mitigation that&rsquo;s actually built into the plan above.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td><b>Nick becomes the bottleneck and does everyone&rsquo;s work</b></td><td>High</td><td>The anti-bottleneck rules; Nick&rsquo;s own capacity capped near 50% feature work</td></tr>
+        <tr><td><b>Beginners stall silently</b></td><td>High</td><td>Week 0 bootcamp, the one-day stuck rule, pairing, tiny-PR ramp before real features</td></tr>
+        <tr><td><b>Instagram breaks the scraper mid-semester</b></td><td>Medium-high</td><td>Fallback chain and a paid resolver behind the same interface. The measurement work survives either way.</td></tr>
+        <tr><td><b>Scope creep from the product roadmap</b></td><td>High</td><td>The P0/P1/P2 cut rule; roadmap growth work is explicitly out of scope</td></tr>
+        <tr><td><b>Campus network TLS interception</b></td><td>Known</td><td>Documented workarounds already in the repo — truststore, BOT_INSECURE_SSL, hotspot</td></tr>
+        <tr><td><b>No GPU, so transcription is slow</b></td><td>Certain</td><td>Conditional transcription and smallest-variant download in S4. Document it as a constraint, not a failure.</td></tr>
+        <tr><td><b>Everyone waits until the last month</b></td><td>Medium</td><td>A hard deliverable at the end of <em>every</em> sprint, not just each semester</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="foot">
+  <p>Week ranges are estimates — confirm against the 491A/491B academic calendar, and confirm deliverable formats with your advisor in Week 1. Their requirements override anything here.</p>
+  <p style="margin:0">Source of truth: <code>docs/CAPSTONE_PLAN.md</code> in the SpotBot repo.</p>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var body = document.body, chips = document.querySelectorAll('.chip[data-track]');
+  function apply(track){
+    document.querySelectorAll('[data-track]').forEach(function(el){
+      if(el.classList.contains('chip')) return;
+      el.classList.toggle('keep', el.getAttribute('data-track') === track);
+    });
+    chips.forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-track') === track); });
+    body.classList.toggle('filtering', !!track);
+    try{ track ? localStorage.setItem('sb-track', track) : localStorage.removeItem('sb-track'); }catch(e){}
+  }
+  chips.forEach(function(c){
+    c.addEventListener('click', function(){
+      apply(c.classList.contains('on') ? null : c.getAttribute('data-track'));
+    });
+  });
+  var clear = document.getElementById('clear');
+  if(clear) clear.addEventListener('click', function(){ apply(null); });
+  try{ var saved = localStorage.getItem('sb-track'); if(saved) apply(saved); }catch(e){}
+
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pre = btn.closest('.prompt').querySelector('pre');
+      var txt = pre.innerText;
+      var done = function(){ var o = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = o; }, 1400); };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(done, function(){});
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta); ta.select();
+        try{ document.execCommand('copy'); done(); }catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
