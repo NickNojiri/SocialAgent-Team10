@@ -1,11 +1,11 @@
 # SpotBot — Team Priority TODO
 
-Last updated 2026-09-10. Owner: Nick. One prioritized list for the whole team.
+Last updated 2026-09-14. Owner: Nick. One prioritized list for the whole team.
 
 This is the "what do I pick up next" list. It rolls up `docs/PRODUCT_ROADMAP.md`
 (the why), `docs/MILESTONES.md` (the 100 Nights challenge), `docs/NEXT_SESSION.md`
 (the build queue) and `docs/EXTRACTION_ACCURACY.md` / `docs/HANDOFF.md` (the label
-loop, on the `extraction-label-loop` branch) into a single ranked backlog.
+loop) into a single ranked backlog. Who owns what, and when: `docs/CAPSTONE_PLAN.md`.
 
 **North star:** paste a reel → votable card in <15s, ≥95% of the time. The metric
 that actually counts is **captured spots that become attended outings** (the
@@ -40,18 +40,23 @@ nobody.
 - Carry-over: authed IG login currently blocked (flagged burner + blacklisted
   IP). Retry needs a fresh burner + warm-up + a different network.
 
-### P0.2 · Extraction accuracy — the label loop  *(branch `extraction-label-loop`; `docs/EXTRACTION_ACCURACY.md`)*
+### P0.2 · Extraction accuracy — the label loop  *(`docs/EXTRACTION_ACCURACY.md`)*
 Capture runs end to end but the *fields it fills are often wrong*. This is the
 current active workstream. See the "Why labeling matters" section below.
 
-Honest held-out numbers today (`python -m src.ingestion.eval --offline --split test`):
+Honest held-out numbers today (`python -m src.ingestion.eval --offline --split test`,
+scored with the train-only alias table):
 
 | metric | held-out |
 |---|---|
-| venue exact | ~50% |
-| category | ~63% |
-| city | ~73% |
-| promo-rejection (is_vague) | ~24% |
+| venue exact | **37.4%** |
+| category | 63.2% |
+| city | 73.1% |
+| promo-rejection (is_vague) | 23.5% recall · 50.0% precision |
+
+> Venue was reported as ~50% until 2026-09-10, when test rows' own gold labels were
+> found compiled into the alias table that scored them. Write-up and reproduction:
+> `docs/ML_REVIEW_QUESTIONS.md`, `python scripts/eval_diagnostics.py`.
 
 Round-6 targets, in priority order:
 1. **Category → ~78%.** Keyword matching (`_CATEGORY_KEYWORDS`) has plateaued.
@@ -86,7 +91,7 @@ few hundred rows the corpus has to fill itself from real traffic:
   held-out set = firmer numbers, wider city gazetteer).
 
 ### P0.4 · The Haiku experiment — go/no-go on a cheap hosted LLM  *(do after any more labeling)*
-The clean test of "does a cheap LLM beat the honest ~50% venue / ~63% category?"
+The clean test of "does a cheap LLM beat the honest ~37% venue / ~63% category?"
 - `scripts/label_with_haiku.py` exists. Point it at the corpus; compare its
   venue/city/category/in_catalog to gold on `--split test`.
 - Needs a **funded Anthropic API account** (`console.anthropic.com` + a card —
@@ -266,7 +271,7 @@ and the `gold` truth. That single artifact is:
    safe to make because a drop is caught automatically.
 2. **An honest scorecard.** `eval.py` scores the extractor on a **frozen
    train/test split** (deterministic by URL hash, ~70/30). We tune on `train`
-   and report `test`, so the numbers (venue ~50%, category ~63%, city ~73%) are
+   and report `test`, so the numbers (venue ~37%, category ~63%, city ~73%) are
    real held-out accuracy, not corpus-fitting. This is how we know category
    keyword-matching has plateaued and where the next 15 points have to come
    from.
@@ -304,8 +309,8 @@ captures grow the corpus (P0.3), is where accuracy is actually won.
 |---|---|
 | `docs/PRODUCT_ROADMAP.md` | phases, the "why", the recommended first slice |
 | `docs/MILESTONES.md` | the July-2026 scorecard + the "100 Nights Out" challenge |
-| `docs/EXTRACTION_ACCURACY.md` | the label loop — approach, round history, spam defense *(branch `extraction-label-loop`)* |
-| `docs/HANDOFF.md` | current extraction state + round-6 targets *(branch `extraction-label-loop`)* |
+| `docs/EXTRACTION_ACCURACY.md` | the label loop — approach, round history, spam defense |
+| `docs/HANDOFF.md` | current extraction state + round-6 targets |
 | `docs/NEXT_SESSION.md` | the running build queue + carry-over notes |
 | `docs/IG_AUTH_INGESTION_PLAN.md` | the authed-capture plan (P0.1) |
 | `docs/RUNBOOK.md` | how to run the services locally |
