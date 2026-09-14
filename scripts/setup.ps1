@@ -30,11 +30,11 @@ Write-Host "`n[3/5] Playwright browser (Chromium)" -ForegroundColor Cyan
 
 Write-Host "`n[4/5] Ollama models" -ForegroundColor Cyan
 if (Get-Command ollama -ErrorAction SilentlyContinue) {
-    ollama pull llama3.1:8b      # extraction + the quick-description summaries
-    ollama pull llama3.2:1b      # embeddings for the catalog
+    ollama pull mxbai-embed-large   # REQUIRED - catalog embeddings (config.embed_model), ~0.7 GB
+    ollama pull llama3.1:8b         # optional - quick-description summaries, ~5 GB
 } else {
     Write-Warning "Ollama not found on PATH. Install it from https://ollama.com/download, then run:"
-    Write-Warning "    ollama pull llama3.1:8b ;  ollama pull llama3.2:1b"
+    Write-Warning "    ollama pull mxbai-embed-large ;  ollama pull llama3.1:8b"
 }
 
 Write-Host "`n[5/5] .env" -ForegroundColor Cyan
