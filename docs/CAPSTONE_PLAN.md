@@ -23,9 +23,11 @@ Held-out scorecard — `python -m src.ingestion.eval --offline --split test`:
 | city | **73.1%** | geocoding is not the bottleneck — extraction is |
 | promo rejection | **23.5%** recall · **50%** precision | half of rejections throw away a real place |
 
-Capture is also blocked on the authenticated path (burner account flagged, IP blacklisted), and
-the unauthenticated live pass rate (~40–70%) has never been measured on a clean network. Full
-detail: `docs/HANDOFF.md`, `docs/ML_REVIEW_QUESTIONS.md`.
+Capture: the free (unauthenticated) path hit **13/13** on a curated URL set in July — far above
+the ~40–70% it was designed around — but 13 hand-picked links is not a pass rate; it has never
+been measured on a wider, random set. The authenticated path is blocked (burner account flagged,
+IP blacklisted). Full detail: `docs/HANDOFF.md`, `docs/ML_REVIEW_QUESTIONS.md`,
+`docs/IG_AUTH_INGESTION_PLAN.md`.
 
 **Two facts drive this entire plan:**
 
@@ -112,8 +114,9 @@ Grade target: trustworthy numbers, a real architecture, and a working demo.
 
 ### Sprint 1 (≈ Sept 15–26) — Trustworthy baseline
 You cannot improve what you can't measure honestly.
-- **A:** Run `test_ig_live.py` on all 19 known URLs, unauthenticated, on a clean network.
-  **Publish the real pass rate.** Build a failure taxonomy (login wall / no video / timeout / no venue).
+- **A:** Re-run `test_ig_live.py` on the 19 known URLs, then on ~50 reels nobody hand-picked,
+  unauthenticated, on a clean network. **Publish the real pass rate** (13/13 on curated links
+  says little). Build a failure taxonomy (login wall / no video / timeout / no venue).
 - **B:** Make the scorecard trustworthy: finish the 16 `needs_review` rows, apply the two pending
   label fixes in `HANDOFF.md`, and print a 95% confidence interval next to every metric — at
   n≈120 a 5-point change is inside the noise.
@@ -251,7 +254,7 @@ sprint — where individual sections get their standout result.
 1. Week 0 kickoff (3 working environments, 3 tracks, 3 first tasks)
 2. Trustworthy scorecard: confidence intervals, train/dev/test split, locked test set
 3. Finish the corpus: 16 `needs_review` rows + pending label fixes
-4. Measured live capture pass rate on a clean network
+4. Measured live capture pass rate on a random, not hand-picked, URL set
 5. Architecture doc + ADRs + SRS
 6. Unblock authed capture: fresh burner or the paid-resolver fallback
 

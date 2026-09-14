@@ -25,9 +25,10 @@ the retention loop · **P2** = reach · **P3** = growth. Within a tier, top = do
 ## P0 — Foundation: capture works, and we can prove what it extracts
 
 ### P0.1 · Capture reliability → 95–99%  *(roadmap 0.1)*
-The product-killer. Unauthenticated IG capture succeeds only ~40–70% of the time
-(measured ceiling). A product that fails a third of first-time pastes retains
-nobody.
+The product-killer if it slips. The free (unauthenticated) path was designed
+around a ~40–70% estimate, then hit 13/13 on a curated set (2026-07-05) — but
+13 hand-picked links is not a pass rate. A product that fails a third of
+first-time pastes retains nobody, so measure it on reels nobody picked.
 - Execute `docs/IG_AUTH_INGESTION_PLAN.md`: `AuthedInstagramSource` (instagrapi +
   burner session) into the existing `RawPostSnapshot` → pipeline path.
 - Paid resolver (Apify/RapidAPI) as a drop-in fallback behind the *same* module
