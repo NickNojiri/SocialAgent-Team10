@@ -116,8 +116,10 @@ A flood of pasted links = hundreds of pipeline runs / LLM calls = burned credits
    heuristic-only + log.
 4. **Per-user + per-guild rate limits** — token bucket (e.g. 10/user/10min,
    60/guild/hour); over → friendly "slow down" reply.
-5. **Lock the admin API** — it binds `0.0.0.0:8010`. Bind `127.0.0.1` + reach it
-   from the container over the docker bridge, or add a shared-secret header.
+5. **Lock the admin API** — the always-on box's systemd unit (not in git) binds
+   `0.0.0.0:8010`; local runs (`run_local.ps1`, `make`) already get uvicorn's
+   `127.0.0.1` default. On the box: bind `127.0.0.1` + reach it from the container
+   over the docker bridge, or add a shared-secret header.
 6. **Discord-side raid guard** — ignore messages with > K links; optionally
    ignore links from accounts that joined < N minutes ago.
 
@@ -197,8 +199,11 @@ via `scripts/gen_ui_mockups.py`). Match the admin + share pages to the
 dashboard's cleaner look (one accent, tabular numbers, consistent spacing).
 
 ### P1.7 · `bot.py` offline test coverage
-`on_message` routing tests: muted channel, DM, multi-link. `bot.py` currently has
-almost no direct coverage.
+`app/test_bot.py` already covers `on_message` routing: link anywhere, TikTok,
+muted channel, bot authors, DM welcome, silent plain chat. Still missing: a
+message with **several links** (one capture call carrying every URL, duplicates
+collapsed), and anything past routing — `handle_reel_capture`'s status/failure
+replies and the slash commands.
 
 ---
 

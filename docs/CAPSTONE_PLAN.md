@@ -123,7 +123,8 @@ You cannot improve what you can't measure honestly.
 - **C:** Instrument and measure **time-to-card** today (p50/p95). Screen-record the current UX as
   the "before."
 - **Nick:** Architecture diagram + first 3 ADRs (why Chroma, why heuristic-first extraction, why
-  Discord-first). Lock down the admin API (it binds `0.0.0.0:8010`).
+  Discord-first). Lock down the admin API on the always-on box (its systemd unit binds
+  `0.0.0.0:8010`).
 - **Deliverable:** `docs/BASELINE.md` — every current number in one table, with intervals.
 
 ### Sprint 2 (≈ Sept 29–Oct 10) — Requirements & the first real gain
