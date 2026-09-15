@@ -15,21 +15,21 @@ OpenStreetMap for geocoding, ChromaDB on disk. Post text never leaves that machi
 ```mermaid
 flowchart LR
     U["Discord users"] -- "paste a reel / press a button / slash command" --> DG["Discord gateway (WebSocket)"]
-    DG --> BOT["app/bot.py\nDiscord bot\noutbound only, no ports"]
+    DG --> BOT["app/bot.py<br/>Discord bot<br/>outbound only, no ports"]
 
-    BOT -- "POST /api/ingest\nvotes · lock · went · followups" --> ADMIN["src.ingestion.serving.admin\nadmin / ingest app  :8010"]
-    BOT -- "POST /recommend · POST /plan" --> REC["src.ingestion.serving.app\nrecommend service  :8003"]
+    BOT -- "POST /api/ingest<br/>votes · lock · went · followups" --> ADMIN["src.ingestion.serving.admin<br/>admin / ingest app  :8010"]
+    BOT -- "POST /recommend · POST /plan" --> REC["src.ingestion.serving.app<br/>recommend service  :8003"]
 
-    ADMIN --> PIPE["IngestionPipeline\npipeline/orchestrator.py"]
-    PIPE --> JSONL[("data/inspirations.jsonl\nappend-only, source of truth")]
-    PIPE --> CHROMA[("ChromaDB  data/\none collection per guild")]
+    ADMIN --> PIPE["IngestionPipeline<br/>pipeline/orchestrator.py"]
+    PIPE --> JSONL[("data/inspirations.jsonl<br/>append-only, source of truth")]
+    PIPE --> CHROMA[("ChromaDB  data/<br/>one collection per guild")]
     REC --> CHROMA
     ADMIN --> CHROMA
 
-    PIPE -- "/api/embeddings\n(mxbai-embed-large)\n/api/generate (optional summaries)" --> OLLAMA["Ollama  :11434"]
+    PIPE -- "/api/embeddings<br/>(mxbai-embed-large)<br/>/api/generate (optional summaries)" --> OLLAMA["Ollama  :11434"]
     REC -- "/api/embeddings" --> OLLAMA
 
-    PIPE -- "headless Chromium" --> IG["instagram.com / tiktok.com\n(+ IG /embed/ fallback)"]
+    PIPE -- "headless Chromium" --> IG["instagram.com / tiktok.com<br/>(+ IG /embed/ fallback)"]
     PIPE -- "mp4 download → faster-whisper (CPU)" --> IG
 
     WEB["Browser"] -- "/  (admin) · /share · /dash" --> ADMIN
@@ -173,9 +173,9 @@ field; the authorization gap and its fix are tracked in
 ```mermaid
 flowchart TB
     subgraph untrusted["Untrusted input"]
-        D["Discord messages & interactions\n(anyone in a server the bot can read)"]
-        W["Scraped page content\ncaption · transcript · OCR · og tags"]
-        L["LLM output\nvenue · theme · summary · plan request"]
+        D["Discord messages & interactions<br/>(anyone in a server the bot can read)"]
+        W["Scraped page content<br/>caption · transcript · OCR · og tags"]
+        L["LLM output<br/>venue · theme · summary · plan request"]
     end
     subgraph trusted["Operator-controlled"]
         BOT["bot.py"]
