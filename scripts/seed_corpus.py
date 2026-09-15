@@ -93,14 +93,14 @@ def main() -> None:
         from src.ingestion.pipeline.transcriber import Transcriber
         transcriber = Transcriber(IngestionSettings())
 
-    urls = [u.strip() for u in args.urls.read_text().splitlines() if u.strip()]
+    urls = [u.strip() for u in args.urls.read_text(encoding="utf-8").splitlines() if u.strip()]
     if args.skip_existing:
         import json as _j
         base = REPO / "fixtures" / "labels.jsonl"
         # split on "\n" only — captions can contain U+2028/U+2029, which
         # str.splitlines() treats as line breaks and would shred valid JSONL rows.
         done = {(_j.loads(l)["url"]).rstrip("/").split("/")[-1]
-                for l in base.read_text().split("\n") if l.strip()} if base.exists() else set()
+                for l in base.read_text(encoding="utf-8").split("\n") if l.strip()} if base.exists() else set()
         before = len(urls)
         urls = [u for u in urls if u.rstrip("/").split("/")[-1] not in done]
         print(f"skip-existing: {before - len(urls)} already labeled, {len(urls)} new", file=sys.stderr)
@@ -131,7 +131,7 @@ def main() -> None:
                   f"{' [t]' if getattr(raw, 'transcript', None) else ''}", file=sys.stderr)
         time.sleep(args.sleep)
 
-    args.out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+    args.out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8", newline="\n")
     print(f"\n{len(rows)} rows ({failed} fetch-failed) -> {args.out}", file=sys.stderr)
 
 

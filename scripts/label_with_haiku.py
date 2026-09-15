@@ -90,7 +90,7 @@ def main() -> None:
         sys.exit("ANTHROPIC_API_KEY is missing or a placeholder — export your real key first "
                  "(console.anthropic.com → API keys).")
     client = anthropic.Anthropic()
-    rows = [json.loads(l) for l in args.src.read_text().split("\n") if l.strip()]
+    rows = [json.loads(l) for l in args.src.read_text(encoding="utf-8").split("\n") if l.strip()]
     agree = tot = tin = tout = 0
     out = []
     for i, r in enumerate(rows, 1):
@@ -118,7 +118,7 @@ def main() -> None:
               file=sys.stderr)
         time.sleep(args.sleep)
 
-    args.out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out) + "\n")
+    args.out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out) + "\n", encoding="utf-8", newline="\n")
     cost = tin / 1e6 * 1.0 + tout / 1e6 * 5.0
     print(f"\n{tot} rows · haiku agrees with the heuristic on {agree} "
           f"({100*agree/tot:.0f}%) · ~${cost:.2f} ({tin} in / {tout} out) -> {args.out}",

@@ -381,7 +381,7 @@ def reload_aliases(path: Optional[Path] = None) -> int:
     """Point the alias table at `path` (default: `ALIASES_PATH`). Returns its size."""
     global _ALIASES
     try:
-        _ALIASES = json.loads(Path(path or ALIASES_PATH).read_text())
+        _ALIASES = json.loads(Path(path or ALIASES_PATH).read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - a missing/!unreadable table just means no overrides
         _ALIASES = {}
     return len(_ALIASES)

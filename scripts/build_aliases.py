@@ -84,7 +84,7 @@ def build(rows: list[dict], split: str) -> dict[str, str]:
 
 
 def write(aliases: dict[str, str], out: Path) -> None:
-    out.write_text(json.dumps(dict(sorted(aliases.items())), indent=2, ensure_ascii=False) + "\n")
+    out.write_text(json.dumps(dict(sorted(aliases.items())), indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"{len(aliases):>3} aliases -> {out.relative_to(REPO)}")
 
 
@@ -95,7 +95,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, help="write to this path instead of the default")
     args = ap.parse_args()
 
-    rows = [json.loads(l) for l in CORPUS.read_text().split("\n") if l.strip()]
+    rows = [json.loads(l) for l in CORPUS.read_text(encoding="utf-8").split("\n") if l.strip()]
 
     if args.split:
         write(build(rows, args.split), args.out or (OUT if args.split == "all" else TRAIN_OUT))

@@ -25,11 +25,11 @@ CATS = ["food_drink", "cafe_dessert", "nightlife", "live_music",
 
 
 def _load() -> list[dict]:
-    return [json.loads(l) for l in CORPUS.read_text().split("\n") if l.strip()]
+    return [json.loads(l) for l in CORPUS.read_text(encoding="utf-8").split("\n") if l.strip()]
 
 
 def _save(rows: list[dict]) -> None:
-    CORPUS.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+    CORPUS.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8", newline="\n")
 
 
 def _norm(s: str | None) -> str:

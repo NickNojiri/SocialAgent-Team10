@@ -100,7 +100,7 @@ def main() -> None:
     urls = sorted(f"https://www.instagram.com/reel/{c}/" for c in codes)
     print("\n".join(urls))
     if args.out:
-        args.out.write_text("\n".join(urls) + "\n")
+        args.out.write_text("\n".join(urls) + "\n", encoding="utf-8", newline="\n")
         print(f"\n{len(urls)} urls -> {args.out}", file=sys.stderr)
 
 

@@ -49,7 +49,7 @@ def load_labels(path: Path = LABELS_PATH) -> list[dict]:
     rows = []
     # split on \n only — str.splitlines() also breaks on U+2028/U+2029, which
     # appear inside caption text and would shred a JSONL row.
-    for i, line in enumerate(path.read_text().split("\n"), 1):
+    for i, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
         line = line.strip()
         if not line:
             continue

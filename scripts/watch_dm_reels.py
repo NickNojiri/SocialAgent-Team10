@@ -17,10 +17,10 @@ Merge when you're ready:
     import json, pathlib
     base = pathlib.Path("fixtures/labels.jsonl")
     have = {json.loads(l)["url"].rstrip("/").split("/")[-1]
-            for l in base.read_text().split("\n") if l.strip()}
-    add = [l for l in pathlib.Path("fixtures/labels.inbox.jsonl").read_text().split("\n")
+            for l in base.read_text(encoding="utf-8").split("\n") if l.strip()}
+    add = [l for l in pathlib.Path("fixtures/labels.inbox.jsonl").read_text(encoding="utf-8").split("\n")
            if l.strip() and json.loads(l)["url"].rstrip("/").split("/")[-1] not in have]
-    with base.open("a") as f:
+    with base.open("a", encoding="utf-8", newline="\n") as f:
         for l in add: f.write(l + "\n")
     print(f"appended {len(add)}")
     EOF
@@ -58,14 +58,14 @@ INBOX = REPO / "fixtures" / "labels.inbox.jsonl"
 
 def _load_seen() -> set[str]:
     try:
-        return set(json.loads(SEEN.read_text()))
+        return set(json.loads(SEEN.read_text(encoding="utf-8")))
     except Exception:  # noqa: BLE001
         return set()
 
 
 def _save_seen(seen: set[str]) -> None:
     SEEN.parent.mkdir(parents=True, exist_ok=True)
-    SEEN.write_text(json.dumps(sorted(seen)))
+    SEEN.write_text(json.dumps(sorted(seen)), encoding="utf-8", newline="\n")
 
 
 def _corpus_codes() -> set[str]:
@@ -74,7 +74,7 @@ def _corpus_codes() -> set[str]:
         p = REPO / name
         if p.exists():
             out |= {json.loads(l)["url"].rstrip("/").split("/")[-1]
-                    for l in p.read_text().split("\n") if l.strip()}
+                    for l in p.read_text(encoding="utf-8").split("\n") if l.strip()}
     return out
 
 
@@ -88,7 +88,7 @@ def cycle(cl, src, seen: set[str], threads: int, cap: int) -> int:
                 pass
     new = [c for c in codes if c not in seen and c not in _corpus_codes()][:cap]
     added = 0
-    with INBOX.open("a") as f:
+    with INBOX.open("a", encoding="utf-8", newline="\n") as f:
         for code in new:
             url = f"https://www.instagram.com/reel/{code}/"
             try:
