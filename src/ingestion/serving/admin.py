@@ -27,6 +27,7 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
+from src.ingestion.serving.jobs import JobQueue, QueueFull
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
@@ -220,8 +221,9 @@ def list_events(guild_id: str = ""):
     return {"events": events, "count": len(events)}
 
 
-@app.post("/api/ingest")
-async def ingest(body: IngestBody):
+def _ingest_urls(body: IngestBody) -> list[str]:
+    """Validate a capture request. Garbage gets a 400 in milliseconds, never a
+    browser cycle — shared by the sync endpoint and the job queue."""
     urls = [u.strip() for u in body.urls if u.strip()]
     if not urls:
         raise HTTPException(400, "no urls given")
@@ -230,7 +232,13 @@ async def ingest(body: IngestBody):
     bad = [u for u in urls if not u.lower().startswith(("http://", "https://"))]
     if bad:
         raise HTTPException(400, f"only http(s) URLs are ingestible, got: {bad[0][:80]!r}")
-    sink = _sink_for(body.guild_id)
+    return urls
+
+
+async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dict:
+    """One capture run — the sync endpoint awaits it directly, the job queue
+    runs it in a worker with `on_stage` feeding the job's progress."""
+    sink = _sink_for(guild_id)
     existing_ids = set(sink.collection.get(include=[])["ids"])  # snapshot before the run
     pipeline = IngestionPipeline(
         _settings,
@@ -243,12 +251,13 @@ async def ingest(body: IngestBody):
         chroma_sink=sink,
         authed_source=_ig_source,
         ocr_reader=_ocr_reader,
+        on_stage=on_stage,
     )
     report = await pipeline.run(urls)
     _CAPTURE_LOG.appendleft(
         {
             "ts": int(time.time()),
-            "guild_id": body.guild_id,
+            "guild_id": guild_id,
             "urls": len(urls),
             "added": len(report.validated),
             "rejected": len(report.rejected),
@@ -265,6 +274,38 @@ async def ingest(body: IngestBody):
         "events": [_event_summary(r, existing_ids, sink) for r in report.validated],
         "log": [result_line(r) for r in report.results],
     }
+
+
+@app.post("/api/ingest")
+async def ingest(body: IngestBody):
+    """Synchronous capture: returns when every URL is done (the bot's default path)."""
+    return await _run_ingest(_ingest_urls(body), body.guild_id)
+
+
+# Async capture (ADR-0004): enqueue, then poll. Same validation, same result
+# shape as /api/ingest — the bot opts in with INGEST_ASYNC=1. One worker unless
+# INGEST_WORKERS says otherwise (Whisper is CPU-bound; two captures contend).
+_jobs = JobQueue(_run_ingest, workers=int(os.getenv("INGEST_WORKERS", "").strip() or 1))
+
+
+@app.post("/api/jobs", status_code=202)
+async def create_job(body: IngestBody):
+    urls = _ingest_urls(body)
+    try:
+        job = _jobs.submit(urls, body.guild_id)
+    except QueueFull as exc:
+        raise HTTPException(429, f"capture queue is full — {exc}")
+    return {"job_id": job.id, "state": job.state}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str):
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(
+            404, "no such job — finished jobs expire after an hour, and a restart clears the queue"
+        )
+    return job.to_dict()
 
 
 def _event_summary(result, existing_ids: set, sink: ChromaSink) -> dict:

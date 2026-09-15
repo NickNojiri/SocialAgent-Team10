@@ -1589,3 +1589,31 @@ async def test_pipeline_runs_both_fixtures_end_to_end():
     # both fixtures carry parseable times → scheduled
     assert all(r.record.schedule.status is ScheduleStatus.SCHEDULED for r in report.validated)
     assert "INGESTION RUN REPORT" in report.render()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_reports_stages_in_order_per_url():
+    """The on_stage hook (ADR-0004) fires fetching → extracting → saving → done for
+    every URL — no 'transcribing' when there is no transcriber — and a callback
+    that raises never fails the run."""
+    settings = IngestionSettings(allow_file_urls=True, per_domain_delay_s=0, settle_timeout_ms=2000)
+    seen: list[tuple[str, str]] = []
+
+    def on_stage(url, stage):
+        seen.append((url, stage))
+        if stage == "done":
+            raise RuntimeError("callback bug must not surface")
+
+    pipeline = IngestionPipeline(
+        settings,
+        temporal_resolver=TemporalResolver(settings, now=NOW_REF),
+        on_stage=on_stage,
+    )
+    urls = [
+        (FIXTURES / "instagram_post.html").resolve().as_uri(),
+        (FIXTURES / "jsonld_event.html").resolve().as_uri(),
+    ]
+    report = await pipeline.run(urls)
+    assert len(report.validated) == 2
+    for url in urls:
+        assert [s for u, s in seen if u == url] == ["fetching", "extracting", "saving", "done"]

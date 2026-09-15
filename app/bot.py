@@ -66,7 +66,12 @@ if os.getenv("BOT_INSECURE_SSL") == "1":
 intents = discord.Intents.default()
 intents.message_content = True   # required to read pasted links
 
-bot = discord.Client(intents=intents)
+# Never ping from message content. Venue names come from scraped captions and
+# from the Add-manually / Edit modals, and they reach plain-content sends
+# (/catalog, the went-there prompt, recommendation markdown) — so "@everyone"
+# as a venue would ping the whole server. This default applies to every send,
+# including interaction follow-ups. See docs/THREAT_MODEL.md T1.
+bot = discord.Client(intents=intents, allowed_mentions=discord.AllowedMentions.none())
 tree = app_commands.CommandTree(bot)
 
 # Capture works EVERYWHERE the bot can read, by default. Config is opt-out:
@@ -183,14 +188,24 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
         mention_author=False,
     )
 
+    async def progress(text: str) -> None:
+        # Stage updates from the job queue (INGEST_ASYNC=1); a failed edit is
+        # cosmetic, the capture itself is unaffected.
+        try:
+            await status.edit(content=text)
+        except Exception:
+            pass
+
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            resp = await client.post(
-                f"{INGEST_URL}/api/ingest",
-                json={"urls": urls, "guild_id": cards.guild_key(message)},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        data = await cards.capture_urls(urls, cards.guild_key(message), progress=progress)
+    except cards.CaptureFailed as exc:
+        log.warning(f"[capture] job failed: {exc}")
+        await _swap_reaction(message, "⏳", "⚠️")
+        await status.edit(
+            content=f"⚠️ Capture failed — {exc}",
+            view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
+        )
+        return
     except Exception as exc:
         log.warning(f"[capture] ingest failed: {exc}")
         await _swap_reaction(message, "⏳", "⚠️")
@@ -200,6 +215,12 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
         )
         return
 
+    await _render_capture(message, status, urls, data)
+
+
+async def _render_capture(message: discord.Message, status: discord.Message, urls: list[str], data: dict):
+    """Turn a capture result into cards (or the failure view). The result shape is
+    the same whether it came back from /api/ingest or a finished /api/jobs job."""
     events = data.get("events", [])
     await _swap_reaction(message, "⏳", "✅" if events else "⚠️")
 

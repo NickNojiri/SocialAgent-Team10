@@ -100,3 +100,33 @@ class TestConfigRoundtrip:
         assert bot.MUTED_CHANNELS == {1, 2}
         assert bot.SUGGESTION_CHANNELS == {3}
         assert bot.TIPPED_GUILDS == {99}
+
+
+class TestMentionSafety:
+    async def test_client_never_pings_from_content(self):
+        """Venue names reach plain-content sends (/catalog, the went-there prompt,
+        recommendation markdown), and the Add-manually / Edit modals accept any
+        text — so a venue called "@everyone" would ping the server. The client-wide
+        default blocks pings on every send, follow-ups included (THREAT_MODEL T1)."""
+        am = bot.bot.allowed_mentions
+        assert am is not None
+        assert am.everyone is False
+        assert am.users is False
+        assert am.roles is False
+
+    async def test_render_capture_shares_the_result_shape(self, monkeypatch):
+        """Sync and async capture hand the same dict to one renderer."""
+        msg = make_message("x")
+        status = SimpleNamespace(edits=[])
+
+        async def edit(**kwargs):
+            status.edits.append(kwargs)
+
+        status.edit = edit
+        monkeypatch.setattr(bot, "_maybe_first_card_tip", lambda m: _noop())
+        await bot._render_capture(msg, status, ["https://www.instagram.com/reel/A/"], {"events": []})
+        assert status.edits and "couldn't find a venue" in status.edits[0]["content"]
+
+
+async def _noop():
+    return None

@@ -11,10 +11,12 @@ vote land in one shared store:
   RECOMMEND_URL  /recommend                        (Add-suggestions query)
 """
 
+import asyncio
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 from zoneinfo import ZoneInfo
 
 import discord
@@ -33,6 +35,78 @@ QUORUM = int(os.getenv("SPOT_QUORUM", "3"))
 BOT_TZ = os.getenv("BOT_TZ", "America/Los_Angeles")
 # How many spots /browse shows per page (the ◀ ▶ pager cycles through the rest).
 BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
+
+# ── Capture transport ────────────────────────────────────────────────────────
+# Default: one synchronous POST /api/ingest that returns when the capture is done.
+# INGEST_ASYNC=1 (ADR-0004): POST /api/jobs, then poll GET /api/jobs/{id} and
+# report each stage, so the status message follows the capture instead of
+# freezing for a minute — and a slow multi-link paste can no longer outlive the
+# HTTP timeout and get retried while it is still running.
+INGEST_ASYNC = os.getenv("INGEST_ASYNC", "").strip().lower() in ("1", "true", "on", "yes")
+JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
+JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
+
+_STAGE_TEXT = {
+    "queued": "⏳ Waiting for a free capture slot…",
+    "fetching": "🔎 Reading {noun} — caption and location…",
+    "transcribing": "🎙️ Listening to the audio…",
+    "extracting": "🧠 Working out the venue…",
+    "saving": "💾 Saving to the catalog…",
+}
+
+
+class CaptureFailed(RuntimeError):
+    """The capture job ran and failed — as opposed to the service being unreachable."""
+
+
+def stage_line(job: dict, total: int) -> str:
+    """Status text for a job's current stage, e.g. '🎙️ Listening to the audio… (1/3 done)'."""
+    noun = "that reel" if total == 1 else f"those {total} links"
+    text = _STAGE_TEXT.get(job.get("stage") or "", _STAGE_TEXT["fetching"]).format(noun=noun)
+    done = int((job.get("progress") or {}).get("done", 0))
+    if total > 1:
+        text += f" ({done}/{total} done)"
+    return text
+
+
+async def capture_urls(
+    urls: list[str],
+    guild_id: str,
+    progress: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> dict:
+    """Run a capture and return the /api/ingest result shape.
+
+    Raises CaptureFailed when the job itself failed; any other exception means
+    the admin app could not be reached. `progress(text)` is awaited whenever the
+    stage changes (async path only).
+    """
+    payload = {"urls": urls, "guild_id": guild_id}
+    if not INGEST_ASYNC:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(f"{ADMIN_URL}/api/ingest", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload)
+        resp.raise_for_status()
+        job_id = resp.json()["job_id"]
+        deadline = time.monotonic() + JOB_WAIT_S
+        last: Optional[tuple] = None
+        while time.monotonic() < deadline:
+            await asyncio.sleep(JOB_POLL_S)
+            resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}")
+            resp.raise_for_status()
+            job = resp.json()
+            if job["state"] == "done":
+                return job.get("result") or {}
+            if job["state"] == "failed":
+                raise CaptureFailed(job.get("error") or "capture failed")
+            key = (job.get("stage"), (job.get("progress") or {}).get("done"))
+            if progress is not None and key != last:
+                last = key
+                await progress(stage_line(job, len(urls)))
+        raise CaptureFailed(f"capture did not finish within {JOB_WAIT_S:.0f}s")
 
 def guild_key(source) -> str:
     """Catalog tenant key: the server's guild id, or a per-user stash in DMs.
@@ -536,13 +610,11 @@ class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:ret
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                resp = await client.post(
-                    f"{ADMIN_URL}/api/ingest",
-                    json={"urls": [self.url], "guild_id": guild_key(interaction)},
-                )
-                resp.raise_for_status()
-                events = resp.json().get("events", [])
+            data = await capture_urls([self.url], guild_key(interaction))
+            events = data.get("events", [])
+        except CaptureFailed as exc:
+            await interaction.followup.send(f"⚠️ Capture failed again — {exc}")
+            return
         except Exception:
             await interaction.followup.send("⚠️ Still couldn't reach the catalog service.")
             return

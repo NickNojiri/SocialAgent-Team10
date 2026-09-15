@@ -80,6 +80,7 @@ class IngestionPipeline:
         authed_source: Optional[Any] = None,
         ocr_reader: Optional["ImageTextReader"] = None,
         on_result: Optional[Callable[[IngestionResult], None]] = None,
+        on_stage: Optional[Callable[[str, str], None]] = None,
     ):
         self.settings = settings
         self.extractor = extractor
@@ -98,6 +99,18 @@ class IngestionPipeline:
         # Playwright browser is only launched for URLs it can't handle.
         self.authed_source = authed_source
         self.on_result = on_result
+        # Progress hook: (url, stage) at fetching / transcribing / extracting /
+        # saving / done. Drives the bot's live status line via the job queue
+        # (serving/jobs.py). Best-effort — a failing callback never fails a run.
+        self.on_stage = on_stage
+
+    def _stage(self, url: str, stage: str) -> None:
+        if self.on_stage is None:
+            return
+        try:
+            self.on_stage(url, stage)
+        except Exception as exc:
+            log.debug(f"[pipeline] on_stage callback failed: {exc}")
 
     async def run(self, urls: list[str]) -> "RunReport":
         started_at = datetime.now(timezone.utc)
@@ -123,6 +136,7 @@ class IngestionPipeline:
         session: Optional[SocialSessionManager] = None
         try:
             for url in urls:
+                self._stage(url, "fetching")
                 try:
                     raw = None
                     if self.authed_source is not None:
@@ -172,6 +186,7 @@ class IngestionPipeline:
                         rejection_reason=f"unexpected error: {type(exc).__name__}: {exc}",
                     )
 
+                self._stage(url, "saving")
                 if self.jsonl_sink is not None:
                     self.jsonl_sink.write(result)          # JSONL is the source of truth
                 if self.chroma_sink is not None:
@@ -179,6 +194,7 @@ class IngestionPipeline:
                 results.append(result)
                 if self.on_result is not None:
                     self.on_result(result)
+                self._stage(url, "done")
         finally:
             if session is not None:
                 await session.__aexit__(None, None, None)
@@ -225,6 +241,7 @@ class IngestionPipeline:
         # Phase 2.5: transcribe the reel's audio so a venue/location that is only
         # *spoken* (never written in the caption) still reaches the LLM.
         if self.transcriber is not None and getattr(raw, "video_url", None):
+            self._stage(url, "transcribing")
             transcript = self.transcriber.transcribe_url(raw.video_url)
             if transcript:
                 raw.transcript = transcript
@@ -236,6 +253,7 @@ class IngestionPipeline:
             if frame_text:
                 raw.frame_text = frame_text
 
+        self._stage(url, "extracting")
         record, reason = build_record(raw, extractor=self.extractor if self._llm_ok else None)
         if record is None:
             return IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)

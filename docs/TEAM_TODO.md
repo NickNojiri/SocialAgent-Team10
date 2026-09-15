@@ -122,6 +122,15 @@ A flood of pasted links = hundreds of pipeline runs / LLM calls = burned credits
    over the docker bridge, or add a shared-secret header.
 6. **Discord-side raid guard** — ignore messages with > K links; optionally
    ignore links from accounts that joined < N minutes ago.
+7. **SSRF guard on `/api/ingest`** — host allowlist (instagram.com, tiktok.com)
+   plus private-IP rejection before the video download. `THREAT_MODEL.md` T3.
+8. ~~Mention injection~~ — done 2026-09-15: the client sends with
+   `AllowedMentions.none()`, so a venue called "@everyone" can never ping
+   (`THREAT_MODEL.md` T1).
+9. **Commit the tenant-token authorization** (`THREAT_MODEL.md` T2) — built and
+   tested in the main checkout, not yet on `main`.
+
+The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
 
 ### P0.6 · Multi-tenancy — required for a hosted bot  *(roadmap 0.2)*
 - Scope everything by `guild_id`: one Chroma collection with a `guild_id`
