@@ -15,6 +15,10 @@ python scripts/eval_diagnostics.py                    # what the scorecard leave
 train` instead of `--split all`. The findings are kept below because the story of
 finding them is the part worth telling.
 
+**Update 2026-09-15:** finding 2's table now shows the corrected numbers (it still
+quoted 49.6%); finding 8 (label provenance) added; questions renumbered 1–14 in
+reading order. The two-page meeting version is `docs/ML_ADVISOR_BRIEF.md`.
+
 ---
 
 ## Part 1 — findings to put in front of them first
@@ -47,18 +51,19 @@ header.
 
 ### 2. The test set is too small to see the gains being chased
 
-95% Wilson intervals on the 122-row test split:
+95% Wilson intervals on the 122-row test split (train-only alias table; refreshed
+2026-09-15 from `scripts/eval_diagnostics.py`):
 
 | metric | point | 95% CI | width |
 |---|---|---|---|
-| venue exact | 49.6% | [40.6%, 58.6%] | 18 pts |
-| category | 63.2% | [54.2%, 71.4%] | 17 pts |
-| city | 73.1% | [63.3%, 81.1%] | 18 pts |
-| promo rejected | 23.5% | [9.6%, 47.3%] | 38 pts |
+| venue exact | 37.4% (43/115) | [29.1%, 46.5%] | 17 pts |
+| category | 63.2% (74/117) | [54.2%, 71.4%] | 17 pts |
+| city | 73.1% (68/93) | [63.3%, 81.1%] | 18 pts |
+| promo rejected (recall) | 23.5% (4/17) | [9.6%, 47.3%] | 38 pts |
 
-`HANDOFF.md` targets category "63% → ~78%". That target sits inside the current
-interval. Round-5-vs-round-6 comparisons at this n cannot separate a real gain
-from resampling noise.
+`HANDOFF.md` targets category "63% → ~78%" — a 15-point move against a 17-point
+interval. Round-5-vs-round-6 comparisons at this n cannot separate a real gain of
+a few points from resampling noise; only a paired test on the same rows can.
 
 ### 3. Category accuracy barely beats "always guess food_drink"
 
@@ -122,6 +127,19 @@ current rules leave on the table. Two consequences:
   into the audio path.
 - Part of the missing 22% is canonicalisation, not absence: gold `Cafe Franca LA`
   with `@cafefrancala` sitting in the caption.
+
+### 8. Label provenance is not recorded — and most labels were written by an LLM agent
+
+Added 2026-09-15. A corpus row carries `url / input / predicted / gold / verdict /
+note / input_fidelity / needs_recapture` — nothing says *who* produced `gold`. The
+commit history does: batch 2 (123 rows, `0b862770`, "two background agents") and
+batch 3 (231 rows, `e4af3aad`, "labeling pass") were labeled in Claude Code
+sessions, with Nick as the single reviewer through `scripts/review.py`. That is
+roughly 354 of the 417 labels. The 15 seed rows and later `review.py` corrections
+are the clearly human-authored ones. Inter-annotator agreement has never been
+measured, and the "human-only held-out slice" that question 10 assumes does not
+exist yet. Consequence for the planned Haiku comparison: as things stand it would
+score a Claude model against labels a Claude model helped write.
 
 ---
 
@@ -193,14 +211,14 @@ something to be settled by reading the repo.
 
 ### On method choice
 
-13. **Is this problem representation-limited or information-limited?** Measurement
+11. **Is this problem representation-limited or information-limited?** Measurement
     says the latter (78% ceiling, 6% transcript yield, 40 points of rule headroom),
     which argues for better *retrieval* of the signal — comment scraping, capturing
     `author_name`, canonicalisation — over any modeling upgrade. Do they agree, and
     would they accept accuracy reported *against the 78% ceiling* rather than
     against 100% as the honest framing?
 
-14. **Is there a self-supervised angle worth the money here, or is that a category
+12. **Is there a self-supervised angle worth the money here, or is that a category
     error?** Checked and provisionally answered no: `mxbai-embed-large` and llama3.2
     are already self-supervised models, and pretraining a representation on ~10³
     short captions would move things well inside an 18-point interval — unmeasurable
@@ -215,13 +233,13 @@ something to be settled by reading the repo.
 
 ### On scope and standards
 
-11. **Does a hand-written slot parser with a labeled corpus count as the ML
+13. **Does a hand-written slot parser with a labeled corpus count as the ML
     contribution for this course, or is a trained model expected?** The measured
     result so far is that the local LLM made things *worse* (llama3.2 3B: venue
     55% vs heuristic 73% on the seed corpus) — is "we measured it and cut it"
     a result they would credit, or a gap?
 
-12. **What would they want to see in a write-up of a negative result?** The
+14. **What would they want to see in a write-up of a negative result?** The
     LLM-hurts finding and the leakage finding are the two most interesting things
     here and neither is a feature.
 
@@ -237,6 +255,7 @@ Keep it to four things. Do not walk them through the product.
    --split test`, then `python scripts/eval_diagnostics.py`. The second prints
    findings 1–7 above, including the 49.6% → 37.4% drop and the ceiling table, in
    about 60 lines. Running it in front of them is worth more than any slide.
+   (Finding 8 is a `git log` fact, not a script output — say it out loud.)
 3. **`fixtures/labels.jsonl`, two or three rows on screen** — one clean row, one
    `needs_review` gatekept row, one promo row. The schema (`input` / `predicted` /
    `gold` / `verdict` / `note`) is the part an ML advisor will actually recognise,
