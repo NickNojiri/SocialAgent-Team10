@@ -22,10 +22,12 @@ log = logging.getLogger("ingestion.serving")
 app = FastAPI(title="SocialAgent Recommendations")
 # IngestionSettings isn't env-bound, so read the container-relevant knobs here:
 # in Docker, Ollama is reached via host.docker.internal and data/ is a bind mount.
+# embed_model defaults to the config value the admin app writes the catalog with;
+# a different model means every query fails on a vector-dimension mismatch.
 _settings = IngestionSettings(
     ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
     chroma_path=os.getenv("CHROMA_PATH", "data"),
-    embed_model=os.getenv("EMBED_MODEL", "nomic-embed-text"),
+    embed_model=os.getenv("EMBED_MODEL") or IngestionSettings.model_fields["embed_model"].default,
 )
 _service: Optional[RecommendationService] = None
 _services: dict[str, RecommendationService] = {}

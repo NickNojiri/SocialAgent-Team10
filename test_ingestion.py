@@ -1188,6 +1188,25 @@ def test_recommend_endpoint_via_testclient(monkeypatch):
     assert "Casa Loma" in body["markdown"]
 
 
+def test_recommend_service_embeds_with_the_catalog_model(monkeypatch):
+    """/recommend and /plan must query with the model the admin app writes the
+    catalog with — otherwise Chroma rejects every query (1024-dim vs 768-dim)."""
+    import importlib
+    import src.ingestion.serving.app as serving_app
+
+    try:
+        monkeypatch.delenv("EMBED_MODEL", raising=False)
+        importlib.reload(serving_app)
+        assert serving_app._settings.embed_model == IngestionSettings().embed_model
+
+        monkeypatch.setenv("EMBED_MODEL", "custom-embed")
+        importlib.reload(serving_app)
+        assert serving_app._settings.embed_model == "custom-embed"
+    finally:
+        monkeypatch.delenv("EMBED_MODEL", raising=False)
+        importlib.reload(serving_app)
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Phase 7 — orchestration & diagnostic reporting
 # ════════════════════════════════════════════════════════════════════════════
