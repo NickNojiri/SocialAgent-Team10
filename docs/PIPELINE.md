@@ -141,6 +141,10 @@ relevance-distance floor + recent-event dedup + max results. Explicit `/events` 
 
 ---
 
+> **Superseded (2026-09-15):** §4–5 below describe the original service layout (`llm :8001`,
+> `db :8002`, `llama3.2:1b` embeddings). The current processes, ports and models are in
+> [`docs/ARCHITECTURE.md`](ARCHITECTURE.md); §1–3 above are still accurate.
+
 ## 4. System dependencies
 
 **Runtime**

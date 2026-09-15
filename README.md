@@ -65,7 +65,7 @@ Instagram reel ──► Discord (DM / @mention / drop channel)
                         ▼
                  ┌──────────────┐   Playwright fetch → caption + mp4
                  │  Ingestion   │   Whisper → spoken transcript
-                 │   pipeline   │   Local LLM (Ollama) → venue · category
+                 │   pipeline   │   Slot parser (+ optional local LLM) → venue · category
                  │              │   OpenStreetMap → coordinates
                  │              │   Time parser → schedule
                  └──────┬───────┘
@@ -78,7 +78,9 @@ Instagram reel ──► Discord (DM / @mention / drop channel)
 
 The capture pipeline degrades gracefully at every stage: no audio → caption only;
 no LLM → keyword heuristics; no geocoder → "location unresolved". A reel never
-hard-fails a run. Full architecture: **[docs/PIPELINE.md](docs/PIPELINE.md)**.
+hard-fails a run. Full architecture: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+(processes, data, trust boundaries) and **[docs/PIPELINE.md](docs/PIPELINE.md)** (stage
+internals); decisions are recorded in **[docs/adr/](docs/adr/README.md)**.
 
 ---
 
