@@ -122,9 +122,10 @@ You cannot improve what you can't measure honestly.
   n≈120 a 5-point change is inside the noise.
 - **C:** Instrument and measure **time-to-card** today (p50/p95). Screen-record the current UX as
   the "before."
-- **Nick:** Architecture diagram + first 3 ADRs (why Chroma, why heuristic-first extraction, why
-  Discord-first). Lock down the admin API on the always-on box (its systemd unit binds
-  `0.0.0.0:8010`).
+- **Nick:** Architecture diagram + first 3 ADRs — **done 2026-09-15**: `docs/ARCHITECTURE.md`,
+  `docs/adr/0001`–`0003`. Still open: commit the tenant-token authorization
+  (`docs/THREAT_MODEL.md` T2), then lock down the admin API on the always-on box (its systemd
+  unit binds `0.0.0.0:8010`, T8).
 - **Deliverable:** `docs/BASELINE.md` — every current number in one table, with intervals.
 
 ### Sprint 2 (≈ Sept 29–Oct 10) — Requirements & the first real gain
@@ -133,8 +134,9 @@ You cannot improve what you can't measure honestly.
 - **B:** Category round 6 — embedding-nearest classifier (`mxbai-embed-large` centroids built from
   **train only**). Report the change with a paired test on the same rows, not a point estimate.
 - **C:** `/setup` onboarding wizard + live capture progress message (replaces the silent wait).
-- **Nick:** **SRS / requirements doc** (functional + non-functional, measured numbers as NFR
-  targets). Everyone contributes their track's requirements. Finish `guild_id` scoping.
+- **Nick:** **SRS / requirements doc** — draft done 2026-09-15 (`docs/SRS.md`, measured numbers
+  as the NFR baselines). Each track adds its own requirements, then it is submitted. Finish
+  `guild_id` scoping.
 - **Deliverable:** SRS v1 submitted.
 
 ### Sprint 3 (≈ Oct 13–24) — Accuracy & the hallucination problem
@@ -145,8 +147,9 @@ You cannot improve what you can't measure honestly.
   was never said. Add a grounding check that rejects venue names absent from caption, transcript,
   and tag. Measure precision and recall before/after.
 - **C:** Manual-add modal for failed captures + error-state copy. Recruit user-study participants.
-- **Nick:** Async job queue design (ADR) + spike. Prompt-injection threat model — captions are
-  untrusted text (OWASP LLM01).
+- **Nick:** Async job queue design (ADR) + spike — **done 2026-09-15**: `docs/adr/0004`, spike
+  behind `INGEST_ASYNC=1`. Threat model — **done**: `docs/THREAT_MODEL.md` (mention injection
+  fixed; tenant authz to commit; SSRF guard on `/api/ingest` is the open item this sprint).
 - **Deliverable:** `docs/EVAL_REPORT_v1.md` with real accuracy numbers and intervals.
 
 ### Sprint 4 (≈ Oct 27–Nov 7) — Make it usable by strangers
@@ -157,7 +160,8 @@ You cannot improve what you can't measure honestly.
 - **B:** Geo-aware ranking — lat/lng are stored but unused in `recommender.py`. Rank by distance
   from the guild's home city + popularity.
 - **C:** **Usability study round 1** — 6–8 participants, think-aloud, SUS questionnaire.
-- **Nick:** Implement the job queue; capture becomes non-blocking. Deploy a staging instance.
+- **Nick:** Run the job queue on real captures for the sprint, then make `INGEST_ASYNC` the
+  default; capture becomes non-blocking. Deploy a staging instance.
 - **Deliverable:** Live staging URL + usability findings.
 
 ### Sprint 5 (≈ Nov 10–21) — Integrate & harden
@@ -447,4 +451,5 @@ green in CI · docs/ADR updated if behavior changed · demoed at review · owner
 ## Next actions
 1. Week 0 kickoff meeting
 2. Turn the P0 items into GitHub issues, one owner each
-3. Book time with the ML advisor using `docs/ML_REVIEW_QUESTIONS.md`
+3. Book time with the ML advisor — send `docs/ML_ADVISOR_BRIEF.md` ahead; the full analysis is
+   `docs/ML_REVIEW_QUESTIONS.md`
