@@ -1,10 +1,14 @@
 # SpotBot developer shortcuts
+# Python 3.11+ required. On a Mac, plain python3 may be Apple's 3.9:
+#   make setup PYTHON=python3.12
+PYTHON ?= python3
+
 setup:
-	python3 -m venv .venv
+	$(PYTHON) -m venv .venv
 	. .venv/bin/activate && pip install --upgrade pip
 	. .venv/bin/activate && pip install -r requirements.txt
 	. .venv/bin/activate && python -m playwright install chromium
-	@echo "Now: ollama serve (separate tab), then: ollama pull llama3.1:8b && ollama pull llama3.2:1b"
+	@echo "Now: ollama serve (separate tab), then: ollama pull mxbai-embed-large  (optional: ollama pull llama3.1:8b)"
 
 test:
 	pytest -k "not live" -q

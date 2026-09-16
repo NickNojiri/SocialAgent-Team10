@@ -27,8 +27,8 @@ works; the capstone is making it *reliable* and *proving that with numbers*.
    ```
    The setup pulls two Ollama models — `mxbai-embed-large` (required, ~0.7 GB) and
    `llama3.1:8b` (optional, ~5 GB). Start it early.
-   **Mac/Linux:** `make setup`, then use `.venv/bin/python` wherever this doc says
-   `.\.venv\Scripts\python.exe`.
+   **Mac:** follow Part 3 of [`docs/CODEX_SETUP.md`](CODEX_SETUP.md), then use
+   `.venv/bin/python` wherever this doc says `.\.venv\Scripts\python.exe`.
 3. Prove it works — no Discord account or token needed:
    ```powershell
    .\.venv\Scripts\python.exe -m pytest -k "not live" -q
@@ -114,25 +114,18 @@ the first link again, the call receives
 
 ## 5b. Using Codex (CSULB ChatGPT Edu)
 
-Codex reads **`AGENTS.md`** at the repo root automatically — the test commands, the
-never-commit rules, and which folders belong to your track are already in it.
+**Full step-by-step guide, Mac and Windows: [`docs/CODEX_SETUP.md`](CODEX_SETUP.md).**
+Account check, GitHub access, cloud environment settings for this repo, the VS Code
+extension / CLI install, the branch → prompt → review → PR workflow, and copy-paste
+prompts for each track's first task.
 
-- **Before the meeting:** log in to ChatGPT with your CSULB account and open Codex once.
-  If it isn't there, tell Nick — the school admin controls it.
-- **GitHub:** connect your GitHub account in Codex, and send Nick your GitHub username so
-  you can be added to the repo (you need that to open pull requests).
-- **Cloud tasks** run in a Linux sandbox. In the environment settings, use this setup
-  script:
-  ```bash
-  pip install -r requirements.txt && python -m playwright install --with-deps chromium
-  ```
-  Tracks B and C work fully in the cloud. **Track A's first task does not** — it needs
-  live Instagram, so run it on your own laptop (Codex CLI or by hand).
-- **A good first prompt:** paste your track's task from §5 and add *"Follow AGENTS.md.
-  Explain your plan in three sentences before changing anything, then run the offline
-  test suite and show me the result."*
-- **Read the diff before you open the PR.** If you can't explain a line to the team, ask
-  Codex to explain it — or don't ship it.
+Before the meeting, at minimum:
+- Sign in at https://chatgpt.com/codex with your CSULB account and confirm Codex opens.
+- Send Nick your GitHub username so you can be added to the repo.
+
+Codex reads **`AGENTS.md`** at the repo root automatically, so the project rules come
+with every task. Tracks B and C can work in the cloud; **Track A's first task needs
+your own laptop** (it hits live Instagram).
 
 ## 6. How we work
 
@@ -148,6 +141,7 @@ never-commit rules, and which folders belong to your track are already in it.
 
 | Want to… | Go to |
 |---|---|
+| set up and use Codex | `docs/CODEX_SETUP.md` |
 | tell a coding agent the rules | `AGENTS.md` (repo root) |
 | understand the system | `docs/ARCHITECTURE.md` (start here), then `docs/PIPELINE.md` |
 | know why it's built this way | `docs/adr/` |
