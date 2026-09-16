@@ -86,6 +86,9 @@ internals); decisions are recorded in **[docs/adr/](docs/adr/README.md)**.
 
 ## Quick start
 
+> 🎓 **Joining the capstone team?** Start at [docs/KICKOFF.md](docs/KICKOFF.md) — setup,
+> the honest state of the project, tracks, and your first task.
+>
 > 📗 **Step-by-step with troubleshooting:** [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)
 > — from `git clone` to your first spot card, every step with a "how do I know it
 > worked?" check. For server members, hand out **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.

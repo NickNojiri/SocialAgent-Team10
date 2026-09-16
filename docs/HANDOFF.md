@@ -1,6 +1,10 @@
 # Extraction Accuracy — Handoff (2026-09-09)
 
-Pick up on your main machine after `git fetch && git checkout extraction-label-loop && git pull`.
+> **2026-09-16:** this branch has been merged — everything below is on `main`, and the
+> "not yet pushed" note further down is resolved. New teammates start at
+> [`docs/KICKOFF.md`](KICKOFF.md); this doc is the Track B deep-dive.
+
+Pick up on your main machine after `git pull` (branch `main`).
 
 ## What this branch is
 
