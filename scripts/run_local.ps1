@@ -15,7 +15,11 @@ $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 $py = ".\.venv\Scripts\python.exe"
 
-# Load .env (DISCORD_TOKEN, etc.)
+# Every catalog call is signed with SPOTBOT_SIGNING_KEY (see .env.example). If a
+# .env predates that, add a key now so the three processes below share one.
+if (Test-Path ".env") { & $py scripts/ensure_signing_key.py }
+
+# Load .env (DISCORD_TOKEN, SPOTBOT_SIGNING_KEY, etc.)
 if (Test-Path ".env") {
     Get-Content .env | ForEach-Object {
         if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
@@ -36,10 +40,16 @@ $env:ADMIN_URL     = "http://localhost:8010"
 $env:RECOMMEND_URL = "http://localhost:8003"
 if ($InsecureSsl) { $env:BOT_INSECURE_SSL = "1" }
 
+if (-not $env:SPOTBOT_SIGNING_KEY) {
+    Write-Warning "SPOTBOT_SIGNING_KEY is not set - catalog calls for a real server will be refused (503). Run: .\.venv\Scripts\python.exe scripts\ensure_signing_key.py"
+}
+
+# --host 127.0.0.1 explicitly: the legacy single-tenant catalog ("" guild, the
+# local web UI) is unauthenticated by design and must not be reachable off-host.
 Write-Host "Starting admin     -> http://localhost:8010" -ForegroundColor Cyan
-Start-Process -FilePath $py -ArgumentList "-m","uvicorn","src.ingestion.serving.admin:app","--port","8010" -WindowStyle Minimized
+Start-Process -FilePath $py -ArgumentList "-m","uvicorn","src.ingestion.serving.admin:app","--host","127.0.0.1","--port","8010" -WindowStyle Minimized
 Write-Host "Starting recommend -> http://localhost:8003" -ForegroundColor Cyan
-Start-Process -FilePath $py -ArgumentList "-m","uvicorn","src.ingestion.serving.app:app","--port","8003" -WindowStyle Minimized
+Start-Process -FilePath $py -ArgumentList "-m","uvicorn","src.ingestion.serving.app:app","--host","127.0.0.1","--port","8003" -WindowStyle Minimized
 
 Start-Sleep -Seconds 6
 Write-Host "`nStarting the Discord bot (Ctrl+C to stop)...`n" -ForegroundColor Green

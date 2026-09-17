@@ -22,6 +22,8 @@ from zoneinfo import ZoneInfo
 import discord
 import httpx
 
+from tenant_auth import tenant_headers
+
 # The admin app (ingest + votes) runs on the host; the bot reaches it via the
 # host gateway in Docker, or localhost when run directly. RECOMMEND is the
 # in-network service the bot already calls for /events.
@@ -81,21 +83,22 @@ async def capture_urls(
     stage changes (async path only).
     """
     payload = {"urls": urls, "guild_id": guild_id}
+    headers = tenant_headers(guild_id)
     if not INGEST_ASYNC:
         async with httpx.AsyncClient(timeout=300.0) as client:
-            resp = await client.post(f"{ADMIN_URL}/api/ingest", json=payload)
+            resp = await client.post(f"{ADMIN_URL}/api/ingest", json=payload, headers=headers)
             resp.raise_for_status()
             return resp.json()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload)
+        resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload, headers=headers)
         resp.raise_for_status()
         job_id = resp.json()["job_id"]
         deadline = time.monotonic() + JOB_WAIT_S
         last: Optional[tuple] = None
         while time.monotonic() < deadline:
             await asyncio.sleep(JOB_POLL_S)
-            resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}")
+            resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}", headers=headers)
             resp.raise_for_status()
             job = resp.json()
             if job["state"] == "done":
@@ -280,6 +283,11 @@ class VoteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:vote
                         "user_id": str(interaction.user.id),
                         "user_name": interaction.user.display_name,
                     },
+                    # signs the tenant AND the voter, so the API can trust who
+                    # this vote is from
+                    headers=tenant_headers(
+                        guild_key(interaction), user_id=str(interaction.user.id)
+                    ),
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -415,6 +423,7 @@ class LockInButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:lo
                         "end_epoch": int(end.timestamp()),
                         "discord_event_id": str(devent.id),
                     },
+                    headers=tenant_headers(guild_key(interaction)),
                 )
         except Exception:
             pass
@@ -451,6 +460,7 @@ class EditSpotModal(discord.ui.Modal, title="Edit this spot"):
                         "theme": str(self.vibe),
                         "guild_id": guild_key(interaction),
                     },
+                    headers=tenant_headers(guild_key(interaction)),
                 )
                 resp.raise_for_status()
                 ev = resp.json()
@@ -527,6 +537,9 @@ class WentButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:went
                         "user_name": interaction.user.display_name,
                         "happened": True,
                     },
+                    headers=tenant_headers(
+                        guild_key(interaction), user_id=str(interaction.user.id)
+                    ),
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -573,6 +586,9 @@ class NopeButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:nope
                     f"{ADMIN_URL}/api/events/{self.event_id}/went",
                     params={"guild_id": guild_key(interaction)},
                     json={"user_id": str(interaction.user.id), "happened": False},
+                    headers=tenant_headers(
+                        guild_key(interaction), user_id=str(interaction.user.id)
+                    ),
                 )
         except Exception:
             pass
@@ -656,6 +672,7 @@ class SpotModal(discord.ui.Modal, title="Add a spot"):
                         "source_url": str(self.link).strip(),
                         "guild_id": guild_key(interaction),
                     },
+                    headers=tenant_headers(guild_key(interaction)),
                 )
                 resp.raise_for_status()
                 ev = resp.json()
@@ -770,6 +787,7 @@ class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:re
                 resp = await client.delete(
                     f"{ADMIN_URL}/api/events/{self.event_id}",
                     params={"guild_id": guild_key(interaction)},
+                    headers=tenant_headers(guild_key(interaction)),
                 )
                 resp.raise_for_status()
         except Exception:
@@ -889,7 +907,11 @@ async def _events_by_id(guild: str = "") -> dict:
     """Snapshot the guild's catalog as {event_id: event_dict} for enriching suggestions."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{ADMIN_URL}/api/events", params={"guild_id": guild})
+            resp = await client.get(
+                f"{ADMIN_URL}/api/events",
+                params={"guild_id": guild},
+                headers=tenant_headers(guild),
+            )
             resp.raise_for_status()
             return {e["id"]: e for e in resp.json().get("events", []) if e.get("id")}
     except Exception:
@@ -921,6 +943,7 @@ async def _suggest_events(channel_id, message: str, guild: str = "", *, exclude_
                     "mode": "command",
                     "guild_id": guild,
                 },
+                headers=tenant_headers(guild),
             )
             resp.raise_for_status()
             recs = resp.json().get("recommendations", [])

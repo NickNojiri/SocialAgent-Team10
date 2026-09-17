@@ -6,6 +6,7 @@ httpx is replaced by a scripted fake; nothing touches the network.
 import pytest
 
 import cards
+from tenant_auth import tenant_headers
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,7 +28,7 @@ class _FakeClient:
     each GET pops the next payload from `gets`."""
 
     def __init__(self, post_reply, gets=()):
-        self.post_reply, self.gets, self.calls = post_reply, list(gets), []
+        self.post_reply, self.gets, self.calls, self.headers = post_reply, list(gets), [], []
 
     def __call__(self, **kwargs):          # httpx.AsyncClient(timeout=...) → self
         self.calls.append(("init", kwargs))
@@ -39,13 +40,20 @@ class _FakeClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def post(self, url, json=None):
+    async def post(self, url, json=None, headers=None):
         self.calls.append(("POST", url, json))
+        self.headers.append(headers)
         return self.post_reply
 
-    async def get(self, url):
+    async def get(self, url, headers=None):
         self.calls.append(("GET", url))
+        self.headers.append(headers)
         return _Resp(self.gets.pop(0))
+
+
+@pytest.fixture(autouse=True)
+def _signing_key(monkeypatch):
+    monkeypatch.setenv("SPOTBOT_SIGNING_KEY", "0" * 64)
 
 
 def _job(state, stage, done=0, total=1, **extra):
@@ -63,6 +71,7 @@ async def test_sync_path_posts_to_ingest(monkeypatch):
     assert data["added"] == 1
     assert [c[1] for c in fake.calls if c[0] == "POST"] == [f"{cards.ADMIN_URL}/api/ingest"]
     assert fake.calls[1][2] == {"urls": ["https://www.instagram.com/reel/A/"], "guild_id": "g1"}
+    assert fake.headers == [tenant_headers("g1")]         # signed for the tenant it names
 
 
 async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
@@ -92,6 +101,7 @@ async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
     assert data == result
     assert fake.calls[1] == ("POST", f"{cards.ADMIN_URL}/api/jobs", {"urls": urls, "guild_id": "g1"})
     assert all(c[1] == f"{cards.ADMIN_URL}/api/jobs/j1" for c in fake.calls if c[0] == "GET")
+    assert fake.headers and all(h == tenant_headers("g1") for h in fake.headers)   # submit and every poll
     assert seen == [
         "⏳ Waiting for a free capture slot… (0/2 done)",
         "🔎 Reading those 2 links — caption and location… (0/2 done)",

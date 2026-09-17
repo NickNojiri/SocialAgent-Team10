@@ -107,9 +107,9 @@ async def test_two_workers_run_two_jobs_at_once():
 # ── HTTP endpoints ──────────────────────────────────────────────────────────
 
 
-def _wait_done(client, job_id, tries=100):
+def _wait_done(client, job_id, tries=100, headers=None):
     for _ in range(tries):
-        job = client.get(f"/api/jobs/{job_id}").json()
+        job = client.get(f"/api/jobs/{job_id}", headers=headers or {}).json()
         if job["state"] in ("done", "failed"):
             return job
         time.sleep(0.02)
@@ -118,17 +118,22 @@ def _wait_done(client, job_id, tries=100):
 
 def test_job_endpoints_enqueue_poll_and_finish(monkeypatch):
     import src.ingestion.serving.admin as admin
+    from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
 
+    monkeypatch.setenv(ENV_VAR, "0" * 64)
+    auth = {"X-Tenant-Token": mint_token("g1")}      # what the bot sends for guild g1
     monkeypatch.setattr(admin, "_jobs", JobQueue(fake_run))
     # The context manager keeps one event loop alive across requests, which is
     # what the worker task needs (uvicorn has one loop; TestClient without the
     # `with` would spin a fresh one per request).
     with TestClient(admin.app) as client:
-        resp = client.post("/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": "g1"})
+        resp = client.post(
+            "/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": "g1"}, headers=auth
+        )
         assert resp.status_code == 202
         job_id = resp.json()["job_id"]
 
-        job = _wait_done(client, job_id)
+        job = _wait_done(client, job_id, headers=auth)
         assert job["state"] == "done"
         assert job["stage"] == "done"
         assert job["progress"] == {"done": 1, "total": 1}

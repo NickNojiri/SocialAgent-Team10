@@ -168,9 +168,9 @@ that creates a Discord Scheduled Event (the spot's resolved time, or next Friday
 7pm) with the map link as its location.
 
 Every Discord server gets its **own catalog** (DM captures go to your personal
-stash), and each catalog has a read-only **share page** at
-`http://localhost:8010/share?guild_id=<id>` — safe to send to friends who don't
-have the bot yet.
+stash), and each catalog has a read-only **share page** — get the link with `/share`
+(it carries a read-only token, so it can't be used to see other servers or change
+anything) — safe to send to friends who don't have the bot yet.
 
 ---
 
@@ -181,6 +181,7 @@ All settings come from `.env` (see `.env.example`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `DISCORD_TOKEN` | — | **Required.** Your Discord bot token. |
+| `SPOTBOT_SIGNING_KEY` | — | **Required.** Secret that signs every catalog request, so no one can read or change another server's spots. Created by `setup.ps1` / `python scripts/ensure_signing_key.py`. |
 | `OLLAMA_URL` | `http://host.docker.internal:11434` | Where Ollama is reachable. |
 | `OLLAMA_MODEL` | `llama3.2` | Local model for extraction. |
 | `BOT_CHANNEL_ID` | `0` | Limit the bot to one channel, or `0` for anywhere. |

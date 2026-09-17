@@ -35,6 +35,9 @@ app stays on the host (it drives Chromium and Whisper) and the containers reach 
 Ollama through `host.docker.internal`. Binding the admin app to anything other than
 `127.0.0.1` for that purpose is a security decision — see `THREAT_MODEL.md` T8.
 
+The containers read `SPOTBOT_SIGNING_KEY` from `.env`; the host-run admin app must get
+the **same** value (for a systemd unit: `EnvironmentFile=` pointing at that `.env`).
+
 ## Check it is healthy — no Discord needed
 
 ```bash
@@ -57,6 +60,7 @@ per-guild counts).
 | `CAPTURE_BUDGET_S` | hard per-link budget for post-fetch stages (default 180) |
 | `SETTLE_TIMEOUT_MS` | how long the browser waits for the page (default 8000) |
 | `EMBED_MODEL` | must match what the catalog was written with (default `mxbai-embed-large`) |
+| `SPOTBOT_SIGNING_KEY` | **required** — signs every catalog call; the same value must reach the admin app, the recommend service and the bot. `python scripts/ensure_signing_key.py` creates it (setup and `run_local.ps1` do this) |
 | `IG_USERNAME` / `IG_PASSWORD` | enable the authenticated fetch path (burner account only) |
 | `BOT_INSECURE_SSL=1` | skip TLS verification on intercepting proxies |
 | `SPOT_QUORUM` | votes before "Lock it in" appears (default 3) |
@@ -67,6 +71,8 @@ Full list: `README.md` → Configuration.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Every command or card says *"couldn't reach the catalog"*; admin log shows `403` or `503` | `SPOTBOT_SIGNING_KEY` missing (503) or different between processes (403) | `python scripts/ensure_signing_key.py`, then restart all three so they load the same `.env` |
+| A `/share` link says *"no longer valid"* | the signing key was changed | run `/share` again for a fresh link |
 | Bot online, cards say *"couldn't reach the catalog service"* | admin app not running, or the bot's `INGEST_URL` points at Docker's `host.docker.internal` while running on the host | start `:8010`; set `INGEST_URL=http://localhost:8010` |
 | `/plan` and `/events` always empty, admin log shows `dimension` errors | recommend service embedding with a different model than the catalog | same `EMBED_MODEL` for both; re-embed from `data/inspirations.jsonl` if the model changed |
 | Capture works but no 📝 description | Ollama down, or `llama3.1:8b` not pulled | `ollama serve`; `ollama pull llama3.1:8b` (optional feature) |

@@ -10,12 +10,13 @@ import os
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from pydantic import BaseModel
 
 from src.ingestion.config import IngestionSettings
 from src.ingestion.serving.discord_format import format_recommendations
 from src.ingestion.serving.recommender import RecommendationService
+from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
 
 log = logging.getLogger("ingestion.serving")
 
@@ -65,8 +66,15 @@ class RecommendRequest(BaseModel):
     guild_id: str = ""             # "" → the legacy/single-tenant catalog
 
 
+# Both endpoints return spots from the catalog named by guild_id, so they check
+# the same signed tenant token as the admin app (docs/THREAT_MODEL.md T2).
+# docker-compose publishes this port, which is why it can't rely on localhost.
+TenantToken = Header(default=None, alias="X-Tenant-Token")
+
+
 @app.post("/recommend")
-def recommend(req: RecommendRequest):
+def recommend(req: RecommendRequest, x_tenant_token: Optional[str] = TenantToken):
+    authorize(req.guild_id, x_tenant_token, need=SCOPE_READ)
     result = get_service(req.guild_id).recommend(
         req.channel_id, req.message, mode=req.mode, category=req.category
     )
@@ -86,8 +94,9 @@ class PlanRequest(BaseModel):
 
 
 @app.post("/plan")
-def plan(req: PlanRequest):
+def plan(req: PlanRequest, x_tenant_token: Optional[str] = TenantToken):
     """Group planning: chat transcript -> synthesized request + a shortlist."""
+    authorize(req.guild_id, x_tenant_token, need=SCOPE_READ)
     result = get_service(req.guild_id).plan(
         req.channel_id, req.transcript, user_id=req.user_id
     )

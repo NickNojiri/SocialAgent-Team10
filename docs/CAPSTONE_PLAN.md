@@ -123,9 +123,9 @@ You cannot improve what you can't measure honestly.
 - **C:** Instrument and measure **time-to-card** today (p50/p95). Screen-record the current UX as
   the "before."
 - **Nick:** Architecture diagram + first 3 ADRs — **done 2026-09-15**: `docs/ARCHITECTURE.md`,
-  `docs/adr/0001`–`0003`. Still open: commit the tenant-token authorization
-  (`docs/THREAT_MODEL.md` T2), then lock down the admin API on the always-on box (its systemd
-  unit binds `0.0.0.0:8010`, T8).
+  `docs/adr/0001`–`0003`. Tenant-token authorization — **done 2026-09-17**
+  (`docs/THREAT_MODEL.md` T2). Still open: set the signing key and lock down the admin API on
+  the always-on box (its systemd unit binds `0.0.0.0:8010`, T8).
 - **Deliverable:** `docs/BASELINE.md` — every current number in one table, with intervals.
 
 ### Sprint 2 (≈ Sept 29–Oct 10) — Requirements & the first real gain
@@ -149,7 +149,7 @@ You cannot improve what you can't measure honestly.
 - **C:** Manual-add modal for failed captures + error-state copy. Recruit user-study participants.
 - **Nick:** Async job queue design (ADR) + spike — **done 2026-09-15**: `docs/adr/0004`, spike
   behind `INGEST_ASYNC=1`. Threat model — **done**: `docs/THREAT_MODEL.md` (mention injection
-  fixed; tenant authz to commit; SSRF guard on `/api/ingest` is the open item this sprint).
+  fixed; tenant authz fixed; SSRF guard on `/api/ingest` is the open item this sprint).
 - **Deliverable:** `docs/EVAL_REPORT_v1.md` with real accuracy numbers and intervals.
 
 ### Sprint 4 (≈ Oct 27–Nov 7) — Make it usable by strangers

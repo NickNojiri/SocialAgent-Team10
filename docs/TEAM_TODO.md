@@ -127,8 +127,9 @@ A flood of pasted links = hundreds of pipeline runs / LLM calls = burned credits
 8. ~~Mention injection~~ — done 2026-09-15: the client sends with
    `AllowedMentions.none()`, so a venue called "@everyone" can never ping
    (`THREAT_MODEL.md` T1).
-9. **Commit the tenant-token authorization** (`THREAT_MODEL.md` T2) — built and
-   tested in the main checkout, not yet on `main`.
+9. ~~Tenant-token authorization~~ — done 2026-09-17: every catalog call is
+   signed per guild (and per user for votes), on both :8010 and :8003
+   (`THREAT_MODEL.md` T2). Left: set `SPOTBOT_SIGNING_KEY` on the always-on box (T8).
 
 The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
 

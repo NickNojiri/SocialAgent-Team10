@@ -15,10 +15,16 @@ from src.ingestion.config import IngestionSettings
 from src.ingestion.schemas.inspiration import (
     EventCategory, EventInspiration, GeoContext, SourceProvenance, content_hash,
 )
+from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
 from src.ingestion.sinks.chroma_sink import ChromaSink
 
 GUILD = "test-went-guild"
 NOW = 1_800_000_000   # fixed "now" for deterministic due-ness
+
+
+def auth(user_id: str = "") -> dict:
+    """The tenant token the bot would send (signed over the user for went/vote)."""
+    return {"X-Tenant-Token": mint_token(GUILD, user_id=user_id)}
 
 
 def fake_embedder(texts):
@@ -43,6 +49,7 @@ def seed_record(venue="Casa Loma"):
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_VAR, "0" * 64)
     sink = ChromaSink(
         IngestionSettings(chroma_path=str(tmp_path)), embedder=fake_embedder
     )
@@ -56,6 +63,7 @@ def _lock(client, event_id, end_epoch):
     resp = client.post(
         f"/api/events/{event_id}/lock",
         json={"guild_id": GUILD, "channel_id": "123", "end_epoch": end_epoch},
+        headers=auth(),
     )
     assert resp.status_code == 200
 
@@ -66,19 +74,19 @@ class TestWentLoop:
         _lock(tc, eid, end_epoch=NOW)
 
         # Same evening → not due yet (8h grace)
-        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": NOW + 3600}).json()["due"]
+        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": NOW + 3600}, headers=auth()).json()["due"]
         assert due == []
 
         # Next morning → due exactly once, with the channel to ask in
         morning = NOW + 10 * 3600
-        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": morning}).json()["due"]
+        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": morning}, headers=auth()).json()["due"]
         assert len(due) == 1
         assert due[0]["id"] == eid
         assert due[0]["venue"] == "Casa Loma"
         assert due[0]["channel_id"] == "123"
 
         # Never asked twice
-        again = tc.get("/api/followups", params={"guild_id": GUILD, "now": morning + 60}).json()["due"]
+        again = tc.get("/api/followups", params={"guild_id": GUILD, "now": morning + 60}, headers=auth()).json()["due"]
         assert again == []
 
     def test_two_confirmations_make_an_official_night(self, client):
@@ -87,7 +95,7 @@ class TestWentLoop:
 
         first = tc.post(
             f"/api/events/{eid}/went", params={"guild_id": GUILD},
-            json={"user_id": "1", "user_name": "nick"},
+            json={"user_id": "1", "user_name": "nick"}, headers=auth("1"),
         ).json()
         assert first["confirmations"] == 1
         assert first["attended"] is False
@@ -96,34 +104,34 @@ class TestWentLoop:
         # Same user again → still one confirmation (no self-confirming a night)
         dup = tc.post(
             f"/api/events/{eid}/went", params={"guild_id": GUILD},
-            json={"user_id": "1", "user_name": "nick"},
+            json={"user_id": "1", "user_name": "nick"}, headers=auth("1"),
         ).json()
         assert dup["confirmations"] == 1
 
         second = tc.post(
             f"/api/events/{eid}/went", params={"guild_id": GUILD},
-            json={"user_id": "2", "user_name": "sam"},
+            json={"user_id": "2", "user_name": "sam"}, headers=auth("2"),
         ).json()
         assert second["confirmations"] == 2
         assert second["attended"] is True
         assert second["nights"] == 1
         assert second["venue"] == "Casa Loma"
 
-        assert tc.get("/api/nights", params={"guild_id": GUILD}).json() == {"nights": 1}
+        assert tc.get("/api/nights", params={"guild_id": GUILD}, headers=auth()).json() == {"nights": 1}
 
     def test_didnt_happen_never_counts(self, client):
         tc, eid = client
         _lock(tc, eid, end_epoch=NOW)
         resp = tc.post(
             f"/api/events/{eid}/went", params={"guild_id": GUILD},
-            json={"user_id": "1", "happened": False},
+            json={"user_id": "1", "happened": False}, headers=auth("1"),
         ).json()
         assert resp["attended"] is False
-        assert tc.get("/api/nights", params={"guild_id": GUILD}).json()["nights"] == 0
+        assert tc.get("/api/nights", params={"guild_id": GUILD}, headers=auth()).json()["nights"] == 0
 
     def test_unlocked_events_are_never_followed_up(self, client):
         tc, _eid = client   # seeded but never locked
-        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": NOW * 2}).json()["due"]
+        due = tc.get("/api/followups", params={"guild_id": GUILD, "now": NOW * 2}, headers=auth()).json()["due"]
         assert due == []
 
 
@@ -133,13 +141,14 @@ class TestEdit:
         resp = tc.post(
             f"/api/events/{eid}/edit",
             json={"venue": "Casa Loma Tacos", "theme": "birria, cash only", "guild_id": GUILD},
+            headers=auth(),
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["venue"] == "Casa Loma Tacos"
         assert data["theme"] == "birria, cash only"
 
-        listed = tc.get("/api/events", params={"guild_id": GUILD}).json()["events"][0]
+        listed = tc.get("/api/events", params={"guild_id": GUILD}, headers=auth()).json()["events"][0]
         assert listed["venue"] == "Casa Loma Tacos"
         # similarity document re-embedded with the new text
         sink = admin._sinks[GUILD]
@@ -149,9 +158,9 @@ class TestEdit:
     def test_edit_validates_input(self, client):
         tc, eid = client
         assert tc.post(f"/api/events/{eid}/edit",
-                       json={"venue": " ", "theme": "ok ok", "guild_id": GUILD}).status_code == 400
+                       json={"venue": " ", "theme": "ok ok", "guild_id": GUILD}, headers=auth()).status_code == 400
         assert tc.post(f"/api/events/does-not-exist/edit",
-                       json={"venue": "X", "theme": "vibe here", "guild_id": GUILD}).status_code == 404
+                       json={"venue": "X", "theme": "vibe here", "guild_id": GUILD}, headers=auth()).status_code == 404
 
 
 class TestDashboard:
@@ -164,7 +173,7 @@ class TestDashboard:
         _lock(tc, eid, end_epoch=NOW)
         for uid in ("1", "2"):
             tc.post(f"/api/events/{eid}/went", params={"guild_id": GUILD},
-                    json={"user_id": uid, "user_name": f"u{uid}"})
+                    json={"user_id": uid, "user_name": f"u{uid}"}, headers=auth(uid))
 
         data = tc.get("/api/stats").json()
         assert data["totals"]["spots"] >= 1

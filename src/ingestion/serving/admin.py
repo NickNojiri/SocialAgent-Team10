@@ -16,7 +16,7 @@ import os
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -28,6 +28,7 @@ from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
 from src.ingestion.serving.jobs import JobQueue, QueueFull
+from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
@@ -164,6 +165,10 @@ class VoteBody(BaseModel):
     # When set, votes carry identity: "Want to go" joins the voters list,
     # "Not for me" leaves it, and the count is the list's size. Anonymous
     # votes (the web UI) keep the plain counter behavior.
+    #
+    # user_id is claimed by the caller, so on a real (non-empty) tenant the
+    # tenant token must be signed over this exact value — see tenant_auth.
+    # Otherwise anyone could vote, or un-vote, as anyone else.
     user_id: str = ""
     user_name: str = ""
 
@@ -194,8 +199,20 @@ def _apply_vote(meta: dict, body: VoteBody) -> dict:
 # ── API ──────────────────────────────────────────────────────────────────────
 
 
+# ── Tenant authorization ─────────────────────────────────────────────────────
+# Every endpoint that names a guild_id checks an X-Tenant-Token signed with
+# SPOTBOT_SIGNING_KEY (serving/tenant_auth.py). The bot is the only minter.
+# The empty tenant "" (legacy single-tenant catalog, the local web UI) stays
+# open by design — bind to 127.0.0.1. /api/stats and /dash are operator views
+# (counts per guild, no spot contents) and are likewise localhost-only.
+# docs/THREAT_MODEL.md T2.
+
+TenantToken = Header(default=None, alias="X-Tenant-Token")
+
+
 @app.get("/api/events")
-def list_events(guild_id: str = ""):
+def list_events(guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    authorize(guild_id, x_tenant_token, need=SCOPE_READ)
     res = _sink_for(guild_id).collection.get(include=["metadatas"])
     events = []
     for event_id, m in zip(res["ids"], res["metadatas"]):
@@ -277,8 +294,9 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
 
 
 @app.post("/api/ingest")
-async def ingest(body: IngestBody):
+async def ingest(body: IngestBody, x_tenant_token: str | None = TenantToken):
     """Synchronous capture: returns when every URL is done (the bot's default path)."""
+    authorize(body.guild_id, x_tenant_token)
     return await _run_ingest(_ingest_urls(body), body.guild_id)
 
 
@@ -289,7 +307,8 @@ _jobs = JobQueue(_run_ingest, workers=int(os.getenv("INGEST_WORKERS", "").strip(
 
 
 @app.post("/api/jobs", status_code=202)
-async def create_job(body: IngestBody):
+async def create_job(body: IngestBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token)
     urls = _ingest_urls(body)
     try:
         job = _jobs.submit(urls, body.guild_id)
@@ -299,12 +318,14 @@ async def create_job(body: IngestBody):
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str):
+def get_job(job_id: str, x_tenant_token: str | None = TenantToken):
     job = _jobs.get(job_id)
     if job is None:
         raise HTTPException(
             404, "no such job — finished jobs expire after an hour, and a restart clears the queue"
         )
+    # A finished job carries that guild's new spots — only its tenant may read it.
+    authorize(job.guild_id, x_tenant_token, need=SCOPE_READ)
     return job.to_dict()
 
 
@@ -371,8 +392,9 @@ def _manual_record(venue: str, theme: str, source_url: str = ""):
 
 
 @app.post("/api/manual")
-def add_manual(body: ManualBody):
+def add_manual(body: ManualBody, x_tenant_token: str | None = TenantToken):
     """Manual catalog entry — the never-waste-a-paste fallback for failed captures."""
+    authorize(body.guild_id, x_tenant_token)
     if not body.venue.strip() or len(body.theme.strip()) < 3:
         raise HTTPException(400, "venue and a short vibe description are required")
     try:
@@ -400,11 +422,12 @@ class EditBody(BaseModel):
 
 
 @app.post("/api/events/{event_id}/edit")
-def edit_event(event_id: str, body: EditBody):
+def edit_event(event_id: str, body: EditBody, x_tenant_token: str | None = TenantToken):
     """User-facing edit (the card's ✏️ button): fix the venue name or vibe.
 
     Metadata updates always; the similarity embedding re-computes best-effort
     (Ollama down → the old vector stays until the next edit)."""
+    authorize(body.guild_id, x_tenant_token)
     venue = body.venue.strip()[:110]
     theme = body.theme.strip()[:280]
     if not venue or len(theme) < 3:
@@ -460,8 +483,9 @@ class LockBody(BaseModel):
 
 
 @app.post("/api/events/{event_id}/lock")
-def lock_event(event_id: str, body: LockBody):
+def lock_event(event_id: str, body: LockBody, x_tenant_token: str | None = TenantToken):
     """Record that this spot became a real scheduled event (LockInButton)."""
+    authorize(body.guild_id, x_tenant_token)
     sink = _sink_for(body.guild_id)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
@@ -477,9 +501,12 @@ def lock_event(event_id: str, body: LockBody):
 
 
 @app.get("/api/followups")
-def followups(guild_id: str = "", now: int = 0):
+def followups(guild_id: str = "", now: int = 0, x_tenant_token: str | None = TenantToken):
     """Locked events whose night has passed and haven't been asked about yet.
     Each is returned exactly once (marked prompted here)."""
+    # A write scope, not read: this call marks events as prompted, so a stranger
+    # calling it would silently swallow a server's went-there prompts.
+    authorize(guild_id, x_tenant_token)
     now = now or int(time.time())
     sink = _sink_for(guild_id)
     res = sink.collection.get(include=["metadatas"])
@@ -508,8 +535,16 @@ class WentBody(BaseModel):
 
 
 @app.post("/api/events/{event_id}/went")
-def went(event_id: str, body: WentBody, guild_id: str = ""):
+def went(
+    event_id: str,
+    body: WentBody,
+    guild_id: str = "",
+    x_tenant_token: str | None = TenantToken,
+):
     """A 'we went' confirmation. Two distinct users → an official attended night."""
+    # Signed over user_id: two confirmations from *different* people is the whole
+    # counter, so a caller must not be able to confirm as someone else.
+    authorize(guild_id, x_tenant_token, user_id=body.user_id)
     sink = _sink_for(guild_id)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
@@ -539,19 +574,29 @@ def _count_nights(sink: ChromaSink) -> int:
 
 
 @app.get("/api/nights")
-def nights(guild_id: str = ""):
+def nights(guild_id: str = "", x_tenant_token: str | None = TenantToken):
     """The counter that matters: confirmed real-world nights out."""
+    authorize(guild_id, x_tenant_token, need=SCOPE_READ)
     return {"nights": _count_nights(_sink_for(guild_id))}
 
 
 @app.delete("/api/events/{event_id}")
-def delete_event(event_id: str, guild_id: str = ""):
+def delete_event(event_id: str, guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    authorize(guild_id, x_tenant_token)
     _sink_for(guild_id).collection.delete(ids=[event_id])
     return {"deleted": event_id}
 
 
 @app.post("/api/events/{event_id}/vote")
-def vote(event_id: str, body: VoteBody, guild_id: str = ""):
+def vote(
+    event_id: str,
+    body: VoteBody,
+    guild_id: str = "",
+    x_tenant_token: str | None = TenantToken,
+):
+    # user_id is part of the signed payload, so the token proves the caller may
+    # vote as *this* user — not merely that they may touch this tenant.
+    authorize(guild_id, x_tenant_token, user_id=body.user_id)
     sink = _sink_for(guild_id)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
@@ -632,14 +677,21 @@ def index():
 
 
 @app.get("/share", response_class=HTMLResponse)
-def share():
+def share(guild_id: str = "", t: str | None = None):
     """Read-only catalog page — safe to send to people outside the server.
 
     The growth surface (docs/PRODUCT_ROADMAP.md 2.3): viewable without the bot
     installed, no add/vote/remove controls, with an install call-to-action.
-    Guild selection via ?guild_id=… (default: the single-tenant catalog).
+
+    The link IS the capability: `?guild_id=…&t=…` carries a read-scoped tenant
+    token, so a recipient sees exactly one catalog and cannot swap the guild_id
+    to enumerate others. The bot's /share command mints it; so does
+    scripts/make_share_link.py. Rotating SPOTBOT_SIGNING_KEY revokes every link.
     """
-    return _SHARE_PAGE
+    authorize(guild_id, t, need=SCOPE_READ)
+    # Tokens are hex; anything else is dropped rather than injected into the page.
+    token = t if (t and all(c in "0123456789abcdef" for c in t)) else ""
+    return _SHARE_PAGE.replace("__TENANT_TOKEN__", token)
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────
@@ -797,11 +849,14 @@ _SHARE_PAGE = """<!doctype html>
 <script>
 const EMOJI={food_drink:"🍽️",cafe_dessert:"🍰",nightlife:"🍸",live_music:"🎶",market_popup:"🛍️",outdoors:"🏞️",community:"🤝",other:"📍"};
 const GUILD=new URLSearchParams(location.search).get('guild_id')||'';
+const TOKEN="__TENANT_TOKEN__";   // read-scoped, injected by GET /share
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 async function load(){
-  const r=await fetch('/api/events?guild_id='+encodeURIComponent(GUILD)); const d=await r.json();
-  document.getElementById('count').textContent=d.count+' spot'+(d.count===1?'':'s');
+  const r=await fetch('/api/events?guild_id='+encodeURIComponent(GUILD),{headers:TOKEN?{'X-Tenant-Token':TOKEN}:{}});
   const list=document.getElementById('list');
+  if(!r.ok){list.innerHTML='<div class="empty">This link is no longer valid — ask for a fresh one with /share.</div>';return;}
+  const d=await r.json();
+  document.getElementById('count').textContent=d.count+' spot'+(d.count===1?'':'s');
   if(!d.events.length){list.innerHTML='<div class="empty">Nothing here yet.</div>';return;}
   list.innerHTML=d.events.map(e=>`
     <div class="ev">

@@ -161,16 +161,18 @@ your own laptop** (it hits live Instagram).
   Install at home; push with `git -c http.sslVerify=false push` if you must.
 - **Ollama must be running** for anything that embeds (`ollama serve` if the tray
   app isn't up). Tests and the scorecard do *not* need it.
-- **`.env` and `data/` are never committed.** The Discord token lives only in `.env`.
+- **`.env` and `data/` are never committed.** The Discord token and the
+  `SPOTBOT_SIGNING_KEY` live only in `.env`. Setup creates the key for you; if the bot
+  logs *"SPOTBOT_SIGNING_KEY is not set"*, run `python scripts/ensure_signing_key.py`
+  and restart. Tests don't need it.
 - **`main` is the only branch you need.** Older `feature/*` and `claude/*` branches are
   history; don't check them out.
 - First live capture is slow (~40 s) — Whisper downloads its model once.
 
 ## 9. What Nick is doing this sprint
 
-Architecture doc, ADRs, SRS and threat model are done (see §7). Open: commit the
-tenant-authorization fix, lock down the admin API on the always-on box, book the ML
-advisor with `docs/ML_ADVISOR_BRIEF.md`, and run the async capture queue on real
-captures.
+Architecture doc, ADRs, SRS, threat model and the tenant-authorization fix are done
+(see §7). Open: lock down the admin API on the always-on box, book the ML advisor with
+`docs/ML_ADVISOR_BRIEF.md`, and run the async capture queue on real captures.
 
 Questions before Thursday: Discord, or reply on Canvas.

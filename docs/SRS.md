@@ -160,7 +160,7 @@ Each row: what it is today (measured), the target, and who moves it.
 | NFR-8 | **Cost** | $0 marginal | $0 marginal | Nick |
 | NFR-9 | **Graceful degradation** | every optional stage can be absent; one URL never aborts a run | keep; regression tests per stage | all |
 | NFR-10 | **Test coverage** | 238 offline tests, CI on every push; accuracy floors on `--split train` | grows with every feature; floors ratchet up only | all |
-| NFR-11 | **Security** | see `THREAT_MODEL.md`: mentions fixed (T1); tenant authz fix built, uncommitted (T2); SSRF open (T3) | T2 and T3 closed by end of Sprint 3 | Nick |
+| NFR-11 | **Security** | see `THREAT_MODEL.md`: mentions fixed (T1); tenant authz fixed — 32/32 forgeries rejected, `scripts/bench_admin_authz.py` (T2); SSRF open (T3) | T3 closed by end of Sprint 3 | Nick |
 | NFR-12 | **Portability** | Windows scripts; Linux/macOS by hand; Python 3.12–3.13 | Linux script parity for the always-on box | Nick |
 | NFR-13 | **Resource envelope** | no GPU; 16 GB RAM comfortable; ~12 GB disk | unchanged | — |
 | NFR-14 | **Restart resilience** | buttons persist; in-flight captures are lost (bot shows Retry) | acceptable for self-host (ADR-0004) | Nick |

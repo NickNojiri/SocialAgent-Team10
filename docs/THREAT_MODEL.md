@@ -61,20 +61,41 @@ anyone with Manage Messages; the share page escapes HTML (T7).
 
 ---
 
-### T2 · Cross-tenant authorization — `guild_id` is caller-controlled · B4 · **built, uncommitted**
+### T2 · Cross-tenant authorization — `guild_id` was caller-controlled · B4 · **fixed 2026-09-17**
 
-**Attack.** `guild_id` selects the Chroma collection on every admin endpoint
-(`admin.py:196-233`, `:506-513`) and on `/share`. It is a plain request field. Anything
-that can reach `:8010` can read, wipe, or vote in any server's catalog, and vote *as*
+**Attack.** `guild_id` selects the Chroma collection on every catalog endpoint. It was
+a plain request field, so anything that could reach `:8010` or `:8003` could read,
+wipe, edit or add to any server's catalog (DM stashes included), read another server's
+capture results, swallow its went-there prompts, and vote or confirm a night out *as*
 any `user_id` — three forged votes reach quorum and create a real Scheduled Event.
+`docker-compose.yml` also published `:8003` on every interface.
 
-**Fix (exists).** HMAC-SHA256 tenant tokens with `r`/`rw` scopes, header-borne,
-fail-closed, mirrored in the bot image — `HANDOFF-tenant-auth.md` in the main checkout:
-19 tests, 17/17 forgery classes rejected, 6/6 authentic requests still pass. **Not on
-`main`.** Owner: Nick, commit as its own PR, Sprint 1.
+**Fix.** HMAC-SHA256 tenant tokens (`serving/tenant_auth.py`, mirrored in
+`app/tenant_auth.py` because the bot image cannot import `src/`):
+`HMAC(SPOTBOT_SIGNING_KEY, "v1\n{scope}\n{guild_id}\n{user_id}")`, sent as the
+`X-Tenant-Token` header.
+- Every endpoint that takes a `guild_id` checks it — admin: events, nights, ingest,
+  jobs (submit *and* status, checked against the job's own guild), manual, edit, lock,
+  followups, went, vote, delete, `/share`; recommend: `/recommend`, `/plan`.
+- Scopes: `rw` for the bot, read-only `r` for share links; `r` never satisfies a
+  write. `followups` needs `rw` because it marks prompts as sent.
+- Vote and went tokens are signed over the acting `user_id`.
+- Missing key → **503, fail closed**. `scripts/ensure_signing_key.py` (run by
+  `setup.ps1` and `run_local.ps1`) creates the key so a fresh setup never hits that.
+- `:8003` is now published on `127.0.0.1` only; `run_local.ps1` binds both apps to
+  `127.0.0.1` explicitly.
 
-**Until then:** the admin app must bind `127.0.0.1` (see T8), which is what
-`run_local.ps1` and the `Makefile` do.
+**Evidence.** `test_admin_authz.py` (endpoint-by-endpoint, plus a test that the bot's
+mirror mints byte-identical tokens) and `scripts/bench_admin_authz.py`: **32/32**
+forged requests rejected across 32 attack classes, **15/15** authentic requests
+accepted. With `authorize` replaced by a no-op — the pre-fix code path — the same
+32 forgeries are rejected **0/32**.
+
+**Residual (accepted).** Tokens are stable bearer capabilities, not nonces — whoever
+captures one keeps that tenant's access until the key is rotated, and rotating revokes
+every share link. The empty tenant `""` (legacy single-tenant catalog, the local web
+UI at `/`) stays open by design, and `/api/stats` + `/dash` show per-guild *counts*
+across tenants; both rely on the `127.0.0.1` bind (T8).
 
 ---
 
@@ -85,8 +106,8 @@ manager only scheme + netloc (`browser/session_manager.py:127`). Playwright will
 navigate to `http://127.0.0.1:8010/…`, `http://169.254.169.254/…` or a LAN host; the
 `/embed/` fallback and the video download (`transcriber.py:102`, `follow_redirects=True`)
 also fetch attacker-chosen hosts. The bot only forwards Instagram/TikTok URLs
-(`cards.extract_capture_urls`), so this needs B4 access — which T2 shows is the open
-edge today.
+(`cards.extract_capture_urls`), so this needs B4 access plus a valid tenant token
+since T2 — or the open legacy `""` tenant from the same host.
 
 **Mitigation to build.** Host allowlist at ingest (`instagram.com`, `tiktok.com`, later
 `youtube.com`), and resolve-then-reject private/link-local addresses before the video
@@ -152,11 +173,14 @@ All three server-rendered pages escape scraped text before `innerHTML`
 
 ### T8 · Network exposure of the admin API · B4 · **open on the always-on box**
 
-Local runs bind `127.0.0.1` (uvicorn's default; `run_local.ps1`, `Makefile`). The
+Local runs bind `127.0.0.1` (`run_local.ps1` explicitly, `Makefile` by uvicorn's
+default), and `docker-compose.yml` publishes `:8003` on `127.0.0.1` only. The
 always-on box's systemd unit (not in git) binds `0.0.0.0:8010` so the Docker bot can
-reach it via `host.docker.internal`. With T2 open that is a wide-open catalog API.
-Fix order: land T2, then bind `127.0.0.1` and reach the host over the docker bridge
-address, or keep `0.0.0.0` behind the tenant token plus a firewall rule. Owner: Nick.
+reach it via `host.docker.internal`. Since T2, every guild's data there needs a
+token; what stays reachable is the open legacy `""` catalog and the per-guild counts
+on `/api/stats` + `/dash`. Remaining fix on the box: set `SPOTBOT_SIGNING_KEY` in the
+unit's environment (same value as the bot's `.env`), then bind `127.0.0.1` and reach it
+over the docker bridge address, or keep `0.0.0.0` behind a firewall rule. Owner: Nick.
 
 ---
 
@@ -175,13 +199,13 @@ the whole file). Open: per-row label provenance and a second annotator
 | # | Finding | STRIDE | Status |
 |---|---|---|---|
 | T1 | mention injection via plain-content sends | Spoofing / Elevation | **fixed** — `AllowedMentions.none()` |
-| T2 | caller-controlled `guild_id` | Elevation / Tampering / Info disclosure | built, uncommitted — Nick, Sprint 1 |
+| T2 | caller-controlled `guild_id` | Elevation / Tampering / Info disclosure | **fixed** — HMAC tenant tokens on :8010 and :8003; 32/32 forgeries rejected (0/32 before) |
 | T3 | SSRF through pasted URLs | Elevation | open — Track A + Nick, Sprint 3 |
 | T4 | prompt injection into LLM stages | Tampering | accepted, mitigated |
 | T5 | capture floods | DoS | partial — Nick, Sprint 3–4 |
 | T6 | secrets / retention | Info disclosure | mostly in place; retention Sprint 8 |
 | T7 | XSS on web pages | Tampering | verified safe |
-| T8 | `:8010` exposure on the box | Info disclosure | open — after T2 |
+| T8 | `:8010` exposure on the box | Info disclosure | open — set the key in the systemd unit, then bind `127.0.0.1` |
 | T9 | benchmark integrity | Repudiation | process controls in place |
 
 Things deliberately *not* modelled: Discord's own security, Ollama's process

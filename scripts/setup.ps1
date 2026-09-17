@@ -38,11 +38,12 @@ if (Get-Command ollama -ErrorAction SilentlyContinue) {
 }
 
 Write-Host "`n[5/5] .env" -ForegroundColor Cyan
-if (-not (Test-Path ".env")) {
-    Copy-Item ".env.example" ".env"
+$hadEnv = Test-Path ".env"
+# Creates .env from .env.example if needed and fills in SPOTBOT_SIGNING_KEY (the
+# secret that signs catalog calls). Never replaces a key that is already set.
+& $py scripts/ensure_signing_key.py
+if (-not $hadEnv) {
     Write-Warning "Created .env - OPEN IT and set DISCORD_TOKEN before running the bot."
-} else {
-    Write-Host "  .env already exists - leaving it."
 }
 
 Write-Host "`nSetup complete. Start the stack with:  .\scripts\run_local.ps1" -ForegroundColor Green

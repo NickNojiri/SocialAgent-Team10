@@ -39,6 +39,8 @@ from discord import app_commands
 from discord.ext import tasks
 
 import cards
+from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
+from tenant_auth import SCOPE_READ, mint_token, tenant_headers
 
 # ── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -89,6 +91,12 @@ TIPPED_GUILDS: set[int] = set()
 @bot.event
 async def on_ready():
     log.info(f"=== Bot online: {bot.user} (ID: {bot.user.id}) ===")
+    if not os.getenv(SIGNING_KEY_VAR):
+        log.error(
+            f"{SIGNING_KEY_VAR} is not set — every catalog call for a server or DM "
+            "will be refused. Run: python scripts/ensure_signing_key.py, then restart "
+            "the admin app, the recommend service and the bot."
+        )
 
     load_config()
     cards.register_dynamic_items(bot)   # keep spot buttons alive across restarts
@@ -116,7 +124,9 @@ async def followup_loop():
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(
-                    f"{INGEST_URL}/api/followups", params={"guild_id": str(guild.id)}
+                    f"{INGEST_URL}/api/followups",
+                    params={"guild_id": str(guild.id)},
+                    headers=tenant_headers(str(guild.id)),
                 )
                 resp.raise_for_status()
                 due = resp.json().get("due", [])
@@ -401,6 +411,7 @@ async def catalog_command(interaction: discord.Interaction):
             resp = await client.get(
                 f"{INGEST_URL}/api/events",
                 params={"guild_id": cards.guild_key(interaction)},
+                headers=tenant_headers(cards.guild_key(interaction)),
             )
             resp.raise_for_status()
             events = resp.json().get("events", [])
@@ -442,6 +453,7 @@ async def browse_command(
             resp = await client.get(
                 f"{INGEST_URL}/api/events",
                 params={"guild_id": cards.guild_key(interaction)},
+                headers=tenant_headers(cards.guild_key(interaction)),
             )
             resp.raise_for_status()
             events = resp.json().get("events", [])
@@ -473,10 +485,19 @@ async def browse_command(
 async def share_command(interaction: discord.Interaction):
     base = os.getenv("SHARE_BASE_URL", ADMIN_URL).rstrip("/")
     gid = cards.guild_key(interaction)
+    try:
+        # Read-only: the link can show this catalog, never change or delete it.
+        token = mint_token(gid, scope=SCOPE_READ)
+    except RuntimeError as exc:
+        log.error(f"[share] {exc}")
+        await interaction.response.send_message(
+            "⚠️ Share links aren't set up on this bot yet (missing signing key).", ephemeral=True
+        )
+        return
     await interaction.response.send_message(
-        f"🔗 This catalog, as a web page anyone can view:\n{base}/share?guild_id={gid}\n"
-        "-# Send it to friends who aren't in the server. Localhost links only work "
-        "on the machine running SpotBot."
+        f"🔗 This catalog, as a web page anyone can view:\n{base}/share?guild_id={gid}&t={token}\n"
+        "-# Send it to friends who aren't in the server — it's read-only. Localhost "
+        "links only work on the machine running SpotBot."
     )
 
 
@@ -485,13 +506,18 @@ async def digest_command(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     gid = cards.guild_key(interaction)
     try:
+        headers = tenant_headers(gid)
         async with httpx.AsyncClient(timeout=15.0) as client:
-            events = (
-                await client.get(f"{INGEST_URL}/api/events", params={"guild_id": gid})
-            ).json().get("events", [])
-            nights = (
-                await client.get(f"{INGEST_URL}/api/nights", params={"guild_id": gid})
-            ).json().get("nights", 0)
+            resp = await client.get(
+                f"{INGEST_URL}/api/events", params={"guild_id": gid}, headers=headers
+            )
+            resp.raise_for_status()
+            events = resp.json().get("events", [])
+            resp = await client.get(
+                f"{INGEST_URL}/api/nights", params={"guild_id": gid}, headers=headers
+            )
+            resp.raise_for_status()
+            nights = resp.json().get("nights", 0)
     except Exception as exc:
         log.warning(f"[digest] fetch failed: {exc}")
         await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
@@ -595,7 +621,9 @@ async def call_recommend(channel_id: int, message: str, mode: str, guild_id: str
         "guild_id": guild_id,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(f"{RECOMMEND_URL}/recommend", json=payload)
+        resp = await client.post(
+            f"{RECOMMEND_URL}/recommend", json=payload, headers=tenant_headers(guild_id)
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -609,7 +637,9 @@ async def call_plan(channel_id: int, transcript: str, guild_id: str = "", user_i
         "user_id": user_id,   # ML: personalise results by requester's vote history
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(f"{RECOMMEND_URL}/plan", json=payload)
+        resp = await client.post(
+            f"{RECOMMEND_URL}/plan", json=payload, headers=tenant_headers(guild_id)
+        )
         resp.raise_for_status()
         return resp.json()
 

@@ -28,7 +28,9 @@ services:
     networks:
       - event-net
     ports:
-      - "8003:8003"
+      # Host-only: the bot reaches this over event-net; nothing off-box needs it.
+      # Requests still carry the signed tenant token (docs/THREAT_MODEL.md T2).
+      - "127.0.0.1:8003:8003"
     volumes:
       - ./data:/app/data   # same Chroma store the admin app populates
     restart: unless-stopped

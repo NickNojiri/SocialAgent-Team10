@@ -160,6 +160,13 @@ def test_apply_vote_identity_and_anonymous():
 
 def test_recommend_routes_by_guild(monkeypatch):
     """Each guild_id gets its own service/collection; '' reuses the legacy one."""
+    from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
+
+    monkeypatch.setenv(ENV_VAR, "0" * 64)
+
+    def auth(guild):
+        return {"X-Tenant-Token": mint_token(guild)}
+
     built = []
     settings = IngestionSettings(rec_max_distance=0.5)
 
@@ -173,8 +180,8 @@ def test_recommend_routes_by_guild(monkeypatch):
 
     client = TestClient(app)
     base = {"channel_id": "ch1", "message": "tacos", "mode": "command"}
-    client.post("/recommend", json={**base, "guild_id": "g1"})
-    client.post("/recommend", json={**base, "guild_id": "g1"})   # cached, not rebuilt
-    client.post("/recommend", json={**base, "guild_id": "g2"})
-    client.post("/recommend", json=base)                          # legacy catalog
+    assert client.post("/recommend", json={**base, "guild_id": "g1"}, headers=auth("g1")).status_code == 200
+    client.post("/recommend", json={**base, "guild_id": "g1"}, headers=auth("g1"))   # cached, not rebuilt
+    client.post("/recommend", json={**base, "guild_id": "g2"}, headers=auth("g2"))
+    client.post("/recommend", json=base)                                             # legacy catalog, open
     assert built == ["g1", "g2", ""]

@@ -51,6 +51,12 @@ real Instagram and need internet. They run on a teammate's own machine.
   currently `mxbai-embed-large`). Don't hardcode another one.
 - The bot must never ping: keep `allowed_mentions=discord.AllowedMentions.none()` on the
   client (`docs/THREAT_MODEL.md` T1).
+- **Every catalog call is tenant-authorized.** Any new bot → `:8010`/`:8003` request
+  that names a `guild_id` must send `headers=tenant_headers(guild_id)` (with
+  `user_id=` when it acts for a user, like a vote), and any new endpoint that takes a
+  `guild_id` must call `authorize(...)` first and get a case in `test_admin_authz.py`
+  and `scripts/bench_admin_authz.py`. Keep `app/tenant_auth.py` in step with
+  `src/ingestion/serving/tenant_auth.py`. Never log a token. (`docs/THREAT_MODEL.md` T2.)
 
 ## The label corpus (`fixtures/labels.jsonl`) — Track B
 

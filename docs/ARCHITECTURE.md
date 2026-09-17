@@ -162,9 +162,13 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 | POST | `/plan` | `{channel_id, transcript, guild_id, user_id}` → synthesized request + shortlist (`/plan`) |
 | GET | `/health` · `/ready` | liveness / store reachable |
 
-`guild_id` selects the Chroma collection on every call. Today it is a plain request
-field; the authorization gap and its fix are tracked in
-[`THREAT_MODEL.md`](THREAT_MODEL.md) T2.
+`guild_id` selects the Chroma collection on every call, so every call that names one
+must carry an **`X-Tenant-Token`** header: an HMAC over the guild (and, for votes and
+went-there confirmations, the acting user) signed with `SPOTBOT_SIGNING_KEY`. The bot
+mints them with `app/tenant_auth.py::tenant_headers`; the services check them with
+`src/ingestion/serving/tenant_auth.py::authorize`. All three processes need the same
+key; without it guild calls fail closed with 503. The empty guild `""` (the local admin
+page) is exempt. Details: [`THREAT_MODEL.md`](THREAT_MODEL.md) T2.
 
 ---
 
