@@ -17,6 +17,7 @@ handoffs you owe other tracks.
 **Read first, whatever your track:** [`docs/KICKOFF.md`](../KICKOFF.md) (clone, install, run
 the tests), [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) (how the pieces fit),
 [`docs/CODEX_SETUP.md`](../CODEX_SETUP.md) (Codex on your CSULB account),
+[`docs/CODEX_HANDOFF.md`](../CODEX_HANDOFF.md) (what to paste into Codex),
 [`AGENTS.md`](../../AGENTS.md) (rules any coding agent must follow here).
 
 ## Phase calendar

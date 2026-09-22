@@ -183,6 +183,9 @@ project** → the repo folder. Same workflow as the extension.
 
 ## Part 7 — Prompts that work on this repo
 
+Fuller set, including the per-session handoff block and a first task for all five tracks:
+[`CODEX_HANDOFF.md`](CODEX_HANDOFF.md).
+
 **Always start with:**
 > Follow AGENTS.md. Read the files I name before changing anything. Explain your plan in
 > three sentences and wait for me to say go. When done, run the offline test suite and
