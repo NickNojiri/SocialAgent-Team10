@@ -6,6 +6,10 @@ minutes. Everything here is on `main` and was verified on 2026-09-16.
 The plan itself is at https://nicknojiri.github.io/SocialAgent-Team10/ (same content as
 `docs/CAPSTONE_PLAN.md`). This page is the "what do I actually do" version.
 
+Once you know which track you're on, your personal to-do list and handoff live in
+[`docs/tracks/`](tracks/README.md) — one doc per specialist, with your features, your
+phases, and the handoffs you owe the other tracks.
+
 ---
 
 ## 1. What this is, in three sentences
