@@ -67,7 +67,42 @@ def capture_key(guild_id: str, url: str) -> str:
 
 # Stage names the pipeline reports through `IngestionPipeline(on_stage=...)`, in
 # the order a single URL moves through them. The bot maps these to status text.
-STAGES = ("queued", "fetching", "transcribing", "extracting", "saving", "done")
+# "retrying" is the queue's own: waiting out the backoff before a retry (#26).
+STAGES = ("queued", "fetching", "transcribing", "extracting", "saving", "done", "retrying")
+
+
+def is_transient_error(exc: BaseException) -> bool:
+    """Would running the same capture again plausibly succeed? (feature #26)
+
+    Only network-shaped failures: a timeout, a refused or dropped connection,
+    an httpx transport error. Everything else — a bad caption, a validation
+    error, a bug — fails the same way twice, so it is not retried.
+    """
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    try:
+        import httpx
+    except ImportError:                      # pragma: no cover - httpx is a dependency
+        return False
+    return isinstance(exc, httpx.TransportError)
+
+
+def _merge_results(first: dict, retry: dict, retried_urls: list[str]) -> dict:
+    """Fold a retry of some links into the result of the run before it.
+
+    The retried links were counted as unreadable the first time; take them out
+    of that count and add whatever the retry made of them.
+    """
+    merged = dict(first)
+    merged["added"] = first.get("added", 0) + retry.get("added", 0)
+    merged["rejected"] = first.get("rejected", 0) + retry.get("rejected", 0)
+    merged["unreadable"] = (
+        max(0, first.get("unreadable", 0) - len(retried_urls)) + retry.get("unreadable", 0)
+    )
+    merged["events"] = list(first.get("events") or []) + list(retry.get("events") or [])
+    merged["log"] = list(first.get("log") or []) + list(retry.get("log") or [])
+    merged["retryable_urls"] = list(retry.get("retryable_urls") or [])
+    return merged
 
 # run(urls, guild_id, on_stage) -> the same dict POST /api/ingest returns.
 RunFn = Callable[[list[str], str, Callable[[str, str], None]], Awaitable[dict]]
@@ -87,7 +122,9 @@ class Job:
     done_urls: int = 0              # URLs that reached "done"
     result: Optional[dict] = None   # populated when state == "done"
     error: Optional[str] = None     # populated when state == "failed"
-    attempts: int = 0               # runs started, including recovery after a restart
+    attempts: int = 0               # pipeline runs, first try + retries (feature #26)
+    recoveries: int = 0             # times requeued after a restart (ADR-0005: at most once)
+    last_error: Optional[str] = None  # the most recent transient failure, kept after a retry heals it
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
@@ -126,6 +163,8 @@ class Job:
             "error": self.error,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "attempts": self.attempts,
+            "last_error": self.last_error,
             "timing": {
                 "duration_s": round(self.duration_s, 3),
                 "stages": {k: round(v, 3) for k, v in self.stage_times.items()},
@@ -151,6 +190,8 @@ class Job:
             "duration_s": round(self.duration_s, 3),
             "stages": {k: round(v, 3) for k, v in self.stage_times.items()},
             "error": self.error,
+            "attempts": self.attempts,
+            "last_error": self.last_error,
             "created_at": self.created_at,
             "finished_at": self.finished_at,
         }
@@ -175,6 +216,10 @@ class JobStore:
 
     def unfinished(self) -> list[Job]:
         """Jobs left queued or running by a previous process. Empty if volatile."""
+        return []
+
+    def failed(self, guild_id: str, limit: int = 20) -> list[Job]:
+        """Failed jobs for one server, newest first. Empty if volatile."""
         return []
 
 
@@ -216,6 +261,16 @@ class SqliteJobStore(JobStore):
     );
     CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state);
     """
+    # Columns added after the table first shipped. CREATE TABLE IF NOT EXISTS
+    # never alters an existing file, so they are added one by one on open.
+    _ADDED_COLUMNS = {
+        "recoveries": "INTEGER NOT NULL DEFAULT 0",   # feature #26
+        "last_error": "TEXT",                         # feature #26
+    }
+    _COLUMNS = (
+        "id", "guild_id", "urls", "state", "stage", "done_urls", "result", "error",
+        "attempts", "recoveries", "last_error", "created_at", "updated_at", "finished_at",
+    )
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
@@ -227,6 +282,10 @@ class SqliteJobStore(JobStore):
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(self._DDL)
+            have = {r["name"] for r in self._db.execute("PRAGMA table_info(jobs)")}
+            for name, decl in self._ADDED_COLUMNS.items():
+                if name not in have:
+                    self._db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {decl}")
             self._db.commit()
 
     def save(self, job: Job) -> None:
@@ -234,17 +293,20 @@ class SqliteJobStore(JobStore):
             job.id, job.guild_id, json.dumps(job.urls), job.state, job.stage,
             job.done_urls,
             json.dumps(job.result) if job.result is not None else None,
-            job.error, job.attempts, job.created_at, job.updated_at, job.finished_at,
+            job.error, job.attempts, job.recoveries, job.last_error,
+            job.created_at, job.updated_at, job.finished_at,
+        )
+        cols = ", ".join(self._COLUMNS)
+        marks = ",".join("?" * len(self._COLUMNS))
+        # Everything but the identity columns is overwritten on conflict.
+        updates = ", ".join(
+            f"{c}=excluded.{c}" for c in self._COLUMNS
+            if c not in ("id", "guild_id", "urls", "created_at")
         )
         with self._lock:
             self._db.execute(
-                "INSERT INTO jobs (id, guild_id, urls, state, stage, done_urls, result,"
-                " error, attempts, created_at, updated_at, finished_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
-                " ON CONFLICT(id) DO UPDATE SET state=excluded.state, stage=excluded.stage,"
-                " done_urls=excluded.done_urls, result=excluded.result, error=excluded.error,"
-                " attempts=excluded.attempts, updated_at=excluded.updated_at,"
-                " finished_at=excluded.finished_at",
+                f"INSERT INTO jobs ({cols}) VALUES ({marks})"
+                f" ON CONFLICT(id) DO UPDATE SET {updates}",
                 row,
             )
             self._db.commit()
@@ -266,6 +328,15 @@ class SqliteJobStore(JobStore):
             ).fetchall()
         return [self._to_job(r) for r in rows]
 
+    def failed(self, guild_id: str, limit: int = 20) -> list[Job]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM jobs WHERE state = 'failed' AND guild_id = ?"
+                " ORDER BY finished_at DESC LIMIT ?",
+                (str(guild_id or ""), int(limit)),
+            ).fetchall()
+        return [self._to_job(r) for r in rows]
+
     def close(self) -> None:
         with self._lock:
             self._db.close()
@@ -282,6 +353,8 @@ class SqliteJobStore(JobStore):
             result=json.loads(row["result"]) if row["result"] else None,
             error=row["error"],
             attempts=row["attempts"],
+            recoveries=row["recoveries"],
+            last_error=row["last_error"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             finished_at=row["finished_at"],
@@ -298,11 +371,19 @@ class JobQueue:
         ttl_s: float = 3600.0,
         log_path: Optional[Path] = None,
         store: Optional[JobStore] = None,
+        max_retries: int = 2,
+        backoff_base_s: float = 5.0,
+        backoff_cap_s: float = 60.0,
     ):
         self._run = run
         self.workers = max(1, int(workers))
         self.max_queued = max_queued
         self.ttl_s = ttl_s
+        # Feature #26: transient failures get up to `max_retries` more runs,
+        # waiting base, 2·base, 4·base… seconds between them, never more than cap.
+        self.max_retries = max(0, int(max_retries))
+        self.backoff_base_s = max(0.0, float(backoff_base_s))
+        self.backoff_cap_s = max(0.0, float(backoff_cap_s))
         # Finished jobs are swept after the TTL, so their timings are appended
         # here first; None (the default, and what tests use) writes nothing.
         self.log_path = Path(log_path) if log_path else None
@@ -324,6 +405,20 @@ class JobQueue:
         if job is None:
             job = self.store.load(job_id)
         return job
+
+    def failed(self, guild_id: str, limit: int = 20) -> list[Job]:
+        """Failed captures for one server, newest first — live ones and stored ones."""
+        guild_id = str(guild_id or "")
+        found = {j.id: j for j in self.store.failed(guild_id, limit)}
+        for job in self._jobs.values():
+            if job.state == "failed" and job.guild_id == guild_id:
+                found[job.id] = job                 # the live copy is the fresher one
+        newest = sorted(found.values(), key=lambda j: j.finished_at or j.updated_at, reverse=True)
+        return newest[: max(0, int(limit))]
+
+    def backoff_s(self, retry: int) -> float:
+        """Seconds to wait before retry number `retry` (1-based): capped exponential."""
+        return min(self.backoff_cap_s, self.backoff_base_s * (2 ** max(0, retry - 1)))
 
     def find_active(self, guild_id: str, urls: list[str]) -> Optional[Job]:
         """The job already capturing all of these links for this server, if any.
@@ -382,17 +477,19 @@ class JobQueue:
         log.info("[jobs] queued %s (%d url(s), guild=%r)", job.id, len(job.urls), job.guild_id)
         return job
 
-    def recover(self, max_attempts: int = 1) -> dict[str, int]:
+    def recover(self, max_recoveries: int = 1) -> dict[str, int]:
         """Deal with whatever the last process left behind (ADR-0005).
 
-        A job that was queued or running gets one more attempt; one that has
-        already used it is failed with a reason, so a capture never sits in
-        limbo and the bot never polls a job that will never move again.
+        A job that was queued or running gets requeued once; one that has
+        already been requeued is failed with a reason, so a capture never sits
+        in limbo and the bot never polls a job that will never move again.
+        Restarts are counted separately from feature #26's retries, so a job
+        that retried a timeout still gets its one recovery.
         Returns {"requeued": n, "failed": n}.
         """
         counts = {"requeued": 0, "failed": 0}
         for job in self.store.unfinished():
-            if job.attempts > max_attempts:
+            if job.recoveries >= max_recoveries:
                 job.state = "failed"
                 job.error = "lost when the service restarted, after one retry"
                 job.finished_at = time.time()
@@ -400,6 +497,7 @@ class JobQueue:
                 self._save(job)
                 counts["failed"] += 1
                 continue
+            job.recoveries += 1
             job.state = "queued"
             job.stage = "queued"
             job.touch()
@@ -473,19 +571,17 @@ class JobQueue:
                 self._queue.task_done()
                 continue
             job.state = "running"
-            job.attempts += 1
-            job.touch("fetching")
-            self._save(job)
 
             def on_stage(url: str, stage: str, _job: Job = job) -> None:
                 # Called from the pipeline's worker thread; plain attribute
-                # assignment is safe, and that is all this does.
+                # assignment is safe, and that is all this does. A retried link
+                # reports "done" twice, so the count is clamped.
                 _job.touch(stage)
                 if stage == "done":
-                    _job.done_urls += 1
+                    _job.done_urls = min(len(_job.urls), _job.done_urls + 1)
 
             try:
-                job.result = await self._run(job.urls, job.guild_id, on_stage)
+                job.result = await self._run_with_retries(job, on_stage)
                 job.state = "done"
                 job.done_urls = len(job.urls)
                 job.touch("done")
@@ -500,6 +596,54 @@ class JobQueue:
                 self._save(job)
                 self._append_log(job)
                 self._queue.task_done()
+
+    async def _run_with_retries(self, job: Job, on_stage) -> dict:
+        """Run the capture, retrying only what a second try can fix (feature #26).
+
+        Two kinds of transient failure, and nothing else, earn a retry:
+          * the run raised a network-type exception (`is_transient_error`) —
+            the whole job is run again;
+          * the run finished but some links timed out while loading
+            (`retryable_urls` in the result) — only those links are run again,
+            and their outcome is merged into the first result.
+        A rejected extraction, a login wall, a deleted post, or any other
+        error is final on the first try: repeating it wastes minutes and, for a
+        login wall, looks like exactly the automated behaviour we must not show.
+        """
+        urls = list(job.urls)
+        merged: Optional[dict] = None
+        retry = 0
+        while True:
+            job.attempts += 1
+            job.touch("fetching")
+            self._save(job)
+            try:
+                result = await self._run(urls, job.guild_id, on_stage)
+            except Exception as exc:
+                final = not is_transient_error(exc) or retry >= self.max_retries
+                if final and merged is not None:
+                    # A retry of the timed-out links blew up. The spots the
+                    # first run saved are real — keep them, record why the
+                    # rest are still missing, and don't fail the whole job.
+                    job.last_error = f"{type(exc).__name__}: {exc}"
+                    return merged
+                if final:
+                    raise
+                job.last_error = f"{type(exc).__name__}: {exc}"
+            else:
+                merged = result if merged is None else _merge_results(merged, result, urls)
+                again = [u for u in (result.get("retryable_urls") or []) if u in urls]
+                if not again or retry >= self.max_retries:
+                    return merged
+                job.last_error = f"timed out loading {len(again)} link(s)"
+                urls = again
+            retry += 1
+            delay = self.backoff_s(retry)
+            log.info("[jobs] %s: %s — retry %d/%d in %.0fs",
+                     job.id, job.last_error, retry, self.max_retries, delay)
+            job.touch("retrying")
+            self._save(job)
+            await asyncio.sleep(delay)
 
     def _save(self, job: Job) -> None:
         """Persist a state change. A store that is gone must not kill a capture."""

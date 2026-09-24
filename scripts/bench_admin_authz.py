@@ -85,6 +85,7 @@ def run(client):
             break
         time.sleep(0.02)
     job_status = lambda t: client.get(f"/api/jobs/{job_id}", headers=hdr(t))  # noqa: E731
+    failed_jobs = lambda g, t: client.get(f"/api/jobs?guild_id={g}&state=failed", headers=hdr(t))  # noqa: E731
 
     forged = [
         ("read another guild with my token", lambda: get(THEIRS, MINE_RW)),
@@ -109,6 +110,8 @@ def run(client):
         ("queue a capture job in another guild", lambda: job(THEIRS, MINE_RW)),
         ("read another guild's capture job result", lambda: job_status(mint_token(THEIRS))),
         ("read a capture job result with no token", lambda: job_status(None)),
+        ("list another guild's failed captures", lambda: failed_jobs(THEIRS, MINE_RW)),
+        ("list failed captures with no token", lambda: failed_jobs(MINE, None)),
         ("add a manual spot to another guild", lambda: manual(THEIRS, MINE_RW)),
         ("add a manual spot with a read-only token", lambda: manual(MINE, MINE_R)),
         ("edit a spot in another guild", lambda: edit(THEIRS, MINE_RW)),
@@ -124,6 +127,7 @@ def run(client):
     authentic = [
         ("read my own guild", lambda: get(MINE, MINE_RW)),
         ("read my own guild with a share token", lambda: get(MINE, MINE_R)),
+        ("list my own failed captures", lambda: failed_jobs(MINE, MINE_RW)),
         ("read my nights counter", lambda: nights(MINE, MINE_RW)),
         ("delete in my own guild", lambda: delete(MINE, MINE_RW)),
         ("vote as myself", lambda: vote(MINE, MINE_ME, ME)),

@@ -28,6 +28,7 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
+from src.ingestion.schemas.results import FetchStatus
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
@@ -307,6 +308,12 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         # Per-event detail the Discord bot needs to build cards + vote buttons.
         "events": [_event_summary(r, existing_ids, sink) for r in report.validated],
         "log": [result_line(r) for r in report.results],
+        # Links that only timed out while loading — the one failure a second try
+        # can fix. The job queue retries these (feature #26). ERROR is not here
+        # on purpose: it also covers bad links, blown budgets and bugs.
+        "retryable_urls": [
+            r.url for r in report.connectivity_failures if r.fetch_status is FetchStatus.TIMEOUT
+        ],
     }
 
 
@@ -336,6 +343,9 @@ _jobs = JobQueue(
     workers=int(os.getenv("INGEST_WORKERS", "").strip() or 1),
     log_path=None if _capture_log.lower() == "off" else Path(_capture_log),
     store=_job_store,
+    # Retries for timed-out links and network errors only (feature #26);
+    # INGEST_MAX_RETRIES=0 turns them off.
+    max_retries=int(os.getenv("INGEST_MAX_RETRIES", "").strip() or 2),
 )
 
 
@@ -353,6 +363,24 @@ async def create_job(body: IngestBody, x_tenant_token: str | None = TenantToken)
     except QueueFull as exc:
         raise HTTPException(429, f"capture queue is full — {exc}")
     return {"job_id": job.id, "state": job.state, "duplicate": duplicate}
+
+
+@app.get("/api/jobs")
+def list_jobs(
+    guild_id: str = "",
+    state: str = "failed",
+    limit: int = 20,
+    x_tenant_token: str | None = TenantToken,
+):
+    """Failed captures for one server, newest first, with attempts and the last
+    error — what an operator reads to see what isn't working (feature #26)."""
+    authorize(guild_id, x_tenant_token, need=SCOPE_READ)
+    if state != "failed":
+        raise HTTPException(400, "only state=failed is supported")
+    jobs = _jobs.failed(guild_id, limit=max(1, min(int(limit), 100)))
+    # The links themselves are this tenant's own pastes, so they are safe to show
+    # here — and without them nobody can act on a failure.
+    return {"jobs": [{**j.to_dict(), "urls": j.urls} for j in jobs]}
 
 
 @app.get("/api/jobs/{job_id}")

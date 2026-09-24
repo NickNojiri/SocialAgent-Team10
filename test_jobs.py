@@ -251,11 +251,13 @@ async def test_a_crash_mid_job_is_retried_once_then_failed(tmp_path):
     assert restart.get(job.id).state == "done"
     restart.store.close()
 
-    # A job that crashes again, having already used its retry, ends failed —
-    # never queued forever.
+    # A job that crashes again, having already used its one recovery, ends
+    # failed — never queued forever. (Restarts are counted in `recoveries`,
+    # separately from feature #26's retries.)
     store = SqliteJobStore(db)
     stuck = store.load(job.id)
-    stuck.state, stuck.attempts, stuck.finished_at = "running", 2, None
+    assert stuck.recoveries == 1
+    stuck.state, stuck.finished_at = "running", None
     store.save(stuck)
     after = JobQueue(fake_run, store=store)
     assert after.recover() == {"requeued": 0, "failed": 1}
@@ -351,6 +353,216 @@ def test_job_endpoint_reports_a_duplicate_submission(monkeypatch):
         assert first["duplicate"] is False
         assert second["duplicate"] is True and second["job_id"] == first["job_id"]
         _wait_done(client, first["job_id"], headers=auth)
+
+
+# ── Retry only what's worth retrying (feature #26) ──────────────────────────
+
+
+def _timeouts_then(ok_after: int, added_each: int = 1):
+    """A fake capture whose links time out `ok_after` times, then load."""
+    calls = []
+
+    async def run(urls, guild_id, on_stage):
+        calls.append(list(urls))
+        timed_out = list(urls) if len(calls) <= ok_after else []
+        loaded = [u for u in urls if u not in timed_out]
+        return {"added": added_each * len(loaded), "rejected": 0,
+                "unreadable": len(timed_out), "retryable_urls": timed_out,
+                "events": [{"id": u} for u in loaded], "log": [f"run {len(calls)}"]}
+
+    return run, calls
+
+
+def test_backoff_is_exponential_and_capped():
+    q = JobQueue(fake_run, backoff_base_s=5, backoff_cap_s=60)
+    assert [q.backoff_s(n) for n in (1, 2, 3, 4, 5)] == [5, 10, 20, 40, 60]
+
+
+def test_only_network_shaped_errors_count_as_transient():
+    import httpx
+    from src.ingestion.serving.jobs import is_transient_error
+
+    assert is_transient_error(TimeoutError("slow"))
+    assert is_transient_error(asyncio.TimeoutError())
+    assert is_transient_error(ConnectionResetError("dropped"))
+    assert is_transient_error(httpx.ConnectError("refused"))
+    assert not is_transient_error(ValueError("bad caption"))
+    assert not is_transient_error(KeyError("venue"))
+    assert not is_transient_error(RuntimeError("a bug"))
+
+
+@pytest.mark.asyncio
+async def test_a_timed_out_link_is_retried_alone_and_the_results_merge():
+    calls = []
+    urls = ["https://x.test/1", "https://x.test/2"]
+
+    async def one_times_out(urls_, guild_id, on_stage):   # only link 2 times out, once
+        calls.append(list(urls_))
+        bad = ["https://x.test/2"] if len(calls) == 1 else []
+        good = [u for u in urls_ if u not in bad]
+        return {"added": len(good), "rejected": 0, "unreadable": len(bad),
+                "retryable_urls": bad, "events": [{"id": u} for u in good], "log": []}
+
+    q = JobQueue(one_times_out, backoff_base_s=0)
+    job = q.submit(urls, "g1")
+    await q.drain()
+
+    assert calls == [urls, ["https://x.test/2"]]        # the retry ran link 2 only
+    assert job.state == "done" and job.attempts == 2
+    assert job.result["added"] == 2 and job.result["unreadable"] == 0
+    assert [e["id"] for e in job.result["events"]] == urls
+    assert job.last_error == "timed out loading 1 link(s)"   # kept after the retry healed it
+
+
+@pytest.mark.asyncio
+async def test_retries_stop_at_the_cap_and_the_job_still_finishes():
+    run, calls = _timeouts_then(ok_after=99)
+    q = JobQueue(run, max_retries=2, backoff_base_s=0)
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+
+    assert len(calls) == 3 and job.attempts == 3        # first try + 2 retries, no more
+    assert job.state == "done"                          # reported as unreadable, not failed
+    assert job.result["unreadable"] == 1 and job.result["added"] == 0
+    assert job.last_error == "timed out loading 1 link(s)"
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_or_walled_link_is_never_retried():
+    calls = []
+
+    async def rejected(urls, guild_id, on_stage):
+        calls.append(urls)
+        # Read fine, extraction rejected it; a login wall is unreadable but not retryable.
+        return {"added": 0, "rejected": 1, "unreadable": 1, "retryable_urls": [],
+                "events": [], "log": []}
+
+    q = JobQueue(rejected, backoff_base_s=0)
+    job = q.submit(["https://x.test/1", "https://x.test/2"], "g1")
+    await q.drain()
+    assert len(calls) == 1 and job.attempts == 1 and job.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_a_network_error_retries_the_job_and_a_bug_does_not():
+    flaky_calls = []
+
+    async def flaky(urls, guild_id, on_stage):
+        flaky_calls.append(urls)
+        if len(flaky_calls) == 1:
+            raise ConnectionResetError("connection dropped")
+        return {"added": 1, "events": [{"id": urls[0]}]}
+
+    q = JobQueue(flaky, backoff_base_s=0)
+    healed = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    assert healed.state == "done" and healed.attempts == 2
+    assert healed.last_error == "ConnectionResetError: connection dropped"
+
+    bug_calls = []
+
+    async def bug(urls, guild_id, on_stage):
+        bug_calls.append(urls)
+        raise ValueError("venue field missing")
+
+    q2 = JobQueue(bug, backoff_base_s=0)
+    broken = q2.submit(["https://x.test/2"], "g1")
+    await q2.drain()
+    assert broken.state == "failed" and broken.attempts == 1 and len(bug_calls) == 1
+    assert broken.error == "ValueError: venue field missing"
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_blows_up_keeps_the_spots_already_saved():
+    calls = []
+
+    async def partial_then_down(urls, guild_id, on_stage):
+        calls.append(list(urls))
+        if len(calls) == 1:
+            return {"added": 1, "rejected": 0, "unreadable": 1,
+                    "retryable_urls": ["https://x.test/2"],
+                    "events": [{"id": "https://x.test/1"}], "log": []}
+        raise ValueError("pipeline broke on retry")
+
+    q = JobQueue(partial_then_down, backoff_base_s=0)
+    job = q.submit(["https://x.test/1", "https://x.test/2"], "g1")
+    await q.drain()
+    assert job.state == "done"                         # link 1's spot is real and stays
+    assert job.result["added"] == 1 and job.result["unreadable"] == 1
+    assert job.last_error == "ValueError: pipeline broke on retry"
+
+
+@pytest.mark.asyncio
+async def test_failed_jobs_are_listed_per_server_newest_first(tmp_path):
+    async def boom(urls, guild_id, on_stage):
+        raise ValueError(f"nope {urls[0]}")
+
+    store = SqliteJobStore(tmp_path / "jobs.db")
+    q = JobQueue(boom, store=store, backoff_base_s=0)
+    first = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    second = q.submit(["https://x.test/2"], "g1")
+    other = q.submit(["https://x.test/3"], "g2")
+    await q.drain()
+
+    listed = q.failed("g1")
+    assert [j.id for j in listed] == [second.id, first.id]
+    assert other.id not in {j.id for j in listed}      # another server's failures stay theirs
+    assert listed[0].attempts == 1 and "nope" in listed[0].error
+    store.close()
+
+
+def test_an_old_job_database_gains_the_new_columns(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "jobs.db"
+    old = sqlite3.connect(db)                            # the table as it shipped in #24
+    old.executescript("""
+        CREATE TABLE jobs (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, urls TEXT NOT NULL,
+          state TEXT NOT NULL, stage TEXT NOT NULL, done_urls INTEGER NOT NULL DEFAULT 0,
+          result TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+          created_at REAL NOT NULL, updated_at REAL NOT NULL, finished_at REAL);
+        INSERT INTO jobs VALUES ('old1','g1','["https://x.test/1"]','running','fetching',
+          0,NULL,NULL,1,1.0,1.0,NULL);
+    """)
+    old.commit(); old.close()
+
+    store = SqliteJobStore(db)
+    job = store.load("old1")
+    assert job.recoveries == 0 and job.last_error is None
+    q = JobQueue(fake_run, store=store)
+    assert q.recover() == {"requeued": 1, "failed": 0}  # an old row still recovers
+    store.close()
+
+
+def test_failed_jobs_endpoint_is_tenant_scoped(monkeypatch):
+    import src.ingestion.serving.admin as admin
+    from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_READ, mint_token
+
+    monkeypatch.setenv(ENV_VAR, "0" * 64)
+
+    async def boom(urls, guild_id, on_stage):
+        raise ValueError("venue field missing")
+
+    monkeypatch.setattr(admin, "_jobs", JobQueue(boom, backoff_base_s=0))
+    mine = {"X-Tenant-Token": mint_token("g1")}
+    with TestClient(admin.app) as client:
+        job_id = client.post("/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": "g1"},
+                             headers=mine).json()["job_id"]
+        _wait_done(client, job_id, headers=mine)
+
+        listed = client.get("/api/jobs?guild_id=g1&state=failed", headers=mine)
+        assert listed.status_code == 200
+        [row] = listed.json()["jobs"]
+        assert row["id"] == job_id and row["attempts"] == 1
+        assert row["urls"] == ["https://x.test/1"]
+
+        share = {"X-Tenant-Token": mint_token("g1", scope=SCOPE_READ)}
+        assert client.get("/api/jobs?guild_id=g1", headers=share).status_code == 200
+        assert client.get("/api/jobs?guild_id=g1").status_code == 403
+        theirs = {"X-Tenant-Token": mint_token("g2")}
+        assert client.get("/api/jobs?guild_id=g1", headers=theirs).status_code == 403
+        assert client.get("/api/jobs?guild_id=g1&state=done", headers=mine).status_code == 400
 
 
 # ── HTTP endpoints ──────────────────────────────────────────────────────────

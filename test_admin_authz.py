@@ -255,6 +255,14 @@ def test_job_status_only_readable_by_its_tenant(client, monkeypatch):
     assert client.get(f"/api/jobs/{job_id}", headers=hdr(mint_token(THEIRS))).status_code == 403
 
 
+def test_failed_job_list_only_readable_by_its_tenant(client):
+    """The failed-job list names a guild's pasted links (feature #26)."""
+    assert client.get(f"/api/jobs?guild_id={MINE}", headers=hdr(mint_token(MINE))).status_code == 200
+    assert client.get(f"/api/jobs?guild_id={MINE}").status_code == 403
+    assert client.get(f"/api/jobs?guild_id={MINE}", headers=hdr(mint_token(THEIRS))).status_code == 403
+    assert client.get(f"/api/jobs?guild_id={THEIRS}", headers=hdr(mint_token(MINE))).status_code == 403
+
+
 # ── share links ──────────────────────────────────────────────────────────────
 
 
