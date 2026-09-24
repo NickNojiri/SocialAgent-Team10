@@ -558,6 +558,19 @@ def test_a_transient_playwright_network_error_is_retryable_and_a_policy_refusal_
         failed("https://x.test/wall", FetchStatus.LOGIN_WALL),
         failed("https://x.test/gone", FetchStatus.NOT_FOUND),
         failed("https://x.test/tls", FetchStatus.ERROR, "net::ERR_CERT_AUTHORITY_INVALID"),
+        # The URL is attacker-controlled. An allow-listed word in its path must
+        # not turn the real certificate error into a retryable connection reset.
+        failed(
+            "https://x.test/net::ERR_CONNECTION_RESET",
+            FetchStatus.ERROR,
+            "Page.goto: net::ERR_CERT_AUTHORITY_INVALID at "
+            "https://x.test/net::ERR_CONNECTION_RESET",
+        ),
+        failed(
+            "https://x.test/policy-collision",
+            FetchStatus.ERROR,
+            "unsupported URL: net::ERR_CONNECTION_RESET at attacker-controlled text",
+        ),
         failed("https://x.test/bare", FetchStatus.ERROR),          # no text → not retried
         IngestionResult(url="https://x.test/rejected", fetch_status=FetchStatus.OK,
                         rejection_reason="no venue found"),
@@ -651,6 +664,18 @@ async def test_last_error_names_the_failure_that_ended_the_job():
     await q.drain()
     assert job.state == "failed" and job.attempts == 2
     assert job.last_error == job.error == "ValueError: venue field missing"
+
+
+@pytest.mark.asyncio
+async def test_zero_retry_limit_says_retries_are_disabled():
+    """A disabled policy should not claim that zero retries were attempted."""
+    run, calls = _timeouts_then(ok_after=99)
+    q = JobQueue(run, max_retries=0, backoff_base_s=0)
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+
+    assert len(calls) == 1 and job.attempts == 1
+    assert job.last_error == "could not load 1 link(s); retries disabled"
 
 
 def test_failed_jobs_endpoint_is_tenant_scoped(monkeypatch):

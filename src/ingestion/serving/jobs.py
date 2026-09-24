@@ -105,6 +105,19 @@ _TRANSIENT_NET_ERRORS = (
     "net::ERR_HTTP2_PROTOCOL_ERROR",
 )
 
+# Playwright formats navigation failures as
+# "Page.goto: net::ERR_CODE at https://...". Match the error field, not any
+# allow-listed words that happen to appear later inside the user-controlled URL.
+_CHROMIUM_NET_ERROR_RE = re.compile(
+    r"^(?:(?:Page|page)\.goto:\s*)?(net::ERR_[A-Z0-9_]+)(?=\s+at(?:\s|$)|$)"
+)
+
+
+def _chromium_net_error(error: str) -> Optional[str]:
+    """Return Playwright's navigation error code, or None if it is ambiguous."""
+    match = _CHROMIUM_NET_ERROR_RE.search(error)
+    return match.group(1) if match else None
+
 
 def retryable_urls(results) -> list[str]:
     """Links in a pipeline run whose failure a second try can fix (feature #26).
@@ -121,8 +134,10 @@ def retryable_urls(results) -> list[str]:
             continue
         if r.fetch_status is FetchStatus.TIMEOUT:
             out.append(r.url)
-        elif r.fetch_status is FetchStatus.ERROR and r.fetch_error and any(
-            code in r.fetch_error for code in _TRANSIENT_NET_ERRORS
+        elif (
+            r.fetch_status is FetchStatus.ERROR
+            and r.fetch_error
+            and _chromium_net_error(r.fetch_error) in _TRANSIENT_NET_ERRORS
         ):
             out.append(r.url)
     return out
@@ -686,9 +701,12 @@ class JobQueue:
                 if not again:
                     return merged
                 if retry >= self.max_retries:
-                    job.last_error += (
-                        f", still failing after {retry} retr{'y' if retry == 1 else 'ies'}"
-                    )
+                    if self.max_retries == 0:
+                        job.last_error += "; retries disabled"
+                    else:
+                        job.last_error += (
+                            f", still failing after {retry} retr{'y' if retry == 1 else 'ies'}"
+                        )
                     return merged
                 urls = again
             retry += 1
