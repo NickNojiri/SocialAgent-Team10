@@ -16,6 +16,7 @@ from src.ingestion.config import IngestionSettings
 from src.ingestion.serving import capture_stats
 from src.ingestion.serving.capture_limits import CaptureRateLimiter
 from src.ingestion.serving.jobs import JobQueue, capture_key
+from src.ingestion.serving.time_to_card import TimeToCardLog
 from src.ingestion.sinks.chroma_sink import ChromaSink
 
 SECRET_URL = "https://www.instagram.com/reel/SECRETPOST123/"
@@ -53,6 +54,7 @@ def stats(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "_jobs", queue)
     monkeypatch.setattr(admin, "_capture_limits",
                         CaptureRateLimiter(user_limit=5, user_window_s=600))
+    monkeypatch.setattr(admin, "_time_to_card", TimeToCardLog(tmp_path / "ttc.jsonl"))
     admin._CAPTURE_LOG.appendleft({
         "ts": 1_800_000_000, "guild_id": "g1", "urls": 1, "added": 1, "rejected": 0,
         "unreadable": 0, "duration_s": 12.3,

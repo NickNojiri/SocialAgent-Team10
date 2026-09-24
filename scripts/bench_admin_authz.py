@@ -26,6 +26,7 @@ import src.ingestion.serving.app as serving_app  # noqa: E402
 from src.ingestion.serving.feedback import FeedbackStore  # noqa: E402
 from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
+from src.ingestion.serving.time_to_card import TimeToCardLog  # noqa: E402
 from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token  # noqa: E402
 from test_admin_authz import StubSink, _StubService  # noqa: E402
 
@@ -45,6 +46,7 @@ admin._jobs = JobQueue(_fake_capture)
 admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_settings_")))
 admin._feedback = FeedbackStore(Path(tempfile.mkdtemp(prefix="bench_feedback_")))
 admin._geocode_city = lambda city: None                      # never the network
+admin._time_to_card = TimeToCardLog(Path(tempfile.mkdtemp(prefix="bench_ttc_")) / "ttc.jsonl")
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 
@@ -95,6 +97,9 @@ def run(client):
     survey_results = lambda g, t: client.get(f"/api/survey?guild_id={g}", headers=hdr(t))  # noqa: E731
     feedback = lambda g, t: client.post(  # noqa: E731
         "/api/feedback", json={"guild_id": g, "kind": "bug", "text": "x"}, headers=hdr(t)
+    )
+    timing = lambda g, t: client.post(  # noqa: E731
+        "/api/time-to-card", json={"guild_id": g, "seconds": 30, "outcome": "card"}, headers=hdr(t)
     )
     forget = lambda g, t: client.post(  # noqa: E731
         "/api/forget", json={"guild_id": g, "confirm": g}, headers=hdr(t)
@@ -158,6 +163,8 @@ def run(client):
         ("read another guild's SUS results", lambda: survey_results(THEIRS, MINE_RW)),
         ("read SUS results with a share token", lambda: survey_results(MINE, MINE_R)),
         ("post feedback into another guild", lambda: feedback(THEIRS, MINE_RW)),
+        ("pad the time-to-card numbers with no token", lambda: timing(MINE, None)),
+        ("pad time-to-card with a share token", lambda: timing(MINE, MINE_R)),
     ]
 
     authentic = [
@@ -181,6 +188,7 @@ def run(client):
         ("answer the SUS survey in my guild", lambda: survey(MINE, MINE_RW)),
         ("read my guild's SUS results", lambda: survey_results(MINE, MINE_RW)),
         ("send feedback in my guild", lambda: feedback(MINE, MINE_RW)),
+        ("report a time-to-card for my guild", lambda: timing(MINE, MINE_RW)),
         ("delete my own guild's data", lambda: forget(MINE, MINE_RW)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]

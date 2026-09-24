@@ -37,6 +37,7 @@ from src.ingestion.serving.capture_limits import (
 )
 from src.ingestion.serving.feedback import FeedbackError, FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError, clean_city
+from src.ingestion.serving.time_to_card import TimeToCardLog, TimingError
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
@@ -857,6 +858,35 @@ def survey_summary(guild_id: str = "", x_tenant_token: str | None = TenantToken)
         raise HTTPException(400, str(exc))
 
 
+# ── Time-to-card (Track C #18) ──────────────────────────────────────────────
+# The bot reports how long each paste took to become a card. Stored without a
+# server id (serving/time_to_card.py); TIME_TO_CARD_LOG=off turns it off.
+
+_ttc_log = os.getenv("TIME_TO_CARD_LOG", "").strip() or "data/time_to_card.jsonl"
+_time_to_card = TimeToCardLog(None if _ttc_log.lower() == "off" else Path(_ttc_log))
+
+
+class TimeToCardBody(BaseModel):
+    guild_id: str
+    seconds: float
+    outcome: str
+    links: int = 1
+
+
+@app.post("/api/time-to-card")
+def post_time_to_card(body: TimeToCardBody, x_tenant_token: str | None = TenantToken):
+    # A real server's token is required so nobody can pad the numbers, even
+    # though the server id itself isn't stored.
+    authorize(body.guild_id, x_tenant_token)
+    if not body.guild_id:
+        raise HTTPException(400, "time-to-card is reported for a server")
+    try:
+        _time_to_card.record(body.seconds, body.outcome, body.links)
+    except TimingError as exc:
+        raise HTTPException(400, str(exc))
+    return {"saved": _time_to_card.path is not None}
+
+
 # ── Delete a server's data (Track C #21, threat model T6) ───────────────────
 
 
@@ -1007,6 +1037,8 @@ def stats():
         ) if _jobs.log_path is not None else None,
         "queue": _jobs.snapshot(),
         "limits": _capture_limits.settings(),
+        # #18: paste → card as users see it (median / p95), None when not logged.
+        "time_to_card": _time_to_card.summary(),
     }
 
 
@@ -1309,6 +1341,9 @@ _DASH_PAGE = """<!doctype html>
   <h2>Servers</h2>
   <div class="wrap"><table id="tenants"></table></div>
 
+  <h2>Time to card</h2>
+  <div class="tiles" id="ttc"></div>
+
   <h2>Capture health</h2>
   <div class="tiles" id="health"></div>
   <div class="wrap"><table id="stages"></table></div>
@@ -1383,9 +1418,23 @@ async function load(){
     `<tr><th scope="col">server / guild id</th><th scope="col" class="num">spots</th><th class="bar-cell" aria-hidden="true"></th><th scope="col" class="num">votes</th><th scope="col" class="num">nights</th><th scope="col">last capture</th></tr>`
     +(rows||`<tr><td colspan="6" class="empty">no catalogs yet</td></tr>`);
 
+  const secs=v=>v==null?'—':(v>=90?(v/60).toFixed(1)+'m':v.toFixed(1)+'s');
+
+  // #18 time to card — paste → card as the person pasting sees it.
+  const tc=d.time_to_card;
+  if(!tc){
+    document.getElementById('ttc').innerHTML=`<div class="empty">not logged (TIME_TO_CARD_LOG=off)</div>`;
+  }else{
+    const day=tc.last_24h||{}, all=tc.all||{};
+    document.getElementById('ttc').innerHTML=`
+      <div class="tile"><b>${secs(day.median_s)}</b><span>median, last 24 h</span></div>
+      <div class="tile"><b>${secs(day.p95_s)}</b><span>p95, last 24 h</span></div>
+      <div class="tile"><b>${day.cards??0} / ${day.pastes??0}</b><span>pastes that became cards</span></div>
+      <div class="tile"><b>${secs(all.median_s)}</b><span>median, all time</span></div>`;
+  }
+
   // #29 capture health — counts and seconds from the timing log, never links.
   const h=d.capture_health;
-  const secs=v=>v==null?'—':(v>=90?(v/60).toFixed(1)+'m':v.toFixed(1)+'s');
   if(!h){
     document.getElementById('health').innerHTML=`<div class="empty">timing log is off (CAPTURE_LOG=off)</div>`;
     document.getElementById('stages').innerHTML='';

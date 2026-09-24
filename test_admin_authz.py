@@ -21,6 +21,7 @@ from src.ingestion.serving.capture_limits import CaptureRateLimiter
 from src.ingestion.serving.feedback import FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
+from src.ingestion.serving.time_to_card import TimeToCardLog
 from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_READ, mint_token
 
 KEY = "0" * 64
@@ -77,6 +78,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
     monkeypatch.setattr(admin, "_feedback", FeedbackStore(tmp_path / "feedback"))
     monkeypatch.setattr(admin, "_geocode_city", lambda city: None)      # never the network
+    monkeypatch.setattr(admin, "_time_to_card", TimeToCardLog(tmp_path / "ttc.jsonl"))
     with TestClient(admin.app) as c:
         yield c
 
@@ -232,6 +234,7 @@ def test_settings_reads_need_the_full_token(client):
 @pytest.mark.parametrize("path, body", [
     ("/api/feedback", {"kind": "idea", "text": "a map view"}),
     ("/api/survey", {"answers": [3] * 10, "participant": "P1"}),
+    ("/api/time-to-card", {"seconds": 42.0, "outcome": "card"}),
 ])
 def test_feedback_and_survey_writes_are_tenant_scoped(client, path, body):
     """#20: nobody can stuff another server's survey results or feedback."""
