@@ -23,7 +23,8 @@ content-hash upsert catches it there are two cards. That is the same duplicate-w
 problem ADR-0004 set out to fix, arriving through a different door.
 
 Constraints are unchanged: zero-dollar single-box stack, no new services, no new
-dependency, and `INGEST_ASYNC` stays off by default until feature #27 flips it.
+dependency, and `INGEST_ASYNC` stays off by default until feature #27 flips it (it did,
+on 2026-09-24 — see Consequences).
 
 ## Options considered
 
@@ -66,9 +67,16 @@ need revisiting if the service is ever run multi-process.
 
 **Follow-ups:** feature #26 — done 2026-09-23 (`146daa00`): it split the restart
 counter out into `recoveries` so a job that retried a timeout still gets its one
-recovery, and added `last_error`; both columns are migrated in place on open. Feature
-#27 flips `INGEST_ASYNC` on by default once this has run on staging — until then the
-sync `/api/ingest` path has no dedup. `/privacy` deletion (#21) must clear a server's
+recovery, and added `last_error`; both columns are migrated in place on open.
+
+**Changed 2026-09-24 — async is the default before staging (Nick's decision).** This
+ADR planned to flip `INGEST_ASYNC` on only after it had run on staging. Feature #27
+(`92f7fd36`) flipped it first; asked afterwards, Nick kept it on. Reasons: the old sync
+default had a known defect — Retry re-ran the whole capture, because `/api/ingest` has
+no dedup — while the async path has tests for a full queue, flaky polls and a lost job,
+and is no worse than sync when the service restarts mid-capture (sync loses the request
+too). `JOB_STORE` stays in-memory by default; that decision is unchanged. `INGEST_ASYNC=0`
+restores the sync path, which still has no dedup. `/privacy` deletion (#21) must clear a server's
 rows here too — and in `data/capture_jobs.jsonl`, the #23 timing log, which also
 carries `guild_id` on every row.
 
