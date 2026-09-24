@@ -107,6 +107,9 @@ def test_values_the_wizard_never_sends_are_refused(tmp_path, changes):
 # ── the API ─────────────────────────────────────────────────────────────────
 
 
+LOOKED_UP: list[str] = []          # every city the fake geocoder was asked about
+
+
 def _embed(texts):
     return [[float(len(t) % 7) for _ in range(8)] for t in texts]
 
@@ -115,6 +118,13 @@ def _embed(texts):
 def api(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_VAR, "0" * 64)
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
+    LOOKED_UP.clear()
+
+    def fake_geocode(city):
+        LOOKED_UP.append(city)
+        return {"Long Beach, CA": (33.77, -118.19)}.get(city)
+
+    monkeypatch.setattr(admin, "_geocode_city", fake_geocode)
     sink = ChromaSink(IngestionSettings(chroma_path=str(tmp_path / "chroma")), embedder=_embed)
     monkeypatch.setattr(admin, "_sink_for", lambda guild_id="", **_: sink)
     headers = {"X-Tenant-Token": mint_token(GUILD)}
@@ -165,6 +175,44 @@ def test_the_legacy_catalog_has_no_server_settings(api):
     client, _, _ = api
     assert client.get("/api/settings").status_code == 400
     assert client.put("/api/settings", json={"guild_id": "", "home_city": "x"}).status_code == 400
+
+
+def test_saving_a_city_looks_up_where_it_is_once(api):
+    client, headers, _ = api
+    saved = client.put("/api/settings", json={"guild_id": GUILD, "home_city": "Long Beach, CA"},
+                       headers=headers).json()["settings"]
+    assert (saved["home_lat"], saved["home_lng"]) == (33.77, -118.19)
+    client.put("/api/settings", json={"guild_id": GUILD, "drop_channel_id": "42"}, headers=headers)
+    assert LOOKED_UP == ["Long Beach, CA"]              # not again for other changes
+
+
+def test_a_city_the_lookup_cant_find_saves_without_coordinates(api):
+    client, headers, _ = api
+    client.put("/api/settings", json={"guild_id": GUILD, "home_city": "Long Beach, CA"}, headers=headers)
+    saved = client.put("/api/settings", json={"guild_id": GUILD, "home_city": "Atlantis"},
+                       headers=headers).json()["settings"]
+    assert saved["home_city"] == "Atlantis" and saved["home_lat"] is None and saved["home_lng"] is None
+
+
+def test_clearing_the_city_clears_its_coordinates_and_skips_the_lookup(api):
+    client, headers, _ = api
+    client.put("/api/settings", json={"guild_id": GUILD, "home_city": "Long Beach, CA"}, headers=headers)
+    saved = client.put("/api/settings", json={"guild_id": GUILD, "home_city": ""},
+                       headers=headers).json()["settings"]
+    assert saved["home_lat"] is None and LOOKED_UP == ["Long Beach, CA"]
+
+
+def test_a_rejected_city_is_never_looked_up(api):
+    client, headers, _ = api
+    assert client.put("/api/settings", json={"guild_id": GUILD, "home_city": "x" * 200},
+                      headers=headers).status_code == 400
+    assert LOOKED_UP == []
+
+
+@pytest.mark.parametrize("lat, lng", [(91, 0), (0, 181), ("north", 0)])
+def test_coordinates_out_of_range_are_refused(tmp_path, lat, lng):
+    with pytest.raises(SettingsError):
+        GuildSettingsStore(tmp_path).update(GUILD, {"home_lat": lat, "home_lng": lng})
 
 
 def test_nothing_but_the_three_fields_is_stored(api, tmp_path):

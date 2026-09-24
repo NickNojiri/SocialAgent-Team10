@@ -10,7 +10,7 @@ def address_to_coords(address):
     try:
         # Nominatim asks for 1 second between requests to stay free
         time.sleep(1) 
-        response = requests.get(url, params=params, headers=headers)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         data = response.json()
         if data:
             return float(data[0]['lat']), float(data[0]['lon'])

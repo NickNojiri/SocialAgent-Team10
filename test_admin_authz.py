@@ -76,6 +76,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter())
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
     monkeypatch.setattr(admin, "_feedback", FeedbackStore(tmp_path / "feedback"))
+    monkeypatch.setattr(admin, "_geocode_city", lambda city: None)      # never the network
     with TestClient(admin.app) as c:
         yield c
 

@@ -71,6 +71,7 @@ def world(tmp_path, monkeypatch):
                                                                    collection_name=collection_name))
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(data / "guild_settings"))
     monkeypatch.setattr(admin, "_feedback", FeedbackStore(data / "feedback"))
+    monkeypatch.setattr(admin, "_geocode_city", lambda city: None)      # never the network
     monkeypatch.setattr(admin, "_JSONL_DIR", data / "inspirations")
     monkeypatch.setattr(admin, "_LEGACY_JSONL", data / "inspirations.jsonl")
     monkeypatch.setattr(admin, "_RAW_ROOT", data / "raw")

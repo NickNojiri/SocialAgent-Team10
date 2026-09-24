@@ -44,6 +44,7 @@ admin._purge_catalog = lambda guild_id: {"spots": 0}       # never the real data
 admin._jobs = JobQueue(_fake_capture)
 admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_settings_")))
 admin._feedback = FeedbackStore(Path(tempfile.mkdtemp(prefix="bench_feedback_")))
+admin._geocode_city = lambda city: None                      # never the network
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 

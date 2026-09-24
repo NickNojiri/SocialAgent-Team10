@@ -36,7 +36,7 @@ from src.ingestion.serving.capture_limits import (
     CaptureRateLimiter,
 )
 from src.ingestion.serving.feedback import FeedbackError, FeedbackStore
-from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError
+from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError, clean_city
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
@@ -521,6 +521,7 @@ def _event_summary(result, existing_ids: set, sink: ChromaSink) -> dict:
         "image": meta.get("image_url", ""),
         "lat": meta.get("lat"),
         "lng": meta.get("lng"),
+        "area": meta.get("raw_location_text", ""),   # for the card's map link (#36)
         "blurb": meta.get("summary", ""),          # video-based quick description ("" → "No info")
         "schedule": meta.get("schedule_status", "unscheduled"),
         "start_epoch": meta.get("start_epoch"),
@@ -760,6 +761,15 @@ def nights(guild_id: str = "", x_tenant_token: str | None = TenantToken):
 _guild_settings = GuildSettingsStore(Path("data/guild_settings"))
 
 
+def _geocode_city(city: str):
+    """(lat, lng) for a home city, or None. One OpenStreetMap lookup per /setup
+    save (#36) — the only geocoding the admin app does."""
+    from src.services.location_service import address_to_coords
+
+    lat, lng = address_to_coords(city)
+    return (lat, lng) if lat is not None and lng is not None else None
+
+
 class SettingsBody(BaseModel):
     guild_id: str
     drop_channel_id: str | None = None
@@ -785,6 +795,14 @@ def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
     authorize(body.guild_id, x_tenant_token)
     changes = {k: getattr(body, k) for k in body.model_fields_set if k != "guild_id"}
     try:
+        _guild_settings.path_for(body.guild_id)          # a bad server id: 400 before any lookup
+        if "home_city" in changes:
+            # Where the city is, for distance on cards (#36) — checked first, so a
+            # rejected value is never sent out. A failed lookup saves no
+            # coordinates; cards then just leave the distance out.
+            city = clean_city(changes["home_city"] or "")
+            spot = _geocode_city(city) if city else None
+            changes["home_lat"], changes["home_lng"] = spot if spot else (None, None)
         return {"settings": _guild_settings.update(body.guild_id, changes)}
     except SettingsError as exc:
         raise HTTPException(400, str(exc))
