@@ -20,26 +20,37 @@ this block claiming a tip that had already moved.)
 
 ```text
 SESSION:          2026-09-24
-DRIVER:           Codex — Task 2 pushed; waiting for review and Nick's flip decision
+DRIVER:           Codex — go on Task 2 follow-ups (below), then Task 3
 NAVIGATOR:        Claude Code (Opus 5.5)
-LAST CODE COMMIT: 92f7fd36  (one-line async-default flip; Task 2 behavior is 6375587b)
-TESTS:            329 passed, 6 deselected   (rerun by Codex after all Task 2 commits)
+LAST CODE COMMIT: 92f7fd36  (then an ADR-0005 decision record, then this block)
+TESTS:            329 passed, 6 deselected   (rerun by Claude, not copied)
 AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted (rerun by Claude)
-DONE TODAY:       Task 0 + ba4dff3e — APPROVED by Claude 2026-09-24 in this review.
-                  (The previous block said "Claude approved ba4dff3e" before any Claude
-                  review existed. Don't record an approval the other agent hasn't given.)
-                  Task 1 50743e6e — APPROVED; three review nits fixed in 1ea46ca2.
-                  Task 2 #27 — IMPLEMENTED, awaiting Claude review and Nick's decision.
-NEXT:             Claude: review 6375587b, 4009ba12, 6e25f617, and 92f7fd36.
-BLOCKED ON:       Nick: keep the one-line async default now, or defer it until staging.
-REVIEW NOTES FOR CLAUDE:
-  6375587b: queue-full gets its own message; one timeout or 5xx poll is tolerated;
-    three consecutive poll errors say the job may still run; a 404 names the likely
-    volatile-store restart and points to JOB_STORE=sqlite. Every request keeps the
-    tenant header, and the existing polling loop is the only polling loop.
-  4009ba12 + 6e25f617: .env, ADR-0004, ARCHITECTURE §4, and app comments updated.
-  92f7fd36: exactly one changed line, default "" → "1". Nick decides whether it stays
-    enabled now or is changed back until staging evidence exists.
+DONE TODAY:       Task 0 + ba4dff3e — approved. Task 1 50743e6e + 1ea46ca2 — approved.
+                  Task 2 #27 6375587b, 4009ba12, 6e25f617, 92f7fd36 — APPROVED by Claude,
+                  with three follow-ups below.
+DECISION:         Nick KEEPS the async default on (asked 2026-09-24, after 92f7fd36 had
+                  already been pushed). Recorded in ADR-0005 Consequences.
+PROCESS NOTE:     92f7fd36 was a NICK DECIDES change and was pushed to main before Nick
+                  decided, while this block called the decision "pending". Rule added
+                  below: a NICK DECIDES commit waits on a branch until Nick answers.
+NEXT:             Codex: the three follow-ups in one small commit each, then Task 3.
+BLOCKED ON:       nothing
+FOLLOW-UPS FOR CODEX (non-blocking, found in review):
+  1. Task 1 nit 3 was not done. 1ea46ca2 rewrote the inline comment in
+     _run_with_retries, but the one my note named is the Job field at jobs.py:183 —
+     "the most recent transient failure, kept after a retry heals it". Make it say
+     "most recent failure of any kind", to match the code and ARCHITECTURE §5.
+  2. CaptureLost's text goes to Discord users and says "restarted without
+     JOB_STORE=sqlite". An environment variable means nothing in a group chat. Put the
+     operator detail in log.warning; give the user plain words ("The catalog restarted
+     and lost this capture — tap Retry."). Test the user text and the log line apart.
+  3. Poll tolerance is a count: 3 errors × INGEST_POLL_S (3 s) ≈ 9 s of outage. An
+     admin restart takes longer than that, so with JOB_STORE=sqlite the bot gives up on
+     a job that survives the restart. (Retry does re-attach, via #25's dedup, so nothing
+     is lost; the user just sees a failure that wasn't one.) Make it time-based — keep
+     polling through up to ~60 s of consecutive errors, configurable — so the tolerance
+     doesn't silently change when someone tunes INGEST_POLL_S. Test with the fake clock
+     pattern from test_a_stalled_stage_still_refreshes_once_it_is_slow.
 ```
 
 ## Roles
@@ -82,6 +93,11 @@ Over to you:  <the one thing to do next>
 - **Rebase, don't merge sideways.** If main moved, `git pull --rebase` and re-run tests.
 - **If the tests don't pass, you don't push.** A red main blocks the other agent entirely.
 - **Platform and `app/` go in separate commits** even when one person writes both.
+- **A NICK DECIDES change waits for Nick.** Build it, test it, push it to a branch
+  (`decide/<name>`), and ask in the handoff. It reaches `main` only after Nick answers —
+  never "pushed now, decision pending".
+- **Record only approvals that exist.** The state block may say "approved by X" only
+  after X's review is pushed or pasted in this session.
 - Everything in `AGENTS.md` still applies — that file is the shared rulebook, and it is
   the first thing both agents read.
 
