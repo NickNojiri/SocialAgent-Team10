@@ -118,10 +118,98 @@ and restart all three.
 it kills all of them. Per-token expiry and revocation is Track D's #30 (Authentication &
 session hardening), built on this same key.
 
+## Staging — the always-on instance (#11)
+
+`docker-compose.staging.yml` runs the whole stack in containers: the admin app
+(Chromium and Whisper included), the recommend service, the bot, Ollama with its
+models, and **share-proxy**, the only thing anyone outside can reach. It forwards
+just the share page and the one call that page makes (`deploy/Caddyfile`);
+`/dash`, the admin UI, `/api/stats` and every write get a 404. The admin app is also
+published on the host's `127.0.0.1:8010`, so you can open `/dash` over SSH.
+`test_staging.py` fails if any of this changes.
+
+**What the host needs:** Docker with Compose v2.24 or newer; x86-64 or ARM64; about
+**8 GB RAM** and 4 cores with `OLLAMA_MODEL=llama3.2:3b` and `WHISPER_MODEL=base`;
+about 25 GB of disk; outbound internet. It needs no inbound port unless you choose
+the own-domain option below.
+
+### First time
+
+1. Clone the repo on the host, then `cp .env.example .env` and fill in
+   `DISCORD_TOKEN`, `OLLAMA_MODEL=llama3.2:3b` and `SHARE_BASE_URL` (step 2). Make a
+   **new** signing key for staging instead of reusing one that has lived on laptops:
+   `python3 scripts/ensure_signing_key.py`. Then `chmod 600 .env`. Leave `OLLAMA_URL`
+   alone; the compose file sets it.
+2. Choose how share links get HTTPS:
+
+   | Option | Needs | Opens on the host |
+   |---|---|---|
+   | **Tailscale Funnel** | A free Tailscale account. Run `sudo tailscale funnel --bg 8080` and use the `https://<host>.<tailnet>.ts.net` it prints as `SHARE_BASE_URL` | nothing |
+   | **Cloudflare Tunnel** | A domain on Cloudflare. Tunnel `https://spots.<domain>` to `http://127.0.0.1:8080` | nothing |
+   | **Own domain, this host** | A DNS A record pointing at the host. Set `SHARE_SITE=spots.<domain>` and `SHARE_BASE_URL=https://spots.<domain>` and deploy with `--domain`. Caddy gets the certificate itself | 80 and 443 |
+
+3. Tag the release with Track D's sign-off (#13) on its own line, and push it:
+   ```bash
+   git tag -a v0.1.0 -m "First staging release" -m "Security-Review: <name>"
+   git push origin v0.1.0
+   ```
+4. Check the release, then deploy it. The first run builds the images and pulls the
+   models, which takes about 10–20 minutes.
+   ```bash
+   python3 scripts/deploy.py v0.1.0 --dry-run
+   python3 scripts/deploy.py v0.1.0
+   ```
+
+### Deploying and rolling back
+
+`python3 scripts/deploy.py vX.Y.Z` deploys only **annotated release tags** that
+carry a `Security-Review:` line. It checks `.env`, checks the compose file, checks out
+the tag, rebuilds, and waits up to 10 minutes for health. If the new release doesn't
+come up healthy, it **puts the previous tag back by itself** and says so.
+
+`python3 scripts/deploy.py --rollback` goes back to the previous tag on purpose.
+Running it again goes forward again. Every attempt is recorded in `deploy/deploys.log`,
+and `deploy/state.json` holds which tag is live. Both files stay on the host.
+
+In a real emergency, `--skip-review "<reason>"` deploys without the sign-off and
+writes the reason to the log. Tell Track D.
+
+### The "done when" check: from another network, with the laptop closed
+
+Use a phone off the home Wi-Fi:
+
+- Discord: paste a reel, and a card comes back. Run `/share`, and the link opens over
+  **HTTPS** and shows the catalog.
+- These must all return **404** from outside: `https://<public>/dash`,
+  `/api/stats`, `/`, `/share` without `&t=`, and `/api/events?guild_id=`.
+- On the host, `docker compose -f docker-compose.staging.yml ps` should show
+  `admin` and `recommend` healthy and every other service running (the two one-shot
+  jobs show as exited 0).
+
+### Day to day
+
+- **Logs:** `docker compose -f docker-compose.staging.yml logs -f admin bot`
+- **Ops dashboard:** run `ssh -L 8010:127.0.0.1:8010 <host>` on your laptop, then
+  open `http://localhost:8010/dash`.
+- **Backups:** `tar czf ~/spotbot-data-$(date +%F).tgz data/`, run nightly from cron,
+  keeping 7 days. Keep `.env` in a password manager, not in the backup. A backup still
+  holds a server that `/privacy` has since deleted, until the backup ages out.
+- **Rotating the signing key on staging:** run `python3 scripts/rotate_signing_key.py
+  --confirm` on the host, then
+  `docker compose -f docker-compose.staging.yml up -d`, which recreates admin,
+  recommend and the bot with the new key. Captures pause for the ~30 seconds those
+  three take to come back, and every old `/share` link stops working. Announce it, and
+  have people run `/share` again.
+- **Moving laptop data to staging:** stop the stack, copy the laptop's `data/` into the
+  host's `data/`, and deploy again. `data-init` fixes the file ownership.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `deploy.py` says a tag has no Security-Review line | The tag is lightweight, or its message lacks the line | Re-tag with `git tag -a … -m "Security-Review: <name>"` (delete the old tag first) |
+| Staging `admin` never turns healthy | First start still downloading Chromium or Whisper, or out of memory | Check `docker compose -f docker-compose.staging.yml logs admin`; set `TRANSCRIBE_ENABLED=0` or a smaller `OLLAMA_MODEL` on a small host |
+| Staging captures are all "private or needs a login" | Instagram often walls datacenter IP addresses | Use the authed path (`IG_USERNAME`/`IG_PASSWORD`, burner account), or host at home behind a tunnel |
 | Every command or card says *"couldn't reach the catalog"*; admin log shows `403` or `503` | `SPOTBOT_SIGNING_KEY` missing (503) or different between processes (403) | `python scripts/ensure_signing_key.py`, then restart all three so they load the same `.env` |
 | A `/share` link says *"no longer valid"* | the signing key was changed | run `/share` again for a fresh link |
 | Bot online, cards say *"couldn't reach the catalog service"* | admin app not running, or the bot's `INGEST_URL` points at Docker's `host.docker.internal` while running on the host | start `:8010`; set `INGEST_URL=http://localhost:8010` |

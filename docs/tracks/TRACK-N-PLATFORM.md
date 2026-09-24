@@ -20,17 +20,17 @@ the dates they say.
 | Piece | Where | State |
 |---|---|---|
 | Pipeline orchestration | `src/ingestion/pipeline/orchestrator.py` | `IngestionPipeline` + `RunReport`, `on_stage` callback wired at fetch/transcribe/extract/save/done |
-| Async job queue | `src/ingestion/serving/jobs.py`, ADR-0004/0005 | Bounded queue (429 when full), polled by the bot, behind `INGEST_ASYNC=1` — **off by default**. Stage timings (#23), optional SQLite store with restart recovery (#24, `JOB_STORE=sqlite`), one capture per link in flight (#25), retries for timeouts only (#26) |
-| Multi-tenancy | `tenant_auth.py` (×2), ADR-0001 | HMAC tenant tokens on every guild-scoped call; one Chroma collection per guild. Bench: 34/34 forged rejected, 16/16 authentic (Sept 23) |
-| Serving | `src/ingestion/serving/app.py` (:8003), `admin.py` (:8010) | Recommend/plan + admin & share |
-| Docs | `docs/ARCHITECTURE.md`, `docs/adr/0001–0005`, `docs/SRS.md`, `docs/THREAT_MODEL.md`, `docs/RUNBOOK.md` | ADRs current as of Sept 23; ARCHITECTURE §4 not yet updated for #23–#26 |
-| Tests | `pytest -k "not live" -q` | **318 passing** (Sept 23) |
+| Async job queue | `src/ingestion/serving/jobs.py`, ADR-0004/0005 | Bounded queue (429 when full), polled by the bot, **on by default** (#27). Stage timings (#23), SQLite store with restart recovery (#24, `JOB_STORE=sqlite`; on in staging), one capture per link in flight (#25), retries for timeouts only (#26), rate limits (#28, off until numbers are picked) |
+| Multi-tenancy | `tenant_auth.py` (×2), ADR-0001 | HMAC tenant tokens on every guild-scoped call; one Chroma collection per guild. Bench: 47/47 forged rejected, 23/23 authentic (Sept 24) |
+| Serving | `src/ingestion/serving/app.py` (:8003), `admin.py` (:8010) | Recommend/plan + admin, share, settings, feedback, delete, `/health`, `/dash` |
+| Staging | `docker-compose.staging.yml`, `deploy/Caddyfile`, `scripts/deploy.py` | Built (#11); not yet running anywhere — needs a host |
+| Docs | `docs/ARCHITECTURE.md`, `docs/adr/0001–0005`, `docs/SRS.md`, `docs/THREAT_MODEL.md`, `docs/RUNBOOK.md` | Current as of Sept 24 |
+| Tests | `pytest -k "not live" -q` | **640+ passing** (Sept 24) |
 
-**Open platform risks:** no always-on host (demo runs on a laptop today); no rate
-limiting; the job queue is in-process, so a restart loses in-flight work and the same reel
-pasted twice is captured twice (closed by #24 and #25); `mxbai-embed-large`
-must be pulled on any machine that runs the recommender, or Chroma throws a dimension
-error.
+**Open platform risks:** no always-on host yet (the demo still runs on a laptop);
+Instagram often walls datacenter IPs, so a cloud host may need the authed capture path;
+`mxbai-embed-large` must be pulled wherever the recommender runs (staging pulls it
+itself).
 
 ---
 
@@ -135,11 +135,19 @@ guild call (fail closed, 503), all existing tests pass.
 
 **#11 Always-on staging deployment (100)**
 - [ ] A hosted instance running around the clock; only the ports that must be open are
-      open.
-- [ ] Share links served over **HTTPS**.
-- [ ] Deploy from a tag, with the rollback documented in `docs/RUNBOOK.md`.
-- [ ] Gate the release behind Track D's security review (#13).
+      open. *(Built: `docker-compose.staging.yml` runs everything. Only `share-proxy` is
+      reachable from outside, the admin app sits on loopback for `/dash` over SSH, and
+      `test_staging.py` pins it. **Waiting on a host — Nick's pick** (RUNBOOK "Staging").)*
+- [ ] Share links served over **HTTPS**. *(Three documented ways: Tailscale Funnel,
+      Cloudflare Tunnel, or Caddy with your own domain. Live once a host runs.)*
+- [x] Deploy from a tag, with the rollback documented in `docs/RUNBOOK.md`.
+      *(`scripts/deploy.py`: annotated `v*` tags only; waits for health, puts the previous
+      tag back if the new one fails; `--rollback`; `deploy/deploys.log`.)*
+- [x] Gate the release behind Track D's security review (#13). *(Enforced: a tag deploys
+      only if its message has a `Security-Review: <name>` line; `--skip-review "<why>"`
+      is logged. The review itself is Track D's.)*
 - [ ] **Done when:** a teammate on another network can use the bot with the laptop closed.
+      *(Checklist in RUNBOOK "Staging".)*
 
 **#26 Retry only what's worth retrying — New (40)**
 - [x] Transient failures only (fetch timeout, network) retry, with capped exponential

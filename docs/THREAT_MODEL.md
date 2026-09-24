@@ -193,6 +193,20 @@ on `/api/stats` + `/dash`. Remaining fix on the box: set `SPOTBOT_SIGNING_KEY` i
 unit's environment (same value as the bot's `.env`), then bind `127.0.0.1` and reach it
 over the docker bridge address, or keep `0.0.0.0` behind a firewall rule. Owner: Nick.
 
+**Staging (#11, built 2026-09-24): closed by design there.** `docker-compose.staging.yml`
+runs the admin app inside the compose network. The bot reaches it by service name,
+and the host publishes it on `127.0.0.1:8010` only, for `/dash` over SSH. The only
+outside door is `share-proxy` (`deploy/Caddyfile`). It forwards `GET /share` and
+`GET /api/events` only when a server id and a token are present, so the open legacy
+`""` catalog, `/dash`, `/api/stats` and every write return 404. It also sends
+`Referrer-Policy: no-referrer`, and the share page carries the same `<meta>`, because
+the share token sits in the URL and would otherwise leak to Instagram, TikTok or
+OpenStreetMap through the Referer header. `test_staging.py` pins the published ports
+and the proxy's routes. Still open: the laptop and systemd setup above, until the
+team moves to staging. The Caddyfile has not yet been run through `caddy validate`
+(Docker's engine wasn't running when it was written), so the first deploy's smoke test
+(RUNBOOK) is its real check.
+
 ---
 
 ### T9 · Benchmark integrity · **process control**
@@ -216,7 +230,7 @@ the whole file). Open: per-row label provenance and a second annotator
 | T5 | capture floods | DoS | partial — Nick, Sprint 3–4 |
 | T6 | secrets / retention | Info disclosure | mostly in place; deletion built (#21), time-based retention open |
 | T7 | XSS on web pages | Tampering | verified safe |
-| T8 | `:8010` exposure on the box | Info disclosure | open — set the key in the systemd unit, then bind `127.0.0.1` |
+| T8 | `:8010` exposure on the box | Info disclosure | staging: closed by design (#11); laptop/systemd box: open — set the key, bind `127.0.0.1` |
 | T9 | benchmark integrity | Repudiation | process controls in place |
 
 Things deliberately *not* modelled: Discord's own security, Ollama's process
