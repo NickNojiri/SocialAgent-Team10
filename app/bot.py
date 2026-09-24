@@ -30,6 +30,7 @@ if os.getenv("BOT_INSECURE_SSL") == "1":
     ssl._create_default_https_context = _insecure_ssl_ctx
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Literal, Optional
@@ -40,6 +41,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 import cards
+import feedback
 import privacy
 import setup_wizard
 from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
@@ -426,6 +428,30 @@ def _forget_local_config(guild) -> None:
     TIPPED_GUILDS.discard(guild.id)
     save_config()
     log.info(f"[privacy] forgot local settings for server {guild.id}")
+
+
+@tree.command(name="feedback", description="Report a bug or share an idea with the SpotBot team")
+@app_commands.describe(kind="A bug, or an idea?")
+async def feedback_command(interaction: discord.Interaction, kind: Literal["bug", "idea"]):
+    await interaction.response.send_modal(feedback.FeedbackModal(cards.guild_key(interaction), kind))
+
+
+@tree.command(name="survey", description="The 2-minute usability survey (for study participants)")
+@app_commands.describe(participant="The code the researcher gave you, e.g. P3 (optional)")
+async def survey_command(interaction: discord.Interaction, participant: Optional[str] = None):
+    code = (participant or "").strip()
+    if code and not re.fullmatch(r"[A-Za-z0-9_-]{1,16}", code):   # the API's own rule
+        await interaction.response.send_message(
+            "That participant code doesn't look right — use the short code you were given, "
+            "like `P3`.", ephemeral=True
+        )
+        return
+    view = feedback.SurveyView(cards.guild_key(interaction), code)
+    await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)
+    try:
+        view.message = await interaction.original_response()
+    except Exception:
+        pass
 
 
 @bot.event

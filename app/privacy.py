@@ -44,6 +44,7 @@ def privacy_embed(*, in_server: bool, can_delete: bool) -> discord.Embed:
         "• **Votes** and **\"we went\" check-ins**, with the display names of who voted\n"
         "• **`/setup` settings**: the reels channel and home city\n"
         "• **Capture history**: which links were captured, how long it took, and why any failed\n"
+        "• **`/feedback` and `/survey` answers**, without your name\n"
         "• **Copies of pages that failed to load**, to work out why"
     ))
     embed.add_field(name="Not saved", inline=False, value=(
