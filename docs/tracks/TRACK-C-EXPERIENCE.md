@@ -147,9 +147,13 @@ measures how long a capture takes from the user's side.
       2,500 characters, each row showing 📍 area and 📅 date.)*
 
 **#37 Accessibility pass (50)**
-- [ ] Alt text on card images, readable contrast, screen-reader labels on cards and the
-      share/web pages.
+- [x] Alt text on card images, readable contrast, screen-reader labels on cards and the
+      share/web pages. *(`docs/ACCESSIBILITY.md`: 29 contrast pairs pass AA, alt text,
+      button and field names, color-not-alone on /dash, `/browse` button labels — all
+      checked by `test_accessibility.py` / `app/test_browse.py`. Discord embeds can't
+      carry image alt text at all; recorded as a platform limit.)*
 - [ ] **Done when:** the checklist is completed and recorded in the final report.
+      *(Two rows need a person: an NVDA walkthrough of the web pages and of Discord.)*
 
 ---
 
