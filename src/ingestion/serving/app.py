@@ -60,12 +60,17 @@ def get_service(guild_id: str = "") -> RecommendationService:
 
 def _still_there(service: RecommendationService) -> bool:
     """False once the admin app deleted this server's catalog (#21): Chroma then
-    fails every call on the old handle, so it's rebuilt instead."""
+    fails every call on the old handle, so it's rebuilt instead. Any other error
+    isn't a deletion — the real call reports it."""
+    from chromadb.errors import NotFoundError
+
     try:
         service.sink.collection.count()
-        return True
-    except Exception:
+    except NotFoundError:
         return False
+    except Exception:
+        return True
+    return True
 
 
 class RecommendRequest(BaseModel):

@@ -135,10 +135,11 @@ def test_deleting_a_server_leaves_nothing_behind(world):
     r = client.post("/api/forget", json={"guild_id": A, "confirm": A}, headers=_hdr(A))
     assert r.status_code == 200, r.text
     report = r.json()
-    assert report["catalog"]["spots"] == 3 and report["catalog"]["vacuumed"] is True
-    assert report["catalog"]["shared_file_rows"] == 1 and report["catalog"]["shared_posts_kept"] == 1
-    assert report["settings"] is True and report["jobs"]["stored_jobs"] == 1
-    assert report["jobs"]["log_lines"] == 1 and report["activity_entries"] == 1
+    assert report["catalog"]["spots"] == 3 and report["catalog"]["vacuumed"] is True, report
+    assert report["catalog"]["shared_file_rows"] == 1, report
+    assert report["catalog"]["shared_posts_kept"] == 1, report
+    assert report["settings"] is True and report["jobs"]["stored_jobs"] == 1, report
+    assert report["jobs"]["log_lines"] == 1 and report["activity_entries"] == 1, report
 
     # Nothing comes back from any endpoint...
     assert client.get(f"/api/events?guild_id={A}", headers=_hdr(A)).json()["events"] == []
