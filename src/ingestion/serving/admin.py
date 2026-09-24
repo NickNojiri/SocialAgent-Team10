@@ -34,6 +34,7 @@ from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
 )
+from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
@@ -694,6 +695,42 @@ def nights(guild_id: str = "", x_tenant_token: str | None = TenantToken):
     """The counter that matters: confirmed real-world nights out."""
     authorize(guild_id, x_tenant_token, need=SCOPE_READ)
     return {"nights": _count_nights(_sink_for(guild_id))}
+
+
+# ── Per-server settings (the /setup wizard, Track C #8) ─────────────────────
+# One file per server (serving/guild_settings.py), apart from the catalog.
+
+_guild_settings = GuildSettingsStore(Path("data/guild_settings"))
+
+
+class SettingsBody(BaseModel):
+    guild_id: str
+    drop_channel_id: str | None = None
+    home_city: str | None = None
+
+
+@app.get("/api/settings")
+def get_settings(guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    """A server's /setup settings; the defaults if it never ran /setup."""
+    # The full token, not a share token: settings are for the bot, and share
+    # links go to people outside the server.
+    authorize(guild_id, x_tenant_token)
+    try:
+        return {"settings": _guild_settings.get(guild_id)}
+    except SettingsError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/settings")
+def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
+    """Save what the wizard changed. Only the fields sent are touched, and the
+    catalog never is, so re-running /setup can't wipe a server's spots."""
+    authorize(body.guild_id, x_tenant_token)
+    changes = {k: getattr(body, k) for k in body.model_fields_set if k != "guild_id"}
+    try:
+        return {"settings": _guild_settings.update(body.guild_id, changes)}
+    except SettingsError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @app.delete("/api/events/{event_id}")

@@ -11,6 +11,7 @@ still be ACCEPTED. docs/THREAT_MODEL.md T2.
 
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import src.ingestion.serving.admin as admin  # noqa: E402
 import src.ingestion.serving.app as serving_app  # noqa: E402
+from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
 from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token  # noqa: E402
 from test_admin_authz import StubSink, _StubService  # noqa: E402
@@ -38,6 +40,7 @@ async def _fake_capture(urls, guild_id, on_stage):
 
 admin._sink_for = lambda guild_id="": StubSink()
 admin._jobs = JobQueue(_fake_capture)
+admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_settings_")))
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 
@@ -81,6 +84,10 @@ def run(client):
     share = lambda g, t: client.get(f"/share?guild_id={g}" + (f"&t={t}" if t else ""))  # noqa: E731
     recommend = lambda g, t: rec.post("/recommend", json={"channel_id": "c", "message": "tacos", "guild_id": g}, headers=hdr(t))  # noqa: E731
     plan = lambda g, t: rec.post("/plan", json={"channel_id": "c", "transcript": "a: tacos?", "guild_id": g}, headers=hdr(t))  # noqa: E731
+    settings = lambda g, t: client.get(f"/api/settings?guild_id={g}", headers=hdr(t))  # noqa: E731
+    save_settings = lambda g, t: client.put(  # noqa: E731
+        "/api/settings", json={"guild_id": g, "home_city": "Long Beach, CA"}, headers=hdr(t)
+    )
 
     # a real job in MINE, to probe reading its status from outside
     job_id = job(MINE, MINE_ME, ME).json()["job_id"]
@@ -127,6 +134,9 @@ def run(client):
         ("replay a share token against another guild", lambda: share(THEIRS, MINE_R)),
         ("query /recommend for another guild", lambda: recommend(THEIRS, MINE_RW)),
         ("query /plan for another guild with no token", lambda: plan(THEIRS, None)),
+        ("change another guild's /setup settings", lambda: save_settings(THEIRS, MINE_RW)),
+        ("change /setup settings with a share token", lambda: save_settings(MINE, MINE_R)),
+        ("read /setup settings with a share token", lambda: settings(MINE, MINE_R)),
     ]
 
     authentic = [
@@ -145,6 +155,8 @@ def run(client):
         ("open my own share link", lambda: share(MINE, MINE_R)),
         ("query /recommend for my guild", lambda: recommend(MINE, MINE_RW)),
         ("query /plan for my guild", lambda: plan(MINE, MINE_RW)),
+        ("save my /setup settings", lambda: save_settings(MINE, MINE_RW)),
+        ("read my /setup settings", lambda: settings(MINE, MINE_RW)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]
     return forged, authentic
