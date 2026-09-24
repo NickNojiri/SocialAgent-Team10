@@ -159,6 +159,10 @@ def _merge_results(first: dict, retry: dict, retried_urls: list[str]) -> dict:
     merged["events"] = list(first.get("events") or []) + list(retry.get("events") or [])
     merged["log"] = list(first.get("log") or []) + list(retry.get("log") or [])
     merged["retryable_urls"] = list(retry.get("retryable_urls") or [])
+    # A retried link's first failure is replaced by whatever the retry made of it (#19).
+    merged["failures"] = [
+        f for f in first.get("failures") or [] if f.get("url") not in retried_urls
+    ] + list(retry.get("failures") or [])
     return merged
 
 # run(urls, guild_id, on_stage) -> the same dict POST /api/ingest returns.

@@ -35,6 +35,7 @@ from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
 )
+from src.ingestion.serving.failures import failures
 from src.ingestion.serving.feedback import FeedbackError, FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError, clean_city
 from src.ingestion.serving.time_to_card import TimeToCardLog, TimingError
@@ -379,6 +380,8 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         # Links whose failure a second try can fix — a page-load timeout or a
         # Chromium network error. The job queue retries only these (feature #26).
         "retryable_urls": retryable_urls(report.results),
+        # Why each other link failed, as a class the bot words for people (#19).
+        "failures": failures(report.results),
     }
 
 
