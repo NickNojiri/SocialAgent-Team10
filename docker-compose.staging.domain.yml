@@ -1,0 +1,16 @@
+# Add this file to serve HTTPS straight from the staging host with your own domain,
+# instead of through a tunnel. Caddy gets and renews the certificate itself.
+#
+#   SHARE_SITE=spots.example.com   (in .env; the DNS A record points at this host)
+#   SHARE_BASE_URL=https://spots.example.com
+#   docker compose -f docker-compose.staging.yml -f docker-compose.staging.domain.yml up -d
+#
+# Opens 80 (certificate challenge + redirect to HTTPS) and 443 on the host — the
+# only two ports, and they still reach nothing but the share page.
+services:
+  share-proxy:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    environment:
+      SHARE_SITE: ${SHARE_SITE:?set SHARE_SITE in .env to your domain, e.g. spots.example.com}

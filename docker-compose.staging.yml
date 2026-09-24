@@ -1,0 +1,134 @@
+# Always-on staging (#11): the whole stack in containers, one port out.
+#
+#   python scripts/deploy.py v0.1.0      # deploys a reviewed tag — see docs/RUNBOOK.md "Staging"
+#
+# Only share-proxy is reachable from outside, and it forwards nothing but the
+# read-only share page and the one call that page makes (deploy/Caddyfile). The
+# admin app is published on the host's loopback only (the operator's /dash, over an
+# SSH tunnel); recommend and Ollama aren't published at all — what THREAT_MODEL T8
+# asks for. Everything may go *out* (Discord, Instagram, OpenStreetMap, model
+# downloads); nothing else comes in.
+#
+# By default the proxy listens on 127.0.0.1:8080 and a tunnel (Tailscale Funnel or
+# Cloudflare Tunnel) carries HTTPS to it — no inbound port on the host at all. To
+# serve HTTPS straight from this machine with your own domain instead, add
+# docker-compose.staging.domain.yml.
+#
+# Secrets (.env) go only to the three services that use them: admin, recommend, bot.
+name: spotbot-staging
+
+x-always: &always
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}     # logs can't fill the disk
+
+services:
+  # One-shot: the app containers don't run as root, so data/ must belong to their uid.
+  data-init:
+    image: busybox:1.36
+    restart: "no"
+    user: "0"
+    volumes:
+      - ./data:/data
+    command: ["sh", "-c", "mkdir -p /data/bot && chown -R 10001:10001 /data"]
+
+  ollama:
+    <<: *always
+    image: ollama/ollama:latest          # pin to the tag you tested once staging runs
+    volumes:
+      - ollama:/root/.ollama
+
+  # One-shot: pulls the two models the app uses, then exits. Re-running is cheap.
+  ollama-models:
+    image: ollama/ollama:latest
+    restart: "no"
+    depends_on: [ollama]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      PULL_LLM: ${OLLAMA_MODEL:-llama3.2:3b}
+      PULL_EMBED: ${EMBED_MODEL:-mxbai-embed-large}
+    entrypoint: ["/bin/sh", "-c", "ollama pull \"$$PULL_LLM\" && ollama pull \"$$PULL_EMBED\""]
+
+  admin:
+    <<: *always
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    env_file: .env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      JOB_STORE: sqlite                  # captures survive a restart (ADR-0005)
+    ports:
+      # Loopback only — for the operator's /dash over an SSH tunnel
+      # (ssh -L 8010:127.0.0.1:8010 <host>). Nothing off the machine reaches it.
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      data-init: {condition: service_completed_successfully}
+      ollama: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  recommend:
+    <<: *always
+    build:
+      context: .
+      dockerfile: recommend/Dockerfile
+    user: "10001"
+    env_file: .env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      HOME: /tmp                         # uid 10001 has no home dir in this image
+    volumes:
+      - ./data:/app/data                 # the same catalogs the admin app writes
+    depends_on:
+      data-init: {condition: service_completed_successfully}
+      ollama: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  bot:
+    <<: *always
+    build: ./app
+    user: "10001"
+    env_file: .env
+    environment:
+      INGEST_URL: http://admin:8010
+      ADMIN_URL: http://admin:8010
+      RECOMMEND_URL: http://recommend:8003
+      # The public HTTPS address of share-proxy; /share links are built from it.
+      SHARE_BASE_URL: ${SHARE_BASE_URL:?set SHARE_BASE_URL in .env to the public https:// address}
+      BOT_CONFIG_FILE: /app/state/channels.json
+      HOME: /tmp                         # uid 10001 has no home dir in this image
+    volumes:
+      - ./data/bot:/app/state            # muted channels etc. survive a rebuild
+    depends_on:
+      admin: {condition: service_healthy}
+      recommend: {condition: service_healthy}
+
+  share-proxy:
+    <<: *always
+    image: caddy:2-alpine
+    environment:
+      SHARE_SITE: ":8080"                # plain HTTP here; the domain file swaps in HTTPS
+    ports:
+      - "127.0.0.1:8080:8080"            # the only published port; a tunnel carries HTTPS
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on:
+      admin: {condition: service_healthy}
+
+volumes:
+  ollama:
+  caddy:

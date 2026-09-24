@@ -1,0 +1,5 @@
+# What the admin image adds on top of requirements-ingestion.txt — the parts that
+# are optional on a laptop but on for staging. Pinned to the versions the team's
+# working venvs run (2026-09-24).
+faster-whisper==1.2.1    # reel audio → text (needs ffmpeg, installed in the Dockerfile)
+truststore==0.10.4       # use the OS certificate store for the reel download

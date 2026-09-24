@@ -976,6 +976,13 @@ def vote(
     }
 
 
+@app.get("/health")
+def health():
+    """Liveness for the staging healthcheck (#11): answers without touching Chroma,
+    Ollama or the network, so it's cheap enough to poll every 30 s."""
+    return {"ok": True, "queued_or_running": _jobs.pending}
+
+
 @app.get("/api/stats")
 def stats():
     """Behind-the-scenes: services, per-server catalogs, and recent captures."""
@@ -1198,6 +1205,7 @@ load();
 _SHARE_PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="referrer" content="no-referrer"/>
 <title>SpotBot — our spots</title>
 <style>
   :root{--bg:#111318;--card:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;--acc:#6EA8FE;--ok:#3FB950}

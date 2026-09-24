@@ -1,0 +1,45 @@
+# The one door into staging (#11). Everything not named below gets a 404.
+#
+# Public: the read-only share page and the single call it makes. Both must carry a
+# server id and that server's read token — the admin app checks the token; this
+# file just refuses the requests that couldn't possibly be a real share link, so
+# the open legacy "" catalog, /dash, /api/stats, the admin UI and every write
+# never leave the machine.
+#
+# SHARE_SITE ":8080"            → plain HTTP on 8080, for a tunnel that adds HTTPS
+# SHARE_SITE "spots.example.com" → Caddy serves HTTPS itself (Let's Encrypt)
+{
+	admin off
+}
+
+{$SHARE_SITE::8080} {
+	# The token rides in the share URL's query string, so no page may send it on
+	# as a Referer to Instagram, TikTok or OpenStreetMap.
+	header {
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	@share_page {
+		method GET
+		path /share
+		expression `{query.guild_id} != "" && {query.t} != ""`
+	}
+	@share_events {
+		method GET
+		path /api/events
+		expression `{query.guild_id} != "" && {header.X-Tenant-Token} != ""`
+	}
+
+	handle @share_page {
+		reverse_proxy admin:8010
+	}
+	handle @share_events {
+		reverse_proxy admin:8010
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

@@ -12,6 +12,9 @@ data/
 .venv/
 *.pyc
 secrets/
+# Staging host state written by scripts/deploy.py (which tag is live, the deploy log).
+deploy/state.json
+deploy/deploys.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
