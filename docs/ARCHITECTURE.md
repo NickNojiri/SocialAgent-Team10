@@ -128,7 +128,7 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
   runs in `asyncio.to_thread`, under `capture_budget_s` (default **180 s per URL**).
   A multi-link request can outlive the bot timeout while the server keeps working.
   This synchronous endpoint has **no in-flight deduplication** yet, so Retry can start
-  the same capture again; Task 2 makes the async path the default.
+  the same capture again; feature #27 makes the async path the default.
 - With `INGEST_ASYNC=1`, the bot instead enqueues through `POST /api/jobs` and polls
   `GET /api/jobs/{id}`. The admin app has one in-process worker by default
   (`INGEST_WORKERS=1`) and accepts at most 50 waiting jobs; a full queue returns 429.

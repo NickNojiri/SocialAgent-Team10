@@ -682,8 +682,8 @@ class JobQueue:
             try:
                 result = await self._run(urls, job.guild_id, on_stage)
             except Exception as exc:
-                # last_error always names the most recent failure, whatever
-                # happens next — never one from an earlier attempt.
+                # last_error always names the most recent failure of any kind,
+                # whatever happens next — never one from an earlier attempt.
                 job.last_error = f"{type(exc).__name__}: {exc}"
                 final = not is_transient_error(exc) or retry >= self.max_retries
                 if final and merged is not None:
