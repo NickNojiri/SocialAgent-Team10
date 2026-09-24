@@ -120,6 +120,52 @@ def test_the_dash_page_has_the_new_panels():
     assert "#32" in page                                    # Track D's reserved slot
 
 
+DAY = 86400
+NOW = 1_800_000_000 + 12 * 3600          # 2027-01-15 20:00 UTC; the offsets below stay inside that day
+
+
+def test_the_trend_has_one_row_per_day_oldest_first_quiet_days_included():
+    trend = capture_stats.daily_trend([], [], days=14, now=NOW)
+    assert len(trend) == 14 and trend[0]["day"] < trend[-1]["day"]
+    assert trend[-1] == {"day": "2027-01-15", "pastes": 0, "cards": 0, "card_rate": None,
+                         "ttc_median_s": None, "captures": 0, "failed": 0, "capture_median_s": None}
+
+
+def test_the_trend_counts_each_day_from_both_logs():
+    captures = [
+        {"finished_at": NOW - 60, "state": "done", "duration_s": 40.0},
+        {"finished_at": NOW - 120, "state": "failed", "duration_s": 400.0},
+        {"finished_at": NOW - DAY, "state": "done", "duration_s": 90.0},        # yesterday
+        {"finished_at": NOW - 30 * DAY, "state": "done", "duration_s": 5.0},    # too old
+    ]
+    cards = [
+        {"ts": NOW - 60, "seconds": 45.0, "outcome": "card"},
+        {"ts": NOW - 90, "seconds": 55.0, "outcome": "card"},
+        {"ts": NOW - 100, "seconds": 400.0, "outcome": "no_card"},
+        {"ts": NOW - 120, "seconds": 400.0, "outcome": "error"},
+    ]
+    trend = capture_stats.daily_trend(captures, cards, days=14, now=NOW)
+    today, yesterday = trend[-1], trend[-2]
+    assert today["pastes"] == 4 and today["cards"] == 2 and today["card_rate"] == 0.5
+    assert today["ttc_median_s"] == 45.0                     # cards only; failures aren't slow cards
+    assert today["captures"] == 2 and today["failed"] == 1 and today["capture_median_s"] == 40.0
+    assert yesterday["captures"] == 1 and yesterday["pastes"] == 0
+    assert sum(day["captures"] for day in trend) == 3       # the 30-day-old one is outside
+
+
+def test_a_row_with_a_broken_timestamp_is_skipped_not_fatal():
+    trend = capture_stats.daily_trend([{"finished_at": "soon"}, {}], [{"ts": None}], now=NOW)
+    assert sum(d["captures"] + d["pastes"] for d in trend) == 0
+
+
+def test_stats_and_dash_carry_the_trend(stats):
+    trend = stats.json()["trend"]
+    assert len(trend) == 14 and all(set(day) >= {"day", "pastes", "cards", "captures"} for day in trend)
+    with TestClient(admin.app) as client:
+        page = client.get("/dash").text
+    assert 'id="trend"' in page and 'id="trend-chart" aria-hidden="true"' in page
+
+
 def test_reading_the_tail_of_a_big_log_skips_the_cut_line(tmp_path):
     log = tmp_path / "capture_jobs.jsonl"
     rows = [{"state": "done", "urls": 1, "url_keys": [f"k{i}"], "duration_s": float(i),

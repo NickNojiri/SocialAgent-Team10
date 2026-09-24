@@ -1030,6 +1030,11 @@ def stats():
         totals["nights"] += nights_count
     tenants.sort(key=lambda t: -t["spots"])
 
+    capture_rows = (capture_stats.read_rows(_jobs.log_path, max_bytes=2_000_000)
+                    if _jobs.log_path is not None else None)
+    card_rows = (capture_stats.read_rows(_time_to_card.path, max_bytes=2_000_000)
+                 if _time_to_card.path is not None else [])
+
     return {
         "services": services,
         "totals": {**totals, "servers": len(tenants)},
@@ -1042,13 +1047,14 @@ def stats():
         ],
         # #29: capture health from the #23 timing log, and the queue and limits as
         # they stand now. Counts and seconds only — no links, ids or error text.
-        "capture_health": capture_stats.summarize(
-            capture_stats.read_rows(_jobs.log_path, max_bytes=2_000_000)
-        ) if _jobs.log_path is not None else None,
+        "capture_health": (capture_stats.summarize(capture_rows)
+                           if capture_rows is not None else None),
         "queue": _jobs.snapshot(),
         "limits": _capture_limits.settings(),
         # #18: paste → card as users see it (median / p95), None when not logged.
         "time_to_card": _time_to_card.summary(),
+        # #29: the last 14 days, from both logs — is it getting better or worse?
+        "trend": capture_stats.daily_trend(capture_rows or [], card_rows),
     }
 
 
@@ -1330,6 +1336,9 @@ _DASH_PAGE = """<!doctype html>
   footer{color:var(--mut);font-size:11.5px;margin-top:24px}
   /* progress bar animates down to 0 between refreshes */
   #pgbar{height:2px;background:var(--acc);position:fixed;top:0;left:0;transition:width linear 5s;z-index:99}
+  /* 14-day trend: bars = pastes that became cards, line = median time to card */
+  .trend svg{display:block;width:100%;height:120px;padding:12px 14px 0}
+  .trend .bar{fill:var(--acc)} .trend .miss{fill:var(--line)} .trend .ttc{fill:none;stroke:var(--warn);stroke-width:2}
   .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
 <div id="pgbar" style="width:100%" aria-hidden="true"></div>
@@ -1354,6 +1363,12 @@ _DASH_PAGE = """<!doctype html>
 
   <h2>Time to card</h2>
   <div class="tiles" id="ttc"></div>
+
+  <h2>Last 14 days</h2>
+  <div class="wrap trend">
+    <svg id="trend-chart" aria-hidden="true" viewBox="0 0 700 120" preserveAspectRatio="none"></svg>
+    <table id="trend"></table>
+  </div>
 
   <h2>Capture health</h2>
   <div class="tiles" id="health"></div>
@@ -1443,6 +1458,29 @@ async function load(){
       <div class="tile"><b>${day.cards??0} / ${day.pastes??0}</b><span>pastes that became cards</span></div>
       <div class="tile"><b>${secs(all.median_s)}</b><span>median, all time</span></div>`;
   }
+
+  // #29 the last 14 days. Bars: pastes (grey) and the ones that became cards (blue);
+  // line: median time to card. The table holds the same numbers for screen readers.
+  const tr=d.trend||[];
+  const maxP=Math.max(1,...tr.map(x=>x.pastes)), maxT=Math.max(1,...tr.map(x=>x.ttc_median_s||0));
+  const cw=700/Math.max(1,tr.length), H=108;
+  let chart='';
+  tr.forEach((x,i)=>{
+    const hp=x.pastes/maxP*H, hc=x.cards/maxP*H, left=i*cw+cw*0.15, bw=cw*0.7;
+    chart+=`<rect class="miss" x="${left}" y="${H-hp}" width="${bw}" height="${hp-hc}"></rect>`
+         +`<rect class="bar" x="${left}" y="${H-hc}" width="${bw}" height="${hc}"></rect>`;
+  });
+  const pts=tr.map((x,i)=>x.ttc_median_s==null?null:`${i*cw+cw/2},${H-x.ttc_median_s/maxT*H}`).filter(Boolean);
+  if(pts.length>1) chart+=`<polyline class="ttc" points="${pts.join(' ')}"></polyline>`;
+  document.getElementById('trend-chart').innerHTML=chart;
+  const pct=v=>v==null?'—':Math.round(v*100)+'%';
+  document.getElementById('trend').innerHTML=
+    `<tr><th scope="col">day (UTC)</th><th scope="col" class="num">pastes</th><th scope="col" class="num">became cards</th>`
+    +`<th scope="col" class="num">rate</th><th scope="col" class="num">median time to card</th>`
+    +`<th scope="col" class="num">captures</th><th scope="col" class="num">failed</th><th scope="col" class="num">median capture</th></tr>`
+    +tr.slice().reverse().map(x=>`<tr><td>${esc(x.day.slice(5))}</td><td class="num">${x.pastes}</td>`
+      +`<td class="num">${x.cards}</td><td class="num">${pct(x.card_rate)}</td><td class="num">${secs(x.ttc_median_s)}</td>`
+      +`<td class="num">${x.captures}</td><td class="num">${x.failed}</td><td class="num">${secs(x.capture_median_s)}</td></tr>`).join('');
 
   // #29 capture health — counts and seconds from the timing log, never links.
   const h=d.capture_health;

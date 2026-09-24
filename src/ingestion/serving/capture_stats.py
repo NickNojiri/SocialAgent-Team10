@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import math
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -61,6 +63,55 @@ def percentile(values: list[float], pct: float) -> float:
     ordered = sorted(values)
     rank = max(1, min(len(ordered), math.ceil(pct * len(ordered) / 100.0 - 1e-9)))
     return ordered[rank - 1]
+
+
+def daily_trend(capture_rows: Iterable[dict], card_rows: Iterable[dict], *, days: int = 14,
+                now: Optional[float] = None) -> list[dict]:
+    """The last `days` UTC days, oldest first — #29's "success rate and speed over time".
+
+    Two sources, both already written: the capture log (#23: how long the server
+    took, and whether the job failed) and the time-to-card log (#18: whether the
+    person got a card, and how long they waited). Counts and seconds only. Days with
+    nothing logged are kept, as zeros, so a quiet day shows as quiet.
+    """
+    now = time.time() if now is None else now
+    today = datetime.fromtimestamp(now, timezone.utc).date()
+    first = today - timedelta(days=days - 1)
+    buckets = {first + timedelta(days=i): {"durations": [], "failed": 0, "pastes": 0, "cards": []}
+               for i in range(days)}
+
+    def bucket(ts) -> Optional[dict]:
+        try:
+            return buckets.get(datetime.fromtimestamp(float(ts), timezone.utc).date())
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
+
+    for row in capture_rows:
+        b = bucket(row.get("finished_at") or row.get("created_at"))
+        if b is not None:
+            b["durations"].append(float(row.get("duration_s") or 0.0))
+            b["failed"] += row.get("state") == "failed"
+    for row in card_rows:
+        b = bucket(row.get("ts"))
+        if b is not None:
+            b["pastes"] += 1
+            if row.get("outcome") == "card":
+                b["cards"].append(float(row.get("seconds") or 0.0))
+
+    out = []
+    for day, b in buckets.items():
+        cards = b["cards"]
+        out.append({
+            "day": day.isoformat(),
+            "pastes": b["pastes"],
+            "cards": len(cards),
+            "card_rate": round(len(cards) / b["pastes"], 2) if b["pastes"] else None,
+            "ttc_median_s": round(percentile(cards, 50), 1) if cards else None,
+            "captures": len(b["durations"]),
+            "failed": b["failed"],
+            "capture_median_s": round(percentile(b["durations"], 50), 1) if b["durations"] else None,
+        })
+    return out
 
 
 def summarize(rows: Iterable[dict]) -> dict:
