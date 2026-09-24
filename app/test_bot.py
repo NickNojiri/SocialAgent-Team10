@@ -10,8 +10,18 @@ from types import SimpleNamespace
 import pytest
 
 import bot
+import setup_wizard
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _never_set_up(monkeypatch):
+    """Routing tests run as a server that never ran /setup — and never touch the network."""
+    async def defaults(guild_id, *, fresh=False):
+        return {"drop_channel_id": None, "home_city": "", "updated_at": 0}
+
+    monkeypatch.setattr(setup_wizard, "settings_for", defaults)
 
 
 class FakeChannel:

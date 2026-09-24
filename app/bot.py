@@ -39,6 +39,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 import cards
+import setup_wizard
 from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
 from tenant_auth import SCOPE_READ, mint_token, tenant_headers
 
@@ -160,9 +161,12 @@ async def on_message(message: discord.Message):
 
     urls = cards.extract_capture_urls(message.content or "")
 
-    # ── Capture: any IG/TikTok link, anywhere we can read — unless muted here.
+    # ── Capture: any IG/TikTok link, anywhere we can read — unless muted here,
+    # or the server picked one reels channel in /setup and this isn't it.
     if urls:
         if message.channel.id in MUTED_CHANNELS:
+            return
+        if not await setup_wizard.captures_here(message):
             return
         await handle_reel_capture(message, urls)
         return
@@ -352,26 +356,44 @@ def _welcome_embed() -> discord.Embed:
 
 # ── Slash Commands ─────────────────────────────────────────────────────────
 
-@tree.command(name="setup", description="How SpotBot works here + current settings")
+@tree.command(name="setup", description="Pick the reels channel and home city, or see how SpotBot works")
 async def setup_command(interaction: discord.Interaction):
-    muted_here = interaction.channel_id in MUTED_CHANNELS
-    embed = discord.Embed(
-        title="🧭 SpotBot in 20 seconds",
-        color=0x6EA8FE,
-        description=(
-            "**1. Paste** any Instagram reel link in any channel — I turn it into a votable spot card.\n"
-            f"**2. Vote** with 👍 — at **{cards.QUORUM}** I offer to put it on the server calendar.\n"
-            "**3. Plan** with `/plan` — I read the recent chat and pitch saved spots that match.\n\n"
-            "Capture is on everywhere by default. Use `/mute` in a channel to turn it off there."
-        ),
+    """Everyone sees how it works and the current settings; someone with Manage
+    Server also gets the wizard (Track C #8)."""
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "In DMs there's nothing to set up — just paste a reel link here.", ephemeral=True
+        )
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    gid = str(interaction.guild.id)
+    settings = await setup_wizard.settings_for(gid, fresh=True)
+    can_manage = bool(getattr(interaction.permissions, "manage_guild", False))
+    here = ("🔇 capture muted" if interaction.channel_id in MUTED_CHANNELS else "🎬 capturing links") + (
+        " · 💬 ambient suggestions on" if interaction.channel_id in SUGGESTION_CHANNELS else ""
     )
-    embed.add_field(
-        name="This channel",
-        value=("🔇 capture muted" if muted_here else "🎬 capturing links")
-        + (" · 💬 ambient suggestions on" if interaction.channel_id in SUGGESTION_CHANNELS else ""),
-        inline=False,
+    if not can_manage or settings is None:
+        await interaction.followup.send(
+            embed=setup_wizard.overview_embed(settings, can_manage=can_manage, here=here),
+            ephemeral=True,
+        )
+        return
+    wizard = setup_wizard.SetupWizard(gid, settings)
+    wizard.message = await interaction.followup.send(
+        embed=wizard.embed(), view=wizard, ephemeral=True, wait=True
     )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    """One welcome in the server's system channel, pointing at paste-and-go and /setup."""
+    channel = guild.system_channel
+    if channel is None or not channel.permissions_for(guild.me).send_messages:
+        return
+    try:
+        await channel.send(embed=setup_wizard.join_embed())
+    except Exception as exc:
+        log.debug(f"[setup] couldn't post the welcome in {guild.id}: {exc}")
 
 
 @tree.command(name="mute", description="Toggle reel capture in this channel")
