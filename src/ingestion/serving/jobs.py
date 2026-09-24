@@ -180,7 +180,7 @@ class Job:
     error: Optional[str] = None     # populated when state == "failed"
     attempts: int = 0               # pipeline runs, first try + retries (feature #26)
     recoveries: int = 0             # times requeued after a restart (ADR-0005: at most once)
-    last_error: Optional[str] = None  # the most recent transient failure, kept after a retry heals it
+    last_error: Optional[str] = None  # most recent failure of any kind, kept if a retry heals it
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
