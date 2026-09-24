@@ -3,6 +3,10 @@
 # "data/   # note" is read literally (spaces + #) and matches nothing. Keep
 # patterns bare; put any comment on its own line.
 .env
+# Any copy of .env (".env.old", ".env.local", a rotation temp file) holds live
+# secrets too. Only the template is tracked.
+.env.*
+!.env.example
 __pycache__/
 data/
 .venv/
