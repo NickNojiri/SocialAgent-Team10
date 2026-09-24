@@ -156,10 +156,20 @@ rate limits a place to live. Owner: Nick, Sprint 3–4.
 ### T6 · Secrets and data at rest · **mostly in place**
 
 `.env`, `data/` (Chroma, JSONL, `ig_session.json`, raw HTML) and `secrets/` are
-gitignored. Gaps: no retention policy for `data/raw/snapshot-*.html` (full HTML of
-every failed fetch) or for `data/inspirations.jsonl`; no user-data deletion command
-(Sprint 8, `/privacy`). The `.gitignore` line meant to ignore `.claude/` was stored as
+gitignored. The `.gitignore` line meant to ignore `.claude/` was stored as
 UTF-16 bytes and matched nothing — fixed 2026-09-15.
+
+**Deletion — built 2026-09-24 (#21).** `/privacy` explains what is kept; Manage
+Server can delete a server's data after typing its name (`POST /api/forget`, full
+tenant token, confirm repeats the id). It removes the catalog, settings, capture
+jobs and log lines, capture JSONL, snapshots, activity feed and rate counters, and
+VACUUMs `chroma.sqlite3` and `jobs.db` — both kept deleted rows' bytes in free
+pages until rebuilt (probed). `test_forget.py` byte-scans every file afterwards.
+Remaining gaps: no *time-based* retention yet; the old shared
+`data/inspirations.jsonl` and `data/raw/snapshot-*.html` from before per-server
+files have no server id, so their rows go only when no other server saved the
+same post, and old snapshots can't be attributed at all; on Windows the vector
+index folder is removed at the next admin start, not at once.
 
 ---
 
@@ -203,7 +213,7 @@ the whole file). Open: per-row label provenance and a second annotator
 | T3 | SSRF through pasted URLs | Elevation | open — Track A + Nick, Sprint 3 |
 | T4 | prompt injection into LLM stages | Tampering | accepted, mitigated |
 | T5 | capture floods | DoS | partial — Nick, Sprint 3–4 |
-| T6 | secrets / retention | Info disclosure | mostly in place; retention Sprint 8 |
+| T6 | secrets / retention | Info disclosure | mostly in place; deletion built (#21), time-based retention open |
 | T7 | XSS on web pages | Tampering | verified safe |
 | T8 | `:8010` exposure on the box | Info disclosure | open — set the key in the systemd unit, then bind `127.0.0.1` |
 | T9 | benchmark integrity | Repudiation | process controls in place |

@@ -97,16 +97,27 @@ measures how long a capture takes from the user's side.
 ### Phase 3 — Oct 27 – Nov 14 (120 pts)
 
 **#21 Privacy & data-deletion UX ★ 🔒 (60)**
-- [ ] `/privacy` explains in plain language what's stored, where, and for how long.
-- [ ] A one-command "delete this server's data" that actually purges the per-guild Chroma
+- [x] `/privacy` explains in plain language what's stored, where, and for how long.
+      *(`app/privacy.py`; each claim was checked against the code — e.g. /plan chat isn't
+      stored, place names can go to OpenStreetMap.)*
+- [x] A one-command "delete this server's data" that actually purges the per-guild Chroma
       collection **and** the raw files — not just hides them. Two platform stores also
       hold a server's `guild_id` and must be purged too: `data/jobs.db` (job rows, when
       `JOB_STORE=sqlite`) and `data/capture_jobs.jsonl` (one timing row per capture,
       written by default on the async path). Found in review 2026-09-24.
-- [ ] Require a confirmation step, and make it obvious the deletion is irreversible.
-- [ ] Test: create a test server's data, delete it, assert nothing comes back from any
-      endpoint or file path.
-- [ ] **Done when:** that end-to-end test passes. This is threat-model **T6**.
+      *(`POST /api/forget` + `serving/forget.py`: all of those, plus settings, the activity
+      feed and rate counters; both SQLite files are VACUUMed because a plain delete left
+      venue and voter names in free pages. Captures now write per-server files.)*
+- [x] Require a confirmation step, and make it obvious the deletion is irreversible.
+      *(Button → type the exact server name; the API also requires the id repeated.)*
+- [x] Test: create a test server's data, delete it, assert nothing comes back from any
+      endpoint or file path. *(`test_forget.py`: two servers in real stores; every
+      endpoint checked and every file byte-scanned; the other server untouched.)*
+- [x] **Done when:** that end-to-end test passes. This is threat-model **T6**.
+      *(Passes. Limits written down in THREAT_MODEL T6: pre-2026-09-24 shared files, and
+      the Windows index folder removed at next start. Track D still owes its own check
+      that one server can't trigger another's deletion — covered by test_admin_authz and
+      the bench, but it's their call.)*
 
 **#22 Usability fixes from the study (60)**
 - [ ] Run usability round 1 with **6–8 participants** who are not on the team. Script it:
