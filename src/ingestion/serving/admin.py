@@ -303,7 +303,14 @@ async def ingest(body: IngestBody, x_tenant_token: str | None = TenantToken):
 # Async capture (ADR-0004): enqueue, then poll. Same validation, same result
 # shape as /api/ingest — the bot opts in with INGEST_ASYNC=1. One worker unless
 # INGEST_WORKERS says otherwise (Whisper is CPU-bound; two captures contend).
-_jobs = JobQueue(_run_ingest, workers=int(os.getenv("INGEST_WORKERS", "").strip() or 1))
+# CAPTURE_LOG=off turns the timing log off; otherwise finished jobs append one
+# line each for scripts/summarize_captures.py (feature #23).
+_capture_log = os.getenv("CAPTURE_LOG", "").strip() or "data/capture_jobs.jsonl"
+_jobs = JobQueue(
+    _run_ingest,
+    workers=int(os.getenv("INGEST_WORKERS", "").strip() or 1),
+    log_path=None if _capture_log.lower() == "off" else Path(_capture_log),
+)
 
 
 @app.post("/api/jobs", status_code=202)

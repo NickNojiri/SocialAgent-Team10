@@ -5,12 +5,26 @@ network: the capture function is faked, the endpoints run under TestClient.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
+import json
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.ingestion.serving.jobs import JobQueue, QueueFull
+from src.ingestion.serving.jobs import (
+    JobQueue,
+    QueueFull,
+    capture_key,
+    normalize_capture_url,
+)
+
+_spec = importlib.util.spec_from_file_location(
+    "summarize_captures", Path(__file__).parent / "scripts" / "summarize_captures.py"
+)
+summarize_captures = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(summarize_captures)
 
 STAGES = ("fetching", "transcribing", "extracting", "saving", "done")
 
@@ -102,6 +116,92 @@ async def test_two_workers_run_two_jobs_at_once():
     release.set()
     await q.drain()
     assert sorted(active) == ["a", "b"]
+
+
+# ── Timing + capture statistics (feature #23) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_job_records_time_per_stage():
+    q = JobQueue(fake_run)
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+
+    assert set(job.stage_times) >= set(STAGES), job.stage_times
+    assert all(v >= 0 for v in job.stage_times.values())
+    # The stages account for the whole job, give or take the scheduler.
+    assert sum(job.stage_times.values()) == pytest.approx(job.duration_s, abs=0.5)
+    timing = job.to_dict()["timing"]
+    assert timing["duration_s"] >= 0 and "fetching" in timing["stages"]
+
+
+@pytest.mark.asyncio
+async def test_finished_jobs_are_appended_to_the_capture_log(tmp_path):
+    log = tmp_path / "nested" / "capture_jobs.jsonl"
+    q = JobQueue(fake_run, log_path=log)
+    q.submit(["https://www.instagram.com/reel/AAA/?igsh=xyz"], "g1")
+    q.submit(["https://x.test/2"], "g1")
+    await q.drain()
+
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 2
+    assert {r["state"] for r in rows} == {"done"}
+    assert all(r["duration_s"] >= 0 and r["stages"] for r in rows)
+    # The log is for operations: links are identified by key, nothing secret rides along.
+    assert all(len(r["url_keys"]) == r["urls"] for r in rows)
+    assert "token" not in log.read_text(encoding="utf-8").lower()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_capture_log_never_fails_a_job(tmp_path):
+    blocked = tmp_path / "file.txt"
+    blocked.write_text("not a directory", encoding="utf-8")
+    q = JobQueue(fake_run, log_path=blocked / "capture_jobs.jsonl")
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    assert job.state == "done"          # the write failed; the capture did not
+
+
+def test_normalized_links_and_keys_ignore_tracking_noise():
+    plain = "https://www.instagram.com/reel/ABC123/"
+    shared = "https://instagram.com/reel/ABC123?igsh=abc&utm_source=ig_web"
+    assert normalize_capture_url(plain) == normalize_capture_url(shared)
+    assert capture_key("g1", plain) == capture_key("g1", shared)
+    # Different post, and the same post in a different server, are different keys.
+    assert capture_key("g1", plain) != capture_key("g1", plain.replace("ABC123", "ZZZ999"))
+    assert capture_key("g1", plain) != capture_key("g2", plain)
+    assert normalize_capture_url("not a url") == "not a url"
+
+
+def test_summarize_captures_reports_durations_and_duplicates(tmp_path):
+    k1, k2 = capture_key("g1", "https://x.test/1"), capture_key("g1", "https://x.test/2")
+    rows = [
+        {"state": "done", "urls": 1, "url_keys": [k1], "duration_s": 12.0,
+         "stages": {"fetching": 8.0, "extracting": 4.0}},
+        {"state": "done", "urls": 1, "url_keys": [k1], "duration_s": 200.0,
+         "stages": {"fetching": 190.0, "extracting": 10.0}},
+        {"state": "failed", "urls": 1, "url_keys": [k2], "duration_s": 400.0,
+         "stages": {"fetching": 400.0}},
+    ]
+    log = tmp_path / "capture_jobs.jsonl"
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n{truncated", encoding="utf-8")
+
+    summary = summarize_captures.summarize(summarize_captures.read_rows(log))
+    assert summary["captures"] == 3                      # the truncated line is skipped
+    assert summary["states"] == {"done": 2, "failed": 1}
+    assert summary["duration_s"]["max"] == 400.0
+    assert summary["over_threshold"] == {"180s": 2, "300s": 1}
+    assert summary["stage_median_s"]["fetching"] == 190.0
+    assert summary["duplicates"] == {
+        "distinct_links": 2, "links_captured_more_than_once": 1, "wasted_captures": 1,
+    }
+    assert "duplicates" in summarize_captures.render(summary)
+
+
+def test_summarize_captures_handles_an_empty_log(tmp_path):
+    summary = summarize_captures.summarize(summarize_captures.read_rows(tmp_path / "none.jsonl"))
+    assert summary["captures"] == 0
+    assert "No captures logged yet" in summarize_captures.render(summary)
 
 
 # ── HTTP endpoints ──────────────────────────────────────────────────────────
