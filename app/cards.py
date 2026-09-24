@@ -917,6 +917,67 @@ def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
     return view
 
 
+# ── /browse filters (#35) ────────────────────────────────────────────────────
+# A spot's "area" is the location text from the post itself ("Pine Ave, Long
+# Beach, CA") — map coordinates are usually missing, so filtering by text is
+# what works today. A spot "has a date" when the reel named one or the group
+# locked it in.
+
+_STATE_OR_ZIP = re.compile(r"^(?:[A-Za-z]{2}|[A-Za-z]{2}\s+\d{5}(?:-\d{4})?|\d{5}(?:-\d{4})?)$")
+_COUNTRY = {"usa", "us", "united states", "united states of america"}
+
+
+def area_parts(text: str) -> list[str]:
+    """'123 Pine Ave, Long Beach, CA 90802' → ['Long Beach']: the comma pieces
+    worth calling an area — no street addresses, state codes, zips or country."""
+    parts = []
+    for raw in str(text or "").split(","):
+        part = " ".join(raw.split())
+        if (part and not _STATE_OR_ZIP.match(part) and part.casefold() not in _COUNTRY
+                and not any(ch.isdigit() for ch in part)):
+            parts.append(part)
+    return parts
+
+
+def area_suggestions(events: list[dict], typed: str = "", limit: int = 25) -> list[str]:
+    """Areas this server's spots are in, most spots first, matching what's typed
+    so far — the /browse autocomplete, so nobody has to guess the spelling."""
+    counts: dict[str, int] = {}
+    shown: dict[str, str] = {}
+    for ev in events:
+        for part in {p.casefold(): p for p in area_parts(ev.get("area", ""))}.values():
+            key = part.casefold()
+            counts[key] = counts.get(key, 0) + 1
+            shown.setdefault(key, part)
+    typed = " ".join(str(typed or "").split()).casefold()
+    ranked = sorted((k for k in counts if typed in k), key=lambda k: (-counts[k], k))
+    return [shown[k][:100] for k in ranked[:limit]]
+
+
+def has_date(ev: dict) -> bool:
+    return bool(ev.get("start_epoch") or ev.get("locked_end_epoch")
+                or ev.get("schedule") == "scheduled")
+
+
+def filter_spots(events: list[dict], *, category: Optional[str] = None,
+                 area: Optional[str] = None, dated: Optional[bool] = None) -> list[dict]:
+    want_area = " ".join(str(area or "").split()).casefold()
+    return [
+        ev for ev in events
+        if (not category or category == "all" or ev.get("category") == category)
+        and (not want_area or want_area in " ".join(str(ev.get("area") or "").split()).casefold())
+        and (dated is None or has_date(ev) == dated)
+    ]
+
+
+def _short_date(ev: dict) -> str:
+    epoch = ev.get("start_epoch") or ev.get("locked_end_epoch")
+    if not epoch:
+        return ""
+    when = datetime.fromtimestamp(int(epoch), ZoneInfo(BOT_TZ))
+    return f"{when:%a %b} {when.day}"
+
+
 # ── /browse pager ────────────────────────────────────────────────────────────
 
 
@@ -924,11 +985,13 @@ def _browse_page_count(total: int) -> int:
     return max(1, (total + BROWSE_PAGE_SIZE - 1) // BROWSE_PAGE_SIZE)
 
 
-def build_browse_embed(events: list[dict], page: int, *, label: Optional[str] = None) -> discord.Embed:
+def build_browse_embed(events: list[dict], page: int, *, label: Optional[str] = None,
+                       of_total: Optional[int] = None) -> discord.Embed:
     """One page of the catalog as a compact numbered list.
 
     /browse is a discovery surface, so a page is a scannable list rather than a
     stack of full cards — BROWSE_PAGE_SIZE per page, the ◀ ▶ pager does the rest.
+    `of_total` is the whole catalog's size when filters narrowed it.
     """
     total = len(events)
     pages = _browse_page_count(total)
@@ -936,9 +999,10 @@ def build_browse_embed(events: list[dict], page: int, *, label: Optional[str] = 
     start = page * BROWSE_PAGE_SIZE
     chunk = events[start : start + BROWSE_PAGE_SIZE]
 
-    scope = f" in {label}" if label else " saved"
+    count = f"{total} of {of_total}" if of_total is not None and of_total != total else f"{total}"
+    scope = f" — {label}" if label else " saved"
     embed = discord.Embed(
-        title=f"📖 {total} spot{'s' if total != 1 else ''}{scope}",
+        title=f"📖 {count} spot{'s' if (of_total or total) != 1 else ''}{scope}",
         color=0x6EA8FE,
     )
     lines: list[str] = []
@@ -947,10 +1011,16 @@ def build_browse_embed(events: list[dict], page: int, *, label: Optional[str] = 
         url = ev.get("source_url")
         linked = f"[{venue}]({url})" if url else f"**{venue}**"
         row = f"`{rank:>2}` {emoji_for(ev.get('category', 'other'))} {linked} · {int(ev.get('votes', 0))} 👍"
+        where = area_parts(ev.get("area", ""))
+        if where:
+            row += f" · 📍 {where[-1][:28]}"
+        when = _short_date(ev)
+        if when:
+            row += f" · 📅 {when}"
         note = ev.get("blurb") or ev.get("theme") or ""
         if note:
             note = " ".join(str(note).split())
-            row += f"\n{note[:99] + '…' if len(note) > 100 else note}"
+            row += f"\n{note[:89] + '…' if len(note) > 90 else note}"
         lines.append(row)
     embed.description = "\n\n".join(lines) or "Nothing here yet — paste a reel!"
     embed.set_footer(text=f"Page {page + 1}/{pages} · sorted by 👍 · /share for the full web list")
@@ -961,10 +1031,12 @@ class BrowseView(discord.ui.View):
     """◀ ▶ pager for /browse. Transient — no cross-restart persistence needed,
     so it's a plain View (not a DynamicItem) that disables itself on timeout."""
 
-    def __init__(self, events: list[dict], *, label: Optional[str] = None, timeout: float = 300):
+    def __init__(self, events: list[dict], *, label: Optional[str] = None,
+                 of_total: Optional[int] = None, timeout: float = 300):
         super().__init__(timeout=timeout)
         self.events = events
         self.label = label
+        self.of_total = of_total
         self.page = 0
         self.pages = _browse_page_count(len(events))
         self.message: Optional[discord.Message] = None
@@ -975,7 +1047,7 @@ class BrowseView(discord.ui.View):
         self.next_page.disabled = self.page >= self.pages - 1
 
     def embed(self) -> discord.Embed:
-        return build_browse_embed(self.events, self.page, label=self.label)
+        return build_browse_embed(self.events, self.page, label=self.label, of_total=self.of_total)
 
     async def _turn(self, interaction: discord.Interaction, delta: int) -> None:
         self.page = max(0, min(self.page + delta, self.pages - 1))

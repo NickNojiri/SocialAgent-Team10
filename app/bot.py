@@ -30,8 +30,9 @@ if os.getenv("BOT_INSECURE_SSL") == "1":
     ssl._create_default_https_context = _insecure_ssl_ctx
 
 import json
+import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import discord
 import httpx
@@ -400,6 +401,7 @@ async def privacy_command(interaction: discord.Interaction):
     async def forget_locally() -> None:
         _forget_local_config(guild)
         setup_wizard._CACHE.pop(gid, None)
+        _AREA_CACHE.pop(gid, None)
 
     view = privacy.PrivacyView(
         gid, guild.name if guild is not None else privacy.DM_CONFIRM_WORD, forget_locally
@@ -529,44 +531,100 @@ _BROWSE_CHOICES = [
 ]
 
 
-@tree.command(name="browse", description="Flip through the saved spots — by category or all")
-@app_commands.describe(category="What kind of spots?")
-@app_commands.choices(category=_BROWSE_CHOICES)
+_WHEN_CHOICES = [
+    app_commands.Choice(name="📅 has a date", value="dated"),
+    app_commands.Choice(name="🗓️ no date yet", value="undated"),
+]
+
+# The area autocomplete fires on every keystroke; one catalog fetch a minute is plenty.
+_AREA_CACHE_S = 60.0
+_AREA_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+
+async def _fetch_events(gid: str) -> list[dict]:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"{INGEST_URL}/api/events", params={"guild_id": gid}, headers=tenant_headers(gid)
+        )
+        resp.raise_for_status()
+        return resp.json().get("events", [])
+
+
+def _browse_label(category, area: Optional[str], when) -> Optional[str]:
+    bits = []
+    if category is not None and category.value != "all":
+        bits.append(category.name)
+    if area and area.strip():
+        bits.append(f"📍 {' '.join(area.split())[:40]}")
+    if when is not None:
+        bits.append(when.name)
+    return " · ".join(bits) or None
+
+
+@tree.command(name="browse", description="Flip through the saved spots — filter by kind, area or date")
+@app_commands.describe(
+    category="What kind of spots?",
+    area="Only spots in this area — start typing to see this server's areas",
+    when="Only spots with a date set, or only ones without",
+)
+@app_commands.choices(category=_BROWSE_CHOICES, when=_WHEN_CHOICES)
 async def browse_command(
-    interaction: discord.Interaction, category: app_commands.Choice[str] = None
+    interaction: discord.Interaction,
+    category: app_commands.Choice[str] = None,
+    area: Optional[str] = None,
+    when: app_commands.Choice[str] = None,
 ):
     await interaction.response.defer(thinking=True)
+    gid = cards.guild_key(interaction)
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(
-                f"{INGEST_URL}/api/events",
-                params={"guild_id": cards.guild_key(interaction)},
-                headers=tenant_headers(cards.guild_key(interaction)),
-            )
-            resp.raise_for_status()
-            events = resp.json().get("events", [])
+        events = await _fetch_events(gid)
     except Exception as exc:
         log.warning(f"[browse] fetch failed: {exc}")
         await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
         return
+    _AREA_CACHE[gid] = (time.monotonic(), events)
 
-    wanted = category.value if category else "all"
-    if wanted != "all":
-        events = [e for e in events if e.get("category") == wanted]
-    if not events:
-        label = category.name if category else "anything"
-        await interaction.followup.send(f"Nothing saved for {label} yet — paste a reel!")
+    shown = cards.filter_spots(
+        events,
+        category=category.value if category else None,
+        area=area,
+        dated=None if when is None else when.value == "dated",
+    )
+    label = _browse_label(category, area, when)
+    if not shown:
+        if not events:
+            await interaction.followup.send("The catalog is empty — paste a reel to start it!")
+        else:
+            await interaction.followup.send(
+                f"Nothing matches {discord.utils.escape_markdown(label or 'that')} yet — "
+                "try fewer filters, or `/browse` on its own for everything."
+            )
         return
 
-    events.sort(key=lambda e: -int(e.get("votes", 0)))
-    label = category.name if category and wanted != "all" else None
-    view = cards.BrowseView(events, label=label)
+    shown.sort(key=lambda e: -int(e.get("votes", 0)))
+    view = cards.BrowseView(shown, label=label, of_total=len(events) if label else None)
     if view.pages == 1:
         await interaction.followup.send(embed=view.embed())
     else:
         view.message = await interaction.followup.send(
             embed=view.embed(), view=view, wait=True
         )
+
+
+@browse_command.autocomplete("area")
+async def _browse_area_autocomplete(interaction: discord.Interaction, current: str):
+    """This server's own areas, most spots first — so nobody guesses a spelling."""
+    gid = cards.guild_key(interaction)
+    hit = _AREA_CACHE.get(gid)
+    if hit is None or time.monotonic() - hit[0] > _AREA_CACHE_S:
+        try:
+            events = await _fetch_events(gid)
+        except Exception:
+            return []
+        _AREA_CACHE[gid] = (time.monotonic(), events)
+    else:
+        events = hit[1]
+    return [app_commands.Choice(name=a, value=a) for a in cards.area_suggestions(events, current)]
 
 
 @tree.command(name="share", description="Get the link to this server's spot catalog page")
