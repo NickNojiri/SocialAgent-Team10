@@ -47,6 +47,9 @@ BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 INGEST_ASYNC = os.getenv("INGEST_ASYNC", "").strip().lower() in ("1", "true", "on", "yes")
 JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
 JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
+# A brief admin restart or network wobble should not abandon a running job.
+# Three consecutive failed polls means the bot no longer has a trustworthy view.
+JOB_POLL_ERROR_LIMIT = 3
 # Past the per-URL budget (config.capture_budget_s) a capture is unusually slow
 # but not failed. Say so, and keep saying so, instead of showing a stage line
 # that hasn't moved in minutes (feature #25).
@@ -63,7 +66,19 @@ _STAGE_TEXT = {
 
 
 class CaptureFailed(RuntimeError):
-    """The capture job ran and failed — as opposed to the service being unreachable."""
+    """The capture could not produce a result the bot can render."""
+
+
+class CaptureQueueFull(CaptureFailed):
+    """The admin service has no room for another waiting capture."""
+
+
+class CaptureLost(CaptureFailed):
+    """The admin service no longer has the job the bot was polling."""
+
+
+class CapturePollingFailed(CaptureFailed):
+    """Repeated transient poll failures hid the state of a running job."""
 
 
 def stage_line(job: dict, total: int, elapsed_s: float = 0.0) -> str:
@@ -103,6 +118,8 @@ async def capture_urls(
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload, headers=headers)
+        if resp.status_code == 429:
+            raise CaptureQueueFull("Lots of captures in line — try again in a minute.")
         resp.raise_for_status()
         # A duplicate paste, or the Retry button, gets the id of the capture
         # that is already running rather than starting a second one — the
@@ -111,10 +128,34 @@ async def capture_urls(
         started = time.monotonic()
         deadline = started + JOB_WAIT_S
         last: Optional[tuple] = None
+        poll_errors = 0
         while time.monotonic() < deadline:
             await asyncio.sleep(JOB_POLL_S)
-            resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}", headers=headers)
+            try:
+                resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}", headers=headers)
+            except httpx.TransportError as exc:
+                poll_errors += 1
+                if poll_errors >= JOB_POLL_ERROR_LIMIT:
+                    raise CapturePollingFailed(
+                        "I lost contact while checking this capture — it may still be running. "
+                        "Try again in a minute."
+                    ) from exc
+                continue
+            if resp.status_code == 404:
+                raise CaptureLost(
+                    "The catalog no longer knows this capture — it may have restarted without "
+                    "JOB_STORE=sqlite. Try again."
+                )
+            if resp.status_code >= 500:
+                poll_errors += 1
+                if poll_errors >= JOB_POLL_ERROR_LIMIT:
+                    raise CapturePollingFailed(
+                        "I lost contact while checking this capture — it may still be running. "
+                        "Try again in a minute."
+                    )
+                continue
             resp.raise_for_status()
+            poll_errors = 0
             job = resp.json()
             if job["state"] == "done":
                 return job.get("result") or {}
@@ -647,6 +688,9 @@ class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:ret
         try:
             data = await capture_urls([self.url], guild_key(interaction))
             events = data.get("events", [])
+        except (CaptureQueueFull, CaptureLost, CapturePollingFailed) as exc:
+            await interaction.followup.send(f"⚠️ {exc}")
+            return
         except CaptureFailed as exc:
             await interaction.followup.send(f"⚠️ Capture failed again — {exc}")
             return

@@ -208,6 +208,14 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
 
     try:
         data = await cards.capture_urls(urls, cards.guild_key(message), progress=progress)
+    except (cards.CaptureQueueFull, cards.CaptureLost, cards.CapturePollingFailed) as exc:
+        log.warning(f"[capture] job unavailable: {exc}")
+        await _swap_reaction(message, "⏳", "⚠️")
+        await status.edit(
+            content=f"⚠️ {exc}",
+            view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
+        )
+        return
     except cards.CaptureFailed as exc:
         log.warning(f"[capture] job failed: {exc}")
         await _swap_reaction(message, "⏳", "⚠️")

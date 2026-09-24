@@ -3,8 +3,12 @@ POST /api/ingest path and the INGEST_ASYNC=1 enqueue-and-poll path (ADR-0004).
 httpx is replaced by a scripted fake; nothing touches the network.
 """
 
+from types import SimpleNamespace
+
+import httpx
 import pytest
 
+import bot
 import cards
 from tenant_auth import tenant_headers
 
@@ -48,7 +52,10 @@ class _FakeClient:
     async def get(self, url, headers=None):
         self.calls.append(("GET", url))
         self.headers.append(headers)
-        return _Resp(self.gets.pop(0))
+        item = self.gets.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item if isinstance(item, _Resp) else _Resp(item)
 
 
 @pytest.fixture(autouse=True)
@@ -121,6 +128,101 @@ async def test_async_path_raises_capture_failed_on_a_failed_job(monkeypatch):
 
     with pytest.raises(cards.CaptureFailed, match="chromium crashed"):
         await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1")
+
+
+async def test_full_queue_gets_its_own_bot_message(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    fake = _FakeClient(_Resp({"detail": "capture queue is full"}, 429))
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    class Status:
+        def __init__(self):
+            self.edits = []
+
+        async def edit(self, **kwargs):
+            self.edits.append(kwargs)
+
+    status = Status()
+    message = SimpleNamespace(
+        guild=SimpleNamespace(id=1),
+        author=SimpleNamespace(display_name="nick"),
+    )
+
+    async def reply(*args, **kwargs):
+        return status
+
+    async def no_reaction(*args, **kwargs):
+        return None
+
+    message.reply = reply
+    monkeypatch.setattr(bot, "_add_reaction", no_reaction)
+    monkeypatch.setattr(bot, "_swap_reaction", no_reaction)
+
+    await bot.handle_reel_capture(message, ["https://www.instagram.com/reel/A/"])
+
+    assert status.edits[-1]["content"] == (
+        "⚠️ Lots of captures in line — try again in a minute."
+    )
+
+
+async def test_one_poll_timeout_is_tolerated(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    request = httpx.Request("GET", f"{cards.ADMIN_URL}/api/jobs/j1")
+    result = {"events": [{"id": "e1"}], "added": 1}
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued"}, 202),
+        gets=[
+            httpx.ReadTimeout("poll timed out", request=request),
+            _job("done", "done", 1, 1, result=result),
+        ],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+    assert all(header == tenant_headers("g1") for header in fake.headers)
+
+
+async def test_one_poll_5xx_is_tolerated(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    result = {"events": [], "added": 0}
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued"}, 202),
+        gets=[
+            _Resp({"detail": "restarting"}, 503),
+            _job("done", "done", 1, 1, result=result),
+        ],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+
+
+async def test_three_consecutive_poll_errors_give_an_honest_failure(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued"}, 202),
+        gets=[_Resp({}, 503), _Resp({}, 503), _Resp({}, 503)],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    with pytest.raises(cards.CapturePollingFailed, match="may still be running"):
+        await cards.capture_urls(["https://x.test/1"], "g1")
+
+
+async def test_poll_404_explains_volatile_restart_loss(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued"}, 202),
+        gets=[_Resp({"detail": "job not found"}, 404)],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    with pytest.raises(cards.CaptureLost, match="without JOB_STORE=sqlite"):
+        await cards.capture_urls(["https://x.test/1"], "g1")
 
 
 async def test_async_path_gives_up_after_the_wait_budget(monkeypatch):
