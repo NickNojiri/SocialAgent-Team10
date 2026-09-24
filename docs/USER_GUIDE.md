@@ -115,7 +115,7 @@ Three things make the picks smarter:
 | Command | What it does |
 |---|---|
 | `/setup` | Pick the reels channel and home city *(Manage Server)*; everyone else sees the explainer and current settings (only you see it) |
-| `/browse` | Flip through saved spots by category (🍽️ 🍸 🎶 …) as votable cards |
+| `/browse` | Flip through saved spots — narrow by kind (🍽️ 🍸 🎶 …), **area** (start typing; it suggests your server's areas) and **when** (📅 has a date / 🗓️ no date yet) |
 | `/catalog` | The leaderboard — your server's top-voted spots |
 | `/digest` | One-message summary: spot count, top picks, nights out |
 | `/share` | The link to your server's public catalog web page |

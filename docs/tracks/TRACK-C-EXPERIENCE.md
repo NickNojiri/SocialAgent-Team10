@@ -133,8 +133,13 @@ measures how long a capture takes from the user's side.
 - [ ] **Done when:** no user-visible failure is a bare error or a silent nothing.
 
 **#35 Catalog browsing v2 (60)**
-- [ ] `/browse` filters by category, area, and whether a spot has a date set.
-- [ ] **Done when:** the filters work on a server with 50+ spots without a wall of text.
+- [x] `/browse` filters by category, area, and whether a spot has a date set.
+      *(Area = the post's own location text, with autocomplete from this server's
+      areas — coordinates are usually missing, so text is what works today. "Has a
+      date" = the reel named one, or the group locked it in.)*
+- [x] **Done when:** the filters work on a server with 50+ spots without a wall of text.
+      *(`app/test_browse.py` runs a 60-spot catalog: 10 two-line rows a page, under
+      2,500 characters, each row showing 📍 area and 📅 date.)*
 
 **#37 Accessibility pass (50)**
 - [ ] Alt text on card images, readable contrast, screen-reader labels on cards and the
