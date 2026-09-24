@@ -124,10 +124,11 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 ## 4. Concurrency and time budgets
 
 - The default bot path is asynchronous: it enqueues through `POST /api/jobs` and polls
-  `GET /api/jobs/{id}`. One timeout or 5xx response while polling does not abandon the
-  capture; three consecutive poll failures stop the bot with an honest warning that
-  the server-side job may still be running. A 404 says the catalog may have restarted
-  without `JOB_STORE=sqlite`, because the in-memory store cannot recover that job.
+  `GET /api/jobs/{id}`. Timeouts and 5xx responses do not abandon the capture until the
+  outage has lasted 60 consecutive seconds (`INGEST_POLL_ERROR_S`); a successful poll
+  resets that window. After the window, the bot warns that the server-side job may
+  still be running. A 404 says the catalog restarted and lost the capture; operator
+  logs explain that `JOB_STORE=sqlite` preserves jobs across restarts.
   The admin app has one in-process worker by default
   (`INGEST_WORKERS=1`) and accepts at most 50 waiting jobs; a full queue returns 429.
   Finished jobs remain pollable for one hour. Whisper is CPU-bound, so increasing the
@@ -165,6 +166,7 @@ Job-queue switches (unset values use these code defaults):
 | Variable | Process | Default | Effect |
 |---|---|---|---|
 | `INGEST_ASYNC` | bot | enabled | Enqueues and polls capture jobs; set to `0` to use synchronous `/api/ingest`. |
+| `INGEST_POLL_ERROR_S` | bot | `60` seconds | Keeps polling through a continuous timeout/5xx outage for this long; a successful poll resets the window. |
 | `JOB_STORE` | admin | in-memory | Set to `sqlite` to persist jobs and enable restart recovery. |
 | `JOB_DB` | admin | `data/jobs.db` | SQLite file used only when `JOB_STORE=sqlite`. |
 | `INGEST_MAX_RETRIES` | admin | `2` | Maximum retries after the first pipeline attempt. `0` disables retries; a retryable link result records `could not load N link(s); retries disabled`. |
