@@ -174,7 +174,9 @@ guild call (fail closed, 503), all existing tests pass.
 **#29 Capture health dashboard + load test (100)**
 - [ ] Capture success rate and speed over time, from Track A's harness artifact, Track
       C's time-to-card metric, and #23's stage timings — not from new, competing
-      instrumentation. *(So far only #23's timings, and as totals, not over time.)*
+      instrumentation. *(/dash "Last 14 days": per UTC day, pastes → cards, card rate,
+      median time to card (#18), captures, failures, median capture time (#23) — chart +
+      table, `capture_stats.daily_trend`. Still missing: Track A's harness artifact.)*
 - [x] Chart what `scripts/summarize_captures.py` already computes: duration distribution,
       captures past 3 and 5 minutes, duplicate captures. *(/dash "Capture health" tiles and
       a per-stage table, from the same `serving/capture_stats.py` the script now uses.)*
