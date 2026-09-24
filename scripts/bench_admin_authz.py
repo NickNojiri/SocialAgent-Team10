@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import src.ingestion.serving.admin as admin  # noqa: E402
 import src.ingestion.serving.app as serving_app  # noqa: E402
+from src.ingestion.serving.feedback import FeedbackStore  # noqa: E402
 from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
 from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token  # noqa: E402
@@ -42,6 +43,7 @@ admin._sink_for = lambda guild_id="", **_: StubSink()
 admin._purge_catalog = lambda guild_id: {"spots": 0}       # never the real data/
 admin._jobs = JobQueue(_fake_capture)
 admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_settings_")))
+admin._feedback = FeedbackStore(Path(tempfile.mkdtemp(prefix="bench_feedback_")))
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 
@@ -86,6 +88,13 @@ def run(client):
     recommend = lambda g, t: rec.post("/recommend", json={"channel_id": "c", "message": "tacos", "guild_id": g}, headers=hdr(t))  # noqa: E731
     plan = lambda g, t: rec.post("/plan", json={"channel_id": "c", "transcript": "a: tacos?", "guild_id": g}, headers=hdr(t))  # noqa: E731
     settings = lambda g, t: client.get(f"/api/settings?guild_id={g}", headers=hdr(t))  # noqa: E731
+    survey = lambda g, t: client.post(  # noqa: E731
+        "/api/survey", json={"guild_id": g, "answers": [3] * 10}, headers=hdr(t)
+    )
+    survey_results = lambda g, t: client.get(f"/api/survey?guild_id={g}", headers=hdr(t))  # noqa: E731
+    feedback = lambda g, t: client.post(  # noqa: E731
+        "/api/feedback", json={"guild_id": g, "kind": "bug", "text": "x"}, headers=hdr(t)
+    )
     forget = lambda g, t: client.post(  # noqa: E731
         "/api/forget", json={"guild_id": g, "confirm": g}, headers=hdr(t)
     )
@@ -144,6 +153,10 @@ def run(client):
         ("delete another guild's data", lambda: forget(THEIRS, MINE_RW)),
         ("delete a guild's data with a share token", lambda: forget(MINE, MINE_R)),
         ("delete a guild's data with no token", lambda: forget(MINE, None)),
+        ("stuff another guild's SUS survey", lambda: survey(THEIRS, MINE_RW)),
+        ("read another guild's SUS results", lambda: survey_results(THEIRS, MINE_RW)),
+        ("read SUS results with a share token", lambda: survey_results(MINE, MINE_R)),
+        ("post feedback into another guild", lambda: feedback(THEIRS, MINE_RW)),
     ]
 
     authentic = [
@@ -164,6 +177,9 @@ def run(client):
         ("query /plan for my guild", lambda: plan(MINE, MINE_RW)),
         ("save my /setup settings", lambda: save_settings(MINE, MINE_RW)),
         ("read my /setup settings", lambda: settings(MINE, MINE_RW)),
+        ("answer the SUS survey in my guild", lambda: survey(MINE, MINE_RW)),
+        ("read my guild's SUS results", lambda: survey_results(MINE, MINE_RW)),
+        ("send feedback in my guild", lambda: feedback(MINE, MINE_RW)),
         ("delete my own guild's data", lambda: forget(MINE, MINE_RW)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]

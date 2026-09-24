@@ -35,6 +35,7 @@ from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
 )
+from src.ingestion.serving.feedback import FeedbackError, FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError
 from src.ingestion.serving.jobs import (
     JobQueue,
@@ -789,6 +790,55 @@ def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
         raise HTTPException(400, str(exc))
 
 
+# ── Feedback and the SUS survey (Track C #20) ───────────────────────────────
+# Typed by the person on purpose, stored without a user id (serving/feedback.py).
+
+_feedback = FeedbackStore(Path("data/feedback"))
+
+
+class FeedbackBody(BaseModel):
+    guild_id: str
+    kind: str
+    text: str
+
+
+class SurveyBody(BaseModel):
+    guild_id: str
+    answers: list[int]
+    participant: str = ""
+
+
+@app.post("/api/feedback")
+def post_feedback(body: FeedbackBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token)
+    try:
+        _feedback.add_feedback(body.guild_id, body.kind, body.text)
+    except FeedbackError as exc:
+        raise HTTPException(400, str(exc))
+    return {"saved": True}
+
+
+@app.post("/api/survey")
+def post_survey(body: SurveyBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token)
+    try:
+        row = _feedback.add_sus(body.guild_id, body.answers, body.participant)
+    except FeedbackError as exc:
+        raise HTTPException(400, str(exc))
+    return {"score": row["score"]}
+
+
+@app.get("/api/survey")
+def survey_summary(guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    """SUS responses for one server: count, mean, SD and each score — no answers
+    by name, because none are stored by name."""
+    authorize(guild_id, x_tenant_token)
+    try:
+        return _feedback.sus_summary(guild_id)
+    except FeedbackError as exc:
+        raise HTTPException(400, str(exc))
+
+
 # ── Delete a server's data (Track C #21, threat model T6) ───────────────────
 
 
@@ -834,6 +884,7 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
         raise HTTPException(409, "a capture for this server is still running — try again once it finishes")
     report = {"catalog": _purge_catalog(gid)}
     report["settings"] = _guild_settings.delete(gid)
+    report["feedback_rows"] = _feedback.delete(gid)
     report["jobs"] = _jobs.forget_guild(gid)
     kept = [entry for entry in _CAPTURE_LOG if entry.get("guild_id") != gid]
     report["activity_entries"] = len(_CAPTURE_LOG) - len(kept)

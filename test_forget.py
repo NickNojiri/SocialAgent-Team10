@@ -20,6 +20,7 @@ import src.ingestion.serving.admin as admin
 import src.ingestion.serving.app as serving_app
 from src.ingestion.serving import forget as data_purge
 from src.ingestion.serving.capture_limits import CaptureRateLimiter
+from src.ingestion.serving.feedback import FeedbackStore
 from src.ingestion.serving.guild_settings import DEFAULTS, GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue, SqliteJobStore
 from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
@@ -69,6 +70,7 @@ def world(tmp_path, monkeypatch):
                         lambda s, collection_name=None: ChromaSink(s, embedder=_embed,
                                                                    collection_name=collection_name))
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(data / "guild_settings"))
+    monkeypatch.setattr(admin, "_feedback", FeedbackStore(data / "feedback"))
     monkeypatch.setattr(admin, "_JSONL_DIR", data / "inspirations")
     monkeypatch.setattr(admin, "_LEGACY_JSONL", data / "inspirations.jsonl")
     monkeypatch.setattr(admin, "_RAW_ROOT", data / "raw")
@@ -103,6 +105,10 @@ def _seed(client, guild, venue, voter, city, url=SECRETS["url"]):
     client.post("/api/manual", json={"guild_id": guild, "venue": SHARED[0], "theme": SHARED[1]},
                 headers=_hdr(guild))
     client.put("/api/settings", json={"guild_id": guild, "home_city": city}, headers=_hdr(guild))
+    client.post("/api/feedback", json={"guild_id": guild, "kind": "bug",
+                                       "text": f"the card for {venue} was wrong"}, headers=_hdr(guild))
+    client.post("/api/survey", json={"guild_id": guild, "answers": [4, 2] * 5,
+                                     "participant": "P1"}, headers=_hdr(guild))
     return job_id, spot["id"]
 
 
@@ -140,6 +146,7 @@ def test_deleting_a_server_leaves_nothing_behind(world):
     assert report["catalog"]["shared_posts_kept"] == 1, report
     assert report["settings"] is True and report["jobs"]["stored_jobs"] == 1, report
     assert report["jobs"]["log_lines"] == 1 and report["activity_entries"] == 1, report
+    assert report["feedback_rows"] == 2, report
 
     # Nothing comes back from any endpoint...
     assert client.get(f"/api/events?guild_id={A}", headers=_hdr(A)).json()["events"] == []
@@ -147,6 +154,7 @@ def test_deleting_a_server_leaves_nothing_behind(world):
     assert client.get(f"/api/settings?guild_id={A}", headers=_hdr(A)).json()["settings"] == DEFAULTS
     assert client.get(f"/api/jobs?guild_id={A}", headers=_hdr(A)).json()["jobs"] == []
     assert client.get(f"/api/jobs/{job_a}", headers=_hdr(A)).status_code == 404
+    assert client.get(f"/api/survey?guild_id={A}", headers=_hdr(A)).json()["responses"] == 0
     assert A not in client.get("/api/stats").text
 
     # ...or from any file: not a venue, a voter's name, the city, the link, or the server id.

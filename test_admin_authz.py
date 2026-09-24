@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 import src.ingestion.serving.admin as admin
 import src.ingestion.serving.app as serving_app
 from src.ingestion.serving.capture_limits import CaptureRateLimiter
+from src.ingestion.serving.feedback import FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_READ, mint_token
@@ -74,6 +75,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_jobs", JobQueue(_never_ingest))
     monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter())
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
+    monkeypatch.setattr(admin, "_feedback", FeedbackStore(tmp_path / "feedback"))
     with TestClient(admin.app) as c:
         yield c
 
@@ -220,6 +222,27 @@ def test_settings_writes_are_tenant_scoped(client):
 def test_settings_reads_need_the_full_token(client):
     """A share link goes to people outside the server; it doesn't get the settings."""
     url = f"/api/settings?guild_id={MINE}"
+    assert client.get(url).status_code == 403
+    assert client.get(url, headers=hdr(mint_token(THEIRS))).status_code == 403
+    assert client.get(url, headers=hdr(mint_token(MINE, scope=SCOPE_READ))).status_code == 403
+    assert client.get(url, headers=hdr(mint_token(MINE))).status_code == 200
+
+
+@pytest.mark.parametrize("path, body", [
+    ("/api/feedback", {"kind": "idea", "text": "a map view"}),
+    ("/api/survey", {"answers": [3] * 10, "participant": "P1"}),
+])
+def test_feedback_and_survey_writes_are_tenant_scoped(client, path, body):
+    """#20: nobody can stuff another server's survey results or feedback."""
+    assert client.post(path, json={**body, "guild_id": MINE}).status_code == 403
+    assert client.post(path, json={**body, "guild_id": THEIRS}, headers=hdr(mint_token(MINE))).status_code == 403
+    read_only = mint_token(MINE, scope=SCOPE_READ)
+    assert client.post(path, json={**body, "guild_id": MINE}, headers=hdr(read_only)).status_code == 403
+    assert client.post(path, json={**body, "guild_id": MINE}, headers=hdr(mint_token(MINE))).status_code == 200
+
+
+def test_survey_results_need_the_full_token(client):
+    url = f"/api/survey?guild_id={MINE}"
     assert client.get(url).status_code == 403
     assert client.get(url, headers=hdr(mint_token(THEIRS))).status_code == 403
     assert client.get(url, headers=hdr(mint_token(MINE, scope=SCOPE_READ))).status_code == 403
