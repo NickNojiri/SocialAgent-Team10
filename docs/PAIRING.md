@@ -72,13 +72,18 @@ EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
 ### Lane 2 — Claude drives, Codex reviews
 
 ```text
-TASKS:            CODEX_TASKS.md Tasks 3, 4, 5a, 5b — all done. Lane 2 is idle; what's left
-                  on Nick's platform list is #11 staging and the ADR-0005 evidence (both
-                  need Nick's machine or accounts).
+TASKS:            CODEX_TASKS.md Tasks 3, 4, 5a, 5b — all done. Then Track C (Nick took it
+                  over, 2026-09-24), hardest first — all buildable features done:
+                  #8 /setup wizard, #21 /privacy + delete, #35 /browse filters, #20 /feedback
+                  + SUS survey, #37 accessibility, #36 distance + map, #18 time-to-card,
+                  #19 failure messages. Each: platform commit, app/ commit, docs commit.
+                  Left for people: #22 study; #8 stopwatch run; #37 two screen-reader rows;
+                  #19 Track A's final taxonomy → serving/failures.py.
+                  Also fixed: capture_stats.percentile was one rank high (32981802).
 FILES:            everything Lane 1 listed, plus scripts/rotate_signing_key.py,
                   scripts/load_test_jobs.py, serving/capture_stats.py, serving/capture_limits.py,
                   test_dash_health.py, test_capture_limits.py, docs/RUNBOOK.md, .gitignore
-LAST CODE COMMIT: 2738f29b
+LAST CODE COMMIT: 248ac1aa (platform) / see git log for app/
 STATUS:           Task 3 (#28) DONE — see Lane 1.
                   Task 4 (#10) DONE — 88443b77 + a2917878.
                   Task 5a (#29 load test) DONE — da95b080.
@@ -86,7 +91,8 @@ STATUS:           Task 3 (#28) DONE — see Lane 1.
                   was returning every server's captured URLs, venues and coordinates
                   (_CAPTURE_LOG `lines`) on an unauthenticated page; it now returns counts only.
                   None of these has a second-agent review yet.
-TESTS:            368 passed, 6 deselected; bench 35/35 forged rejected, 16/16 authentic.
+TESTS:            631 passed, 6 deselected; bench 47/47 forged rejected, 23/23 authentic.
+                  (Earlier, at 5b: 368 passed; bench 35/35, 16/16.)
                   /dash rendered in a browser against seeded fake data, no console errors.
                   (Earlier: a2917878 was pushed before its post-rebase rerun, breaking the
                   rule; the rerun was green. Owned.)
