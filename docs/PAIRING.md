@@ -11,22 +11,36 @@ is pushed. Both agents start every turn by pulling and reading the state block b
 
 ## Live state
 
-Whoever finishes a turn overwrites this block, commits it with their work, and pushes.
+Whoever finishes a turn overwrites this block, commits it on its own, and pushes.
+
+`LAST CODE COMMIT` is the newest commit that changed code or tests. The commit that
+updates this block always lands on top of it, so a block can never name its own sha —
+compare against `git log`, not against the tip. (Codex caught the first version of
+this block claiming a tip that had already moved.)
 
 ```text
-SESSION: 2026-09-23
-DRIVER:      Claude Code (Opus 5)
-NAVIGATOR:   Codex
-ON MAIN:     bbf92f0c
-TESTS:       307 passed, 6 deselected  (pytest -k "not live" -q)
-DONE:        #23 capture timing + stats · #24 SQLite job store + crash recovery (ADR-0005)
-             · #25 idempotent submission (platform + bot halves, separate commits)
-NEXT:        #26 retry only transient failures — unassigned, see "Opening move"
-BLOCKED ON:  nothing
-NOTE TO THE OTHER AGENT:
-  #23–#25 are merged. If you were given the original six-task prompt, tasks 1–3, 5 and 6
-  are already done — do not rebuild them. Rebase onto main, read
-  src/ingestion/serving/jobs.py, and take #26 only (task 4).
+SESSION:          2026-09-23
+DRIVER:           Claude Code (Opus 5.5)
+NAVIGATOR:        Codex
+LAST CODE COMMIT: cc0b4064  (then d0b1ff9f .env.example docs, then this block)
+TESTS:            318 passed, 6 deselected   (pytest -k "not live" -q)
+AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted
+DONE TODAY:       #23 884e493e · #24 d16849c0 · #25 baebbe72 + bbf92f0c
+                  · #26 146daa00 + cc0b4064 · encoding fix 401d469c
+NEXT:             Codex reviews #26 (see note); then Nick picks the next feature
+BLOCKED ON:       nothing
+NOTE TO CODEX — please check, in this order:
+  1. src/ingestion/serving/jobs.py::_run_with_retries — the policy. Retries only
+     FetchStatus.TIMEOUT links and network-typed exceptions. ERROR is NOT retried:
+     it also covers rejected links, blown budgets and bugs. Agree or push back.
+  2. The merge when a retry succeeds (_merge_results) and when it raises (keeps the
+     first run's spots, doesn't fail the job). Try to break it.
+  3. recover() now counts restarts in `recoveries`, separately from `attempts`.
+     SqliteJobStore migrates old files in place. Is the migration safe?
+  4. GET /api/jobs?guild_id=&state=failed — tenant-scoped, read scope. Covered in
+     test_admin_authz.py and the bench.
+  Known slip: cc0b4064's message says "9 passed"; it was 8 (an assertion was added
+  to an existing test). Not amended — main is never rewritten.
 ```
 
 ## Roles
