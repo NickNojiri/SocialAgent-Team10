@@ -16,80 +16,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
-from typing import Iterable
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# The logic lives in the service so /dash shows the same numbers (#29).
+from src.ingestion.serving.capture_stats import (  # noqa: E402,F401
+    THRESHOLDS_S,
+    percentile,
+    read_rows,
+    summarize,
+)
 
 DEFAULT_LOG = Path("data/capture_jobs.jsonl")
-# The two lines a reader actually cares about: the per-URL budget
-# (IngestionSettings.capture_budget_s) and the point where Discord users give up.
-THRESHOLDS_S = (180.0, 300.0)
-
-
-def read_rows(path: Path) -> list[dict]:
-    """Every well-formed line; a truncated last line is skipped, not fatal."""
-    if not path.exists():
-        return []
-    rows = []
-    for line in path.read_text(encoding="utf-8").split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return rows
-
-
-def percentile(values: list[float], pct: float) -> float:
-    """Nearest-rank percentile — no numpy, and exact on small samples."""
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    rank = max(1, min(len(ordered), int(round(pct / 100.0 * len(ordered) + 0.5))))
-    return ordered[rank - 1]
-
-
-def summarize(rows: Iterable[dict]) -> dict:
-    rows = list(rows)
-    durations = [float(r.get("duration_s", 0.0)) for r in rows]
-    states: dict[str, int] = {}
-    stages: dict[str, list[float]] = {}
-    seen: dict[str, int] = {}
-    for row in rows:
-        states[row.get("state", "unknown")] = states.get(row.get("state", "unknown"), 0) + 1
-        for stage, secs in (row.get("stages") or {}).items():
-            stages.setdefault(stage, []).append(float(secs))
-        for key in row.get("url_keys") or []:
-            seen[key] = seen.get(key, 0) + 1
-
-    repeated = {k: n for k, n in seen.items() if n > 1}
-    return {
-        "captures": len(rows),
-        "states": states,
-        "duration_s": {
-            "median": round(percentile(durations, 50), 1),
-            "p90": round(percentile(durations, 90), 1),
-            "p95": round(percentile(durations, 95), 1),
-            "max": round(max(durations), 1) if durations else 0.0,
-        },
-        "over_threshold": {
-            f"{int(t)}s": sum(1 for d in durations if d > t) for t in THRESHOLDS_S
-        },
-        "stage_median_s": {
-            stage: round(percentile(secs, 50), 1) for stage, secs in sorted(stages.items())
-        },
-        "duplicates": {
-            "distinct_links": len(seen),
-            "links_captured_more_than_once": len(repeated),
-            "wasted_captures": sum(n - 1 for n in repeated.values()),
-        },
-    }
 
 
 def render(summary: dict) -> str:
     if not summary["captures"]:
-        return "No captures logged yet — run some captures with INGEST_ASYNC=1 first."
+        return "No captures logged yet. Captures are logged on the async path (the default); check CAPTURE_LOG isn't off."
     d, dup = summary["duration_s"], summary["duplicates"]
     lines = [
         f"captures            {summary['captures']}  ({', '.join(f'{k}={v}' for k, v in sorted(summary['states'].items()))})",

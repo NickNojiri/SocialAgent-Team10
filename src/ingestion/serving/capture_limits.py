@@ -105,3 +105,12 @@ class CaptureRateLimiter:
     def tracked(self) -> int:
         """How many counters are held right now (for tests and /dash)."""
         return len(self._users) + len(self._servers) + len(self._daily)
+
+    def settings(self) -> dict:
+        """Which limits are on, and their windows — for the /dash operator view."""
+        return {
+            "user": {"limit": self.user_limit, "window_s": self.user_window_s},
+            "server": {"limit": self.server_limit, "window_s": self.server_window_s},
+            "daily": {"limit": self.daily_limit, "window_s": self.daily_window_s},
+            "counters_held": self.tracked(),
+        }

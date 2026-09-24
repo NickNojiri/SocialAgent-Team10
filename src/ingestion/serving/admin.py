@@ -29,6 +29,7 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
+from src.ingestion.serving import capture_stats
 from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
@@ -776,7 +777,19 @@ def stats():
         "services": services,
         "totals": {**totals, "servers": len(tenants)},
         "tenants": tenants,
-        "captures": list(_CAPTURE_LOG),
+        # Counts only. _CAPTURE_LOG entries also carry `lines` — each capture's URL,
+        # venue and coordinates — which this unauthenticated, cross-server view must
+        # not return (the page never used them). Found building #29's panels.
+        "captures": [
+            {k: v for k, v in entry.items() if k != "lines"} for entry in _CAPTURE_LOG
+        ],
+        # #29: capture health from the #23 timing log, and the queue and limits as
+        # they stand now. Counts and seconds only — no links, ids or error text.
+        "capture_health": capture_stats.summarize(
+            capture_stats.read_rows(_jobs.log_path, max_bytes=2_000_000)
+        ) if _jobs.log_path is not None else None,
+        "queue": _jobs.snapshot(),
+        "limits": _capture_limits.settings(),
     }
 
 
@@ -1076,6 +1089,18 @@ _DASH_PAGE = """<!doctype html>
   <h2>Servers</h2>
   <div class="wrap"><table id="tenants"></table></div>
 
+  <h2>Capture health</h2>
+  <div class="tiles" id="health"></div>
+  <div class="wrap"><table id="stages"></table></div>
+
+  <h2>Queue &amp; limits</h2>
+  <div class="chips" id="queue"></div>
+
+  <h2>Security</h2>
+  <div class="wrap"><div class="empty" id="security">Reserved for Track D's abuse &amp;
+    intrusion monitoring (#32): refused authorizations, rate-limit hits, blocked hosts.
+    Counts only, like everything on this page.</div></div>
+
   <h2>Recent captures</h2>
   <div class="feed" id="feed"></div>
 
@@ -1136,6 +1161,44 @@ async function load(){
   document.getElementById('tenants').innerHTML=
     `<tr><th>server / guild id</th><th class="num">spots</th><th class="bar-cell"></th><th class="num">votes</th><th class="num">nights</th><th>last capture</th></tr>`
     +(rows||`<tr><td colspan="6" class="empty">no catalogs yet</td></tr>`);
+
+  // #29 capture health — counts and seconds from the timing log, never links.
+  const h=d.capture_health;
+  const secs=v=>v==null?'—':(v>=90?(v/60).toFixed(1)+'m':v.toFixed(1)+'s');
+  if(!h){
+    document.getElementById('health').innerHTML=`<div class="empty">timing log is off (CAPTURE_LOG=off)</div>`;
+    document.getElementById('stages').innerHTML='';
+  }else{
+    const ov=h.over_threshold||{}, du=h.duplicates||{}, st=h.states||{};
+    document.getElementById('health').innerHTML=`
+      <div class="tile"><b>${h.captures}</b><span>captures logged</span></div>
+      <div class="tile"><b>${secs(h.duration_s.median)}</b><span>median time</span></div>
+      <div class="tile"><b>${secs(h.duration_s.p95)}</b><span>p95 time</span></div>
+      <div class="tile"><b>${ov['180s']??0}</b><span>past 3 min</span></div>
+      <div class="tile"><b>${ov['300s']??0}</b><span>past 5 min</span></div>
+      <div class="tile"><b>${du.wasted_captures??0}</b><span>duplicate captures</span></div>
+      <div class="tile"><b>${st.failed??0}</b><span>failed</span></div>`;
+    const stages=Object.entries(h.stage_median_s||{});
+    document.getElementById('stages').innerHTML=
+      `<tr><th>stage</th><th class="num">median time</th></tr>`
+      +(stages.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${secs(v)}</td></tr>`).join('')
+        ||`<tr><td colspan="2" class="empty">no captures logged yet</td></tr>`);
+  }
+
+  const q=d.queue||{}, L=d.limits||{};
+  const span=s=>s>=3600?Math.round(s/3600)+'h':Math.round(s/60)+'m';
+  const lim=(name,x)=>!x||!x.limit?`${name}: off`:`${name}: ${x.limit} per ${span(x.window_s)}`;
+  const qchip=(ok,text)=>`<span class="chip ${ok?'on':'off'}"><span class="dot"></span>${text}</span>`;
+  document.getElementById('queue').innerHTML=[
+    qchip((q.waiting??0)<(q.max_queued??1), `waiting ${q.waiting??0} / ${q.max_queued??'?'}`),
+    qchip(true, `running ${q.running??0} of ${q.workers??1} worker${q.workers===1?'':'s'}`),
+    qchip(!(q.failed_recent), `failed (last ${span(q.recent_window_s??3600)}) ${q.failed_recent??0}`),
+    qchip(!!q.durable, q.durable?'job store: durable':'job store: in-memory'),
+    qchip(true, `retries: ${q.retries_allowed??0}`),
+    qchip(true, lim('per user',L.user)),
+    qchip(true, lim('per server',L.server)),
+    qchip(true, lim('daily',L.daily)),
+  ].join('');
 
   document.getElementById('feed').innerHTML=(d.captures||[]).map(c=>{
     const when=new Date(c.ts*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});

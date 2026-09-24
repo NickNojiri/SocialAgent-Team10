@@ -611,6 +611,23 @@ class JobQueue:
     def pending(self) -> int:
         return sum(1 for j in self._jobs.values() if j.state in ("queued", "running"))
 
+    def snapshot(self) -> dict:
+        """Counts only, for the /dash operator view — no ids, links or error text."""
+        states: dict[str, int] = {}
+        for job in self._jobs.values():
+            states[job.state] = states.get(job.state, 0) + 1
+        return {
+            "workers": self.workers,
+            "max_queued": self.max_queued,
+            "waiting": states.get("queued", 0),
+            "running": states.get("running", 0),
+            "done_recent": states.get("done", 0),       # finished jobs kept for ttl_s
+            "failed_recent": states.get("failed", 0),
+            "recent_window_s": self.ttl_s,
+            "retries_allowed": self.max_retries,
+            "durable": not isinstance(self.store, MemoryJobStore),
+        }
+
     # ── internals ─────────────────────────────────────────────────────────
 
     def _ensure_workers(self) -> None:
