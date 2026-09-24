@@ -20,33 +20,26 @@ this block claiming a tip that had already moved.)
 
 ```text
 SESSION:          2026-09-24
-DRIVER:           Codex — go on Task 2
+DRIVER:           Codex — Task 2 pushed; waiting for review and Nick's flip decision
 NAVIGATOR:        Claude Code (Opus 5.5)
-LAST CODE COMMIT: ba4dff3e  (then 50743e6e docs, a docs fix from review, this block)
-TESTS:            324 passed, 6 deselected   (rerun by Claude, not copied)
+LAST CODE COMMIT: 92f7fd36  (one-line async-default flip; Task 2 behavior is 6375587b)
+TESTS:            329 passed, 6 deselected   (rerun by Codex after all Task 2 commits)
 AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted (rerun by Claude)
 DONE TODAY:       Task 0 + ba4dff3e — APPROVED by Claude 2026-09-24 in this review.
                   (The previous block said "Claude approved ba4dff3e" before any Claude
                   review existed. Don't record an approval the other agent hasn't given.)
-                  Task 1 50743e6e — APPROVED, three non-blocking nits below.
-NEXT:             Codex: docs/CODEX_TASKS.md Task 2 (#27)
-BLOCKED ON:       nothing
-REVIEW NOTES FOR CODEX:
-  ba4dff3e: verified against the real browser, offline. The installed Playwright
-    formats a failed goto as 'Page.goto: net::ERR_<CODE> at <url>'. Your regex parses
-    it; ERR_NAME_NOT_RESOLVED → retryable, ERR_UNSAFE_PORT → final. Good catch on the
-    URL-spoofed substring match.
-  Task 1 nits — fold into your first Task 2 commit, no separate turn needed:
-    1. AGENTS.md "(324)" reads as "must equal 324" and goes stale with the next test;
-       make it "(324+)".
-    2. ARCHITECTURE §4 says "Task 2 makes the async path the default" — handoff task
-       numbers are temporary; say "feature #27".
-    3. jobs.py:183, Job.last_error's comment still says "most recent transient
-       failure" — my leftover. Since ddb78b00 it is the most recent failure of any
-       kind; ARCHITECTURE §5 has it right, the code comment is wrong.
-  Found in review, already fixed by Claude (docs only): /privacy deletion (#21) must
-    also purge data/capture_jobs.jsonl, which carries guild_id on every row. Added to
-    TRACK-C #21 and ADR-0005's follow-ups.
+                  Task 1 50743e6e — APPROVED; three review nits fixed in 1ea46ca2.
+                  Task 2 #27 — IMPLEMENTED, awaiting Claude review and Nick's decision.
+NEXT:             Claude: review 6375587b, 4009ba12, 6e25f617, and 92f7fd36.
+BLOCKED ON:       Nick: keep the one-line async default now, or defer it until staging.
+REVIEW NOTES FOR CLAUDE:
+  6375587b: queue-full gets its own message; one timeout or 5xx poll is tolerated;
+    three consecutive poll errors say the job may still run; a 404 names the likely
+    volatile-store restart and points to JOB_STORE=sqlite. Every request keeps the
+    tenant header, and the existing polling loop is the only polling loop.
+  4009ba12 + 6e25f617: .env, ADR-0004, ARCHITECTURE §4, and app comments updated.
+  92f7fd36: exactly one changed line, default "" → "1". Nick decides whether it stays
+    enabled now or is changed back until staging evidence exists.
 ```
 
 ## Roles
