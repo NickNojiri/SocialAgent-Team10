@@ -113,18 +113,20 @@ guild call (fail closed, 503), all existing tests pass.
 ### Phase 2 — Oct 6 – Oct 24 (140 pts)
 
 **#27 Non-blocking capture with live progress ★ (80)**
-- [ ] Turn `INGEST_ASYNC=1` on by default — #24 is the precondition, so don't flip it
-      until jobs survive a restart.
-- [ ] Stage-by-stage status line updating in place: reading → listening → working out the
-      venue → saving.
-- [ ] Backpressure: a full queue returns 429 and the user sees a real message, not a hang.
+- [x] Turn `INGEST_ASYNC=1` on by default — #24 is the precondition, so don't flip it
+      until jobs survive a restart. *(On; Nick kept it, 2026-09-24 — ADR-0005.)*
+- [x] Stage-by-stage status line updating in place: reading → listening → working out the
+      venue → saving. *(`app/cards.py::stage_line`.)*
+- [x] Backpressure: a full queue returns 429 and the user sees a real message, not a hang.
+      *(`INGEST_MAX_QUEUED`, default 50 — see the #28 note on the number.)*
 - [ ] **Done when:** a paste never blocks the bot, and the stage line is visible in a demo.
 
 **#10 Secrets management & signing-key rotation 🔒 (60)**
-- [ ] One documented place for secrets — never in the repo, never in logs, never in a
-      test fixture.
-- [ ] A written rotation procedure for `SPOTBOT_SIGNING_KEY`, including what must be
+- [x] One documented place for secrets — never in the repo, never in logs, never in a
+      test fixture. *(`docs/RUNBOOK.md` "Secrets"; `.gitignore` now covers `.env.*`.)*
+- [x] A written rotation procedure for `SPOTBOT_SIGNING_KEY`, including what must be
       re-issued afterwards (share links) and how users are told.
+      *(`scripts/rotate_signing_key.py` + RUNBOOK; dry run by default, backs the old key up.)*
 - [ ] Build it **with** Track D's #30 — same key, adjacent features; don't duplicate.
 - [ ] **Done when:** you can rotate the key on staging without downtime and without
       breaking a live share link unannounced. Threat-model **T6**.
@@ -151,19 +153,27 @@ guild call (fail closed, 503), all existing tests pass.
 ### Phase 4 — Nov 17 – Dec 11 (130 pts)
 
 **#28 Rate limits + daily cap (30)**
-- [ ] Per-user and per-server limits plus a daily cap, so a flood of links can't stall
-      the bot or exhaust the machine.
-- [ ] Emit a refusal event Track D's monitoring (#32) can count.
+- [x] Per-user and per-server limits plus a daily cap, so a flood of links can't stall
+      the bot or exhaust the machine. *(`serving/capture_limits.py`. Built, but every
+      limit ships **off** (0) until Nick picks the numbers — `CAPTURE_*` in `.env.example`.)*
+- [x] Emit a refusal event Track D's monitoring (#32) can count. *(A log line,
+      `[capture_rate_limit] refused guild=… user=… limit=…`; #32 decides if it needs more.)*
 - [ ] **Done when:** a scripted flood is refused and the bot stays responsive.
+      *(Tested server-side; waits on real numbers. The queue depth needs one too: 50
+      waiting captures can't finish inside the bot's 900 s wait — ~15 is realistic at
+      ~60 s per capture on one worker. NICK DECIDES both.)*
 
 **#29 Capture health dashboard + load test (100)**
 - [ ] Capture success rate and speed over time, from Track A's harness artifact, Track
       C's time-to-card metric, and #23's stage timings — not from new, competing
-      instrumentation.
-- [ ] Chart what `scripts/summarize_captures.py` already computes: duration distribution,
-      captures past 3 and 5 minutes, duplicate captures.
-- [ ] A security panel fed by Track D's events (#32).
+      instrumentation. *(So far only #23's timings, and as totals, not over time.)*
+- [x] Chart what `scripts/summarize_captures.py` already computes: duration distribution,
+      captures past 3 and 5 minutes, duplicate captures. *(/dash "Capture health" tiles and
+      a per-stage table, from the same `serving/capture_stats.py` the script now uses.)*
+- [ ] A security panel fed by Track D's events (#32). *(Slot reserved on /dash.)*
 - [ ] Load test: how many concurrent captures before it degrades; record the number.
+      *(`scripts/load_test_jobs.py` finds the queue's refusal point with a stub capture;
+      the real-capture number needs a real machine.)*
 - [ ] **Done when:** the dashboard is live on staging, the load-test number is written
       down, and v0.1 is tagged with a 3-minute demo video.
 

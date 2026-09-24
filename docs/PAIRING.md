@@ -37,18 +37,21 @@ commit that updates a block lands on top of it, so a block never names its own s
 **Shared, both lanes:** tests must be green on `main` before either lane pushes (pull
 with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR-0005).
 
-### Lane 1 — Codex drives, Claude reviews
+### Lane 1 — PAUSED (Nick handed it to Claude, 2026-09-24)
 
 ```text
-TASKS:            Task 2 follow-ups (below), then docs/CODEX_TASKS.md Task 3 (#28)
-FILES:            app/cards.py, app/bot.py, app/test_capture.py, src/ingestion/serving/admin.py,
-                  src/ingestion/serving/jobs.py, test_jobs.py, test_admin_authz.py,
-                  scripts/bench_admin_authz.py, a new rate-limit module and its tests
-LAST CODE COMMIT: 92f7fd36
-STATUS:           Task 2 APPROVED by Claude; follow-ups not started
-BLOCKED ON:       nothing
-NICK DECIDES:     Task 3 rate-limit numbers → build on branch decide/rate-limits, ask
-FOLLOW-UPS FOR CODEX (non-blocking, found in review):
+TASKS:            none. Task 3 (#28) finished by Claude on main: 2b9ec39e, 53b27c8c (Codex's
+                  work, carried over), 5325667c, e92c4856 (Claude's fixes).
+FILES:            none held — Lane 2 holds all of them now.
+STATUS:           Codex's folder (SocialAgent-kickoff) still has its local Task 3 commits
+                  84a626a6 + 62408273 and uncommitted docs. Those are superseded: the same
+                  work is already on main under new shas. Do NOT push them. Before Codex
+                  works again: stop, drop them, pull main.
+REVIEW:           #28 has no second-agent review — Codex wrote half, Claude the rest.
+                  Nick reviews it (or Codex does, from main, on its next turn).
+NICK DECIDES:     rate-limit numbers (all 0 = off today) and INGEST_MAX_QUEUED (50) —
+                  see the Lane 2 block. Nothing merged pending an answer.
+EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
   1. Task 1 nit 3 was not done. 1ea46ca2 rewrote the inline comment in
      _run_with_retries, but the one my note named is the Job field at jobs.py:183 —
      "the most recent transient failure, kept after a retry heals it". Make it say
@@ -69,22 +72,32 @@ FOLLOW-UPS FOR CODEX (non-blocking, found in review):
 ### Lane 2 — Claude drives, Codex reviews
 
 ```text
-TASKS:            docs/CODEX_TASKS.md Task 4 (#10 key rotation), then Task 5a
-                  (offline load test script only — the /dash half waits for Task 3,
-                  because it touches admin.py)
-FILES:            scripts/rotate_signing_key.py (new), scripts/ensure_signing_key.py,
-                  test_signing_key_setup.py, a new test_rotate_signing_key.py,
-                  docs/RUNBOOK.md, .gitignore, scripts/load_test_jobs.py (new),
-                  a new test_load_test_jobs.py
-LAST CODE COMMIT: da95b080
-STATUS:           Task 4 (#10) DONE — 88443b77 + a2917878.
+TASKS:            CODEX_TASKS.md Tasks 3, 4, 5a, 5b — all done. Lane 2 is idle; what's left
+                  on Nick's platform list is #11 staging and the ADR-0005 evidence (both
+                  need Nick's machine or accounts).
+FILES:            everything Lane 1 listed, plus scripts/rotate_signing_key.py,
+                  scripts/load_test_jobs.py, serving/capture_stats.py, serving/capture_limits.py,
+                  test_dash_health.py, test_capture_limits.py, docs/RUNBOOK.md, .gitignore
+LAST CODE COMMIT: 2738f29b
+STATUS:           Task 3 (#28) DONE — see Lane 1.
+                  Task 4 (#10) DONE — 88443b77 + a2917878.
                   Task 5a (#29 load test) DONE — da95b080.
-                  Both awaiting Codex review. Lane 2 is now idle until Task 3 lands and
-                  Task 5b (/dash) can start.
-TESTS:            346 passed, 6 deselected — on lane2/claude rebased onto main, before push.
+                  Task 5b (#29 /dash panels) DONE — 2738f29b. Also a privacy fix: /api/stats
+                  was returning every server's captured URLs, venues and coordinates
+                  (_CAPTURE_LOG `lines`) on an unauthenticated page; it now returns counts only.
+                  None of these has a second-agent review yet.
+TESTS:            368 passed, 6 deselected; bench 35/35 forged rejected, 16/16 authentic.
+                  /dash rendered in a browser against seeded fake data, no console errors.
                   (Earlier: a2917878 was pushed before its post-rebase rerun, breaking the
                   rule; the rerun was green. Owned.)
-BLOCKED ON:       Task 3 (Lane 1) for Task 5b
+NICK DECIDES:     1. Rate limits: CAPTURE_USER_LIMIT / _SERVER_ / _DAILY_ (and windows). All 0
+                     today, so nothing is limited.
+                  2. INGEST_MAX_QUEUED: 50 today, but ~15 is what can finish inside the bot's
+                     900 s wait at ~60 s a capture on one worker (finding below).
+WATCH OUT:        /api/stats takes ~20 s when Ollama and the other services are down — the
+                  existing service probes time out one by one. Not new; /dash just looks empty
+                  until it answers.
+BLOCKED ON:       nothing
 CLAUDE'S REVIEW OF LANE 1 — follow-ups APPROVED:
   ad85f531 user sees plain words, operator detail goes to the log only.
   85b28212 outage window is time-based (INGEST_POLL_ERROR_S, default 60 s), starts on the
@@ -116,8 +129,7 @@ FOR CODEX TO REVIEW (Task 5a):
      is really what the queue does (test_refusals_start_exactly_past_waiting_plus_running).
 ```
 
-**Waiting for both lanes:** Task 5b (`/dash` panels) — after Task 3 lands in `admin.py`.
-Nick-only: #11 staging, ADR-0005 evidence numbers.
+**Waiting:** Nick's two numbers above. Nick-only: #11 staging, ADR-0005 evidence numbers.
 
 ## Roles
 

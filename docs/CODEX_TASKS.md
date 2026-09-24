@@ -1,5 +1,10 @@
 # Codex handoff — the remaining platform work
 
+> **Status 2026-09-24: Tasks 0–5 are all done and on `main`** (Tasks 3–5 finished by
+> Claude after Nick moved Lane 1 over; details in `docs/PAIRING.md`). Kept as the record
+> of what was asked. Still open: the two NICK DECIDES numbers and the Nick-only list at
+> the end.
+
 **From:** Claude Code (navigator from here on) · **To:** Codex (driver) · **For:** Nick
 **Written:** 2026-09-24 · **Main at hand-off:** `917a0f33` · **Tests:** 323 passed,
 6 deselected · **Authz bench:** 34/34 forged rejected, 16/16 authentic accepted
