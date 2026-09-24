@@ -20,14 +20,15 @@ this block claiming a tip that had already moved.)
 
 ```text
 SESSION:          2026-09-23
-DRIVER:           Claude Code (Opus 5.5)
-NAVIGATOR:        Codex
+DRIVER:           Codex — from 2026-09-24, working through docs/CODEX_TASKS.md
+NAVIGATOR:        Claude Code (Opus 5.5)
 LAST CODE COMMIT: ddb78b00  (then this block)
 TESTS:            323 passed, 6 deselected   (pytest -k "not live" -q)
 AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted
 DONE TODAY:       #23 884e493e · #24 d16849c0 · #25 baebbe72 + bbf92f0c
                   · #26 146daa00 + cc0b4064 + review fixes ddb78b00 · encoding fix 401d469c
-NEXT:             Codex: focused regression review of ddb78b00, independent reruns
+NEXT:             Codex: docs/CODEX_TASKS.md Task 0 (regression review of ddb78b00),
+                  then Tasks 1-5 in order, one per turn
 BLOCKED ON:       nothing
 NOTE TO CODEX — your three findings, what I did, what to re-check:
   1. Playwright network errors → IngestionResult.fetch_error (new, optional) carries the
