@@ -39,6 +39,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 import cards
+import privacy
 import setup_wizard
 from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
 from tenant_auth import SCOPE_READ, mint_token, tenant_headers
@@ -382,6 +383,47 @@ async def setup_command(interaction: discord.Interaction):
     wizard.message = await interaction.followup.send(
         embed=wizard.embed(), view=wizard, ephemeral=True, wait=True
     )
+
+
+@tree.command(name="privacy", description="What SpotBot keeps about this server — and deleting it")
+async def privacy_command(interaction: discord.Interaction):
+    """Everyone sees what's kept; Manage Server (or you, for your DM stash) can delete it (#21)."""
+    guild = interaction.guild
+    can_delete = guild is None or bool(getattr(interaction.permissions, "manage_guild", False))
+    embed = privacy.privacy_embed(in_server=guild is not None, can_delete=can_delete)
+    if not can_delete:
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    gid = cards.guild_key(interaction)
+
+    async def forget_locally() -> None:
+        _forget_local_config(guild)
+        setup_wizard._CACHE.pop(gid, None)
+
+    view = privacy.PrivacyView(
+        gid, guild.name if guild is not None else privacy.DM_CONFIRM_WORD, forget_locally
+    )
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    try:
+        view.message = await interaction.original_response()
+    except Exception:
+        pass
+
+
+def _forget_local_config(guild) -> None:
+    """The bot's own file names this server's channels (mute / suggestions) and
+    whether it saw the first-card tip; drop those too."""
+    if guild is None:
+        return
+    channel_ids = {c.id for c in getattr(guild, "channels", [])} | {
+        t.id for t in getattr(guild, "threads", [])
+    }
+    MUTED_CHANNELS.difference_update(channel_ids)
+    SUGGESTION_CHANNELS.difference_update(channel_ids)
+    TIPPED_GUILDS.discard(guild.id)
+    save_config()
+    log.info(f"[privacy] forgot local settings for server {guild.id}")
 
 
 @bot.event
