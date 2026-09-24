@@ -199,17 +199,59 @@ async def test_one_poll_5xx_is_tolerated(monkeypatch):
     assert await cards.capture_urls(["https://x.test/1"], "g1") == result
 
 
-async def test_three_consecutive_poll_errors_give_an_honest_failure(monkeypatch):
+async def test_three_quick_poll_errors_are_tolerated(monkeypatch):
     monkeypatch.setattr(cards, "INGEST_ASYNC", True)
-    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 1)
+    monkeypatch.setattr(cards, "JOB_POLL_ERROR_S", 60)
+    clock = {"now": 0.0}
+
+    def monotonic():
+        return clock["now"]
+
+    async def advance(seconds):
+        clock["now"] += seconds
+
+    result = {"events": [], "added": 0}
     fake = _FakeClient(
         _Resp({"job_id": "j1", "state": "queued"}, 202),
-        gets=[_Resp({}, 503), _Resp({}, 503), _Resp({}, 503)],
+        gets=[
+            _Resp({}, 503),
+            _Resp({}, 503),
+            _Resp({}, 503),
+            _job("done", "done", 1, 1, result=result),
+        ],
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+    monkeypatch.setattr(cards.time, "monotonic", monotonic)
+    monkeypatch.setattr(cards.asyncio, "sleep", advance)
+
+    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+
+
+async def test_poll_outage_fails_after_time_budget(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 20)
+    monkeypatch.setattr(cards, "JOB_POLL_ERROR_S", 60)
+    clock = {"now": 0.0}
+
+    def monotonic():
+        return clock["now"]
+
+    async def advance(seconds):
+        clock["now"] += seconds
+
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued"}, 202),
+        gets=[_Resp({}, 503), _Resp({}, 503), _Resp({}, 503), _Resp({}, 503)],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+    monkeypatch.setattr(cards.time, "monotonic", monotonic)
+    monkeypatch.setattr(cards.asyncio, "sleep", advance)
 
     with pytest.raises(cards.CapturePollingFailed, match="may still be running"):
         await cards.capture_urls(["https://x.test/1"], "g1")
+
+    assert clock["now"] == 80.0
 
 
 async def test_poll_404_uses_plain_user_message(monkeypatch):

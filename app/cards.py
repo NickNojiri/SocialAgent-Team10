@@ -45,8 +45,8 @@ INGEST_ASYNC = os.getenv("INGEST_ASYNC", "1").strip().lower() in ("1", "true", "
 JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
 JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
 # A brief admin restart or network wobble should not abandon a running job.
-# Three consecutive failed polls means the bot no longer has a trustworthy view.
-JOB_POLL_ERROR_LIMIT = 3
+# After this much continuous outage, the bot no longer has a trustworthy view.
+JOB_POLL_ERROR_S = float(os.getenv("INGEST_POLL_ERROR_S", "60"))
 # Past the per-URL budget (config.capture_budget_s) a capture is unusually slow
 # but not failed. Say so, and keep saying so, instead of showing a stage line
 # that hasn't moved in minutes (feature #25).
@@ -125,14 +125,21 @@ async def capture_urls(
         started = time.monotonic()
         deadline = started + JOB_WAIT_S
         last: Optional[tuple] = None
-        poll_errors = 0
+        poll_error_started: Optional[float] = None
+
+        def poll_outage_expired() -> bool:
+            nonlocal poll_error_started
+            now = time.monotonic()
+            if poll_error_started is None:
+                poll_error_started = now
+            return now - poll_error_started >= JOB_POLL_ERROR_S
+
         while time.monotonic() < deadline:
             await asyncio.sleep(JOB_POLL_S)
             try:
                 resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}", headers=headers)
             except httpx.TransportError as exc:
-                poll_errors += 1
-                if poll_errors >= JOB_POLL_ERROR_LIMIT:
+                if poll_outage_expired():
                     raise CapturePollingFailed(
                         "I lost contact while checking this capture — it may still be running. "
                         "Try again in a minute."
@@ -143,15 +150,14 @@ async def capture_urls(
                     "The catalog restarted and lost this capture — tap Retry."
                 )
             if resp.status_code >= 500:
-                poll_errors += 1
-                if poll_errors >= JOB_POLL_ERROR_LIMIT:
+                if poll_outage_expired():
                     raise CapturePollingFailed(
                         "I lost contact while checking this capture — it may still be running. "
                         "Try again in a minute."
                     )
                 continue
             resp.raise_for_status()
-            poll_errors = 0
+            poll_error_started = None
             job = resp.json()
             if job["state"] == "done":
                 return job.get("result") or {}
