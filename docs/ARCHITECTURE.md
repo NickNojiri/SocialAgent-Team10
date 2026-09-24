@@ -123,17 +123,21 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 
 ## 4. Concurrency and time budgets
 
-- The default bot path is still synchronous: `POST /api/ingest` waits for every URL,
-  with a **300 s** bot timeout. Playwright runs on the event loop and post-fetch work
-  runs in `asyncio.to_thread`, under `capture_budget_s` (default **180 s per URL**).
-  A multi-link request can outlive the bot timeout while the server keeps working.
-  This synchronous endpoint has **no in-flight deduplication** yet, so Retry can start
-  the same capture again; feature #27 makes the async path the default.
-- With `INGEST_ASYNC=1`, the bot instead enqueues through `POST /api/jobs` and polls
-  `GET /api/jobs/{id}`. The admin app has one in-process worker by default
+- The default bot path is asynchronous: it enqueues through `POST /api/jobs` and polls
+  `GET /api/jobs/{id}`. One timeout or 5xx response while polling does not abandon the
+  capture; three consecutive poll failures stop the bot with an honest warning that
+  the server-side job may still be running. A 404 says the catalog may have restarted
+  without `JOB_STORE=sqlite`, because the in-memory store cannot recover that job.
+  The admin app has one in-process worker by default
   (`INGEST_WORKERS=1`) and accepts at most 50 waiting jobs; a full queue returns 429.
   Finished jobs remain pollable for one hour. Whisper is CPU-bound, so increasing the
   worker count makes captures contend for cores.
+- `INGEST_ASYNC=0` restores the synchronous `POST /api/ingest` path, which waits for
+  every URL with a **300 s** bot timeout. Playwright runs on the event loop and
+  post-fetch work runs in `asyncio.to_thread`, under `capture_budget_s` (default
+  **180 s per URL**). A multi-link request can outlive the bot timeout while the server
+  keeps working. This fallback has **no in-flight deduplication**, so Retry can start
+  the same capture again.
 - A job whose stage is `retrying` is sleeping between transient attempts: 5 s, 10 s,
   then exponentially up to 60 s. For per-link results, only a page-load `TIMEOUT` or an
   exact allow-listed Chromium network code is retried. The code must be either bare or
@@ -160,6 +164,7 @@ Job-queue switches (unset values use these code defaults):
 
 | Variable | Process | Default | Effect |
 |---|---|---|---|
+| `INGEST_ASYNC` | bot | enabled | Enqueues and polls capture jobs; set to `0` to use synchronous `/api/ingest`. |
 | `JOB_STORE` | admin | in-memory | Set to `sqlite` to persist jobs and enable restart recovery. |
 | `JOB_DB` | admin | `data/jobs.db` | SQLite file used only when `JOB_STORE=sqlite`. |
 | `INGEST_MAX_RETRIES` | admin | `2` | Maximum retries after the first pipeline attempt. `0` disables retries; a retryable link result records `could not load N link(s); retries disabled`. |

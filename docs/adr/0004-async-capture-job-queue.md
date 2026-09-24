@@ -1,6 +1,6 @@
 # ADR-0004: Reel capture becomes an async job the bot polls
 
-- **Status:** proposed — implemented as a spike behind `INGEST_ASYNC=1` (default off)
+- **Status:** accepted — feature #27 makes async the default; `INGEST_ASYNC=0` restores sync
 - **Decided:** 2026-09-15 · **Recorded:** 2026-09-15 · **Owner:** Nick
 - **Related:** `docs/ARCHITECTURE.md` §4, `docs/THREAT_MODEL.md` T5, `docs/PRODUCT_ROADMAP.md` §0.3
 
