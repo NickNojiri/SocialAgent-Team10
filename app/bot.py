@@ -89,7 +89,7 @@ tree = app_commands.CommandTree(bot)
 #   muted        — channels where link capture is turned off
 #   suggestions  — channels opted into ambient chat-context suggestions
 #   tipped       — guilds that already saw the one-time first-card tip
-CONFIG_FILE = Path("channels.json")
+CONFIG_FILE = Path(os.getenv("BOT_CONFIG_FILE", "channels.json"))   # staging: on a volume
 MUTED_CHANNELS: set[int] = set()
 SUGGESTION_CHANNELS: set[int] = set()
 TIPPED_GUILDS: set[int] = set()
@@ -896,7 +896,7 @@ def load_config():
     if not CONFIG_FILE.exists():
         return
     try:
-        data = json.loads(CONFIG_FILE.read_text())
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             MUTED_CHANNELS = set(int(x) for x in data.get("muted", []))
             SUGGESTION_CHANNELS = set(int(x) for x in data.get("suggestions", []))
@@ -914,6 +914,7 @@ def load_config():
 
 def save_config():
     try:
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(
             json.dumps(
                 {
@@ -922,7 +923,8 @@ def save_config():
                     "tipped": list(TIPPED_GUILDS),
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
     except Exception as exc:
         log.warning(f"[config] Failed to save channels.json: {exc}")

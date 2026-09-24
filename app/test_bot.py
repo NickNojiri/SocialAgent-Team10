@@ -112,6 +112,15 @@ class TestConfigRoundtrip:
         assert bot.TIPPED_GUILDS == {99}
 
 
+    async def test_config_saves_into_a_folder_that_doesnt_exist_yet(self, tmp_path, monkeypatch):
+        """Staging points BOT_CONFIG_FILE at a volume (#11); a fresh one starts empty."""
+        target = tmp_path / "state" / "channels.json"
+        monkeypatch.setattr(bot, "CONFIG_FILE", target)
+        monkeypatch.setattr(bot, "MUTED_CHANNELS", {5})
+        bot.save_config()
+        assert '"muted": [\n    5\n  ]' in target.read_text(encoding="utf-8")
+
+
 class TestMentionSafety:
     async def test_client_never_pings_from_content(self):
         """Venue names reach plain-content sends (/catalog, the went-there prompt,
