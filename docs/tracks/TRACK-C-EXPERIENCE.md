@@ -96,8 +96,15 @@ measures how long a capture takes from the user's side.
       Tested offline; not yet tried with a real participant.)*
 
 **#36 Distance + map on spot cards (40)**
-- [ ] Show distance from the group's home city and a map link on each card.
-- [ ] **Done when:** cards show both, and a spot with no coordinates degrades cleanly.
+- [x] Show distance from the group's home city and a map link on each card.
+      *(`/setup`'s home city is looked up once on save; a card with coordinates shows
+      "[Open map] · 3.2 mi from Long Beach, CA". Captures, /plan picks, edits, retries,
+      manual adds and suggestions all pass the server's home city.)*
+- [x] **Done when:** cards show both, and a spot with no coordinates degrades cleanly.
+      *(No coordinates → "Find on map", a search for the venue near the post's area or
+      the home city, and no distance rather than a guess. Most spots have no
+      coordinates today because capture doesn't geocode, so the search link is the
+      common case until it does.)*
 
 ### Phase 3 — Oct 27 – Nov 14 (120 pts)
 
