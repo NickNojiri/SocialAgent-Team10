@@ -202,7 +202,22 @@ async def on_message(message: discord.Message):
 
 async def handle_reel_capture(message: discord.Message, urls: list[str]):
     """Paste-and-go with visible progress: a status reply that updates through
-    the capture, cards on success, and Retry / Add-manually on failure."""
+    the capture, cards on success, and Retry / Add-manually on failure.
+
+    Timed from the moment the bot sees the paste to the moment the card (or the
+    failure message) is up, and reported afterwards — time-to-card (#18)."""
+    started = time.monotonic()
+    outcome = "error"
+    try:
+        outcome = await _capture(message, urls)
+    finally:
+        await cards.report_time_to_card(
+            cards.guild_key(message), time.monotonic() - started, outcome, len(urls)
+        )
+
+
+async def _capture(message: discord.Message, urls: list[str]) -> str:
+    """Run one paste; returns "card", "no_card" or "error" for the timing."""
     await _add_reaction(message, "⏳")
     noun = "that reel" if len(urls) == 1 else f"those {len(urls)} links"
     status = await message.reply(
@@ -243,7 +258,7 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
             content=f"⚠️ {exc}",
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
-        return
+        return "error"
     except cards.CaptureFailed as exc:
         log.warning(f"[capture] job failed: {exc}")
         await _swap_reaction(message, "⏳", "⚠️")
@@ -251,7 +266,7 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
             content=f"⚠️ Capture failed — {exc}",
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
-        return
+        return "error"
     except Exception as exc:
         log.warning(f"[capture] ingest failed: {exc}")
         await _swap_reaction(message, "⏳", "⚠️")
@@ -259,9 +274,10 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
             content="⚠️ Couldn't reach the catalog service — is the admin app running?",
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
-        return
+        return "error"
 
     await _render_capture(message, status, urls, data)
+    return "card" if data.get("events") else "no_card"
 
 
 async def _render_capture(message: discord.Message, status: discord.Message, urls: list[str], data: dict):

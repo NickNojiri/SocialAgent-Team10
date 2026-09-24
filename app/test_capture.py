@@ -64,6 +64,21 @@ def _signing_key(monkeypatch):
     monkeypatch.setenv("SPOTBOT_SIGNING_KEY", "0" * 64)
 
 
+TIMINGS: list[tuple] = []
+REAL_REPORT = cards.report_time_to_card                     # before the fixture swaps it out
+
+
+@pytest.fixture(autouse=True)
+def _record_timings(monkeypatch):
+    """handle_reel_capture reports time-to-card (#18); keep that off the fakes and the network."""
+    TIMINGS.clear()
+
+    async def record(guild, seconds, outcome, links):
+        TIMINGS.append((guild, outcome, links))
+
+    monkeypatch.setattr(cards, "report_time_to_card", record)
+
+
 def _job(state, stage, done=0, total=1, **extra):
     return {"id": "j1", "state": state, "stage": stage,
             "progress": {"done": done, "total": total}, "result": None, "error": None, **extra}
@@ -344,6 +359,61 @@ async def test_lost_job_logs_operator_storage_detail(monkeypatch, caplog):
     await bot.handle_reel_capture(message, ["https://www.instagram.com/reel/A/"])
 
     assert "enable JOB_STORE=sqlite" in caplog.text
+    assert TIMINGS == [("1", "error", 1)]                  # a failure is timed too (#18)
+
+
+def _paste(monkeypatch, result):
+    """A paste whose capture returns `result`, with the Discord side stubbed out."""
+    class Status:
+        async def edit(self, **kwargs):
+            return None
+
+    async def reply(*args, **kwargs):
+        return Status()
+
+    async def nothing(*args, **kwargs):
+        return None
+
+    async def capture(*args, **kwargs):
+        return result
+
+    monkeypatch.setattr(bot, "_add_reaction", nothing)
+    monkeypatch.setattr(bot, "_swap_reaction", nothing)
+    monkeypatch.setattr(bot, "_maybe_first_card_tip", nothing)
+    monkeypatch.setattr(cards, "home_for", nothing)
+    monkeypatch.setattr(cards, "capture_urls", capture)
+    return SimpleNamespace(guild=SimpleNamespace(id=1), author=SimpleNamespace(id=7, display_name="nick"),
+                           reply=reply)
+
+
+async def test_a_paste_that_becomes_a_card_is_timed_as_a_card(monkeypatch):
+    message = _paste(monkeypatch, {"events": [{"id": "e1", "venue": "Casa Loma", "category": "food_drink"}]})
+    await bot.handle_reel_capture(message, ["https://www.instagram.com/reel/A/", "https://www.instagram.com/reel/B/"])
+    assert TIMINGS == [("1", "card", 2)]
+
+
+async def test_a_paste_with_no_venue_is_timed_as_no_card(monkeypatch):
+    message = _paste(monkeypatch, {"events": [], "rejected": 1})
+    await bot.handle_reel_capture(message, ["https://www.instagram.com/reel/A/"])
+    assert TIMINGS == [("1", "no_card", 1)]
+
+
+async def test_the_timing_report_carries_the_token_and_never_raises(monkeypatch):
+    fake = _FakeClient(_Resp({"saved": True}))
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+    await REAL_REPORT("g1", 5000.0, "card", 40)
+    _, url, body = fake.calls[1]
+    assert url == f"{cards.ADMIN_URL}/api/time-to-card"
+    assert body == {"guild_id": "g1", "seconds": 3600.0, "outcome": "card", "links": 10}   # clamped
+    assert fake.headers[0] == tenant_headers("g1")
+
+    class Down(_FakeClient):
+        async def post(self, *args, **kwargs):
+            raise httpx.ConnectError("admin app down")
+
+    monkeypatch.setattr(cards.httpx, "AsyncClient", Down(None))
+    await REAL_REPORT("g1", 5.0, "card", 1)                   # swallowed
+    await REAL_REPORT("", 5.0, "card", 1)                     # no server, nothing sent
 
 
 async def test_async_path_gives_up_after_the_wait_budget(monkeypatch):

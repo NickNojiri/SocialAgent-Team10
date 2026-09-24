@@ -45,6 +45,23 @@ BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 HOME_LOOKUP: Optional[Callable[[str], Awaitable[Optional[dict]]]] = None
 
 
+async def report_time_to_card(guild: str, seconds: float, outcome: str, links: int) -> None:
+    """Tell the admin app how long a paste took to become a card (#18). Sent
+    after the card is up, so it never slows anyone down; a failure is ignored."""
+    if not guild:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(
+                f"{ADMIN_URL}/api/time-to-card",
+                json={"guild_id": guild, "seconds": round(min(seconds, 3600.0), 2),
+                      "outcome": outcome, "links": max(1, min(int(links), 10))},
+                headers=tenant_headers(guild),
+            )
+    except Exception:
+        pass
+
+
 async def home_for(guild: str) -> Optional[dict]:
     """This server's settings for a card, or None (DMs, lookup unset or failing)."""
     if HOME_LOOKUP is None or not guild or guild.startswith("dm-"):
