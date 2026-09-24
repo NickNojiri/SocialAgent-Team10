@@ -411,7 +411,7 @@ async def test_a_timed_out_link_is_retried_alone_and_the_results_merge():
     assert job.state == "done" and job.attempts == 2
     assert job.result["added"] == 2 and job.result["unreadable"] == 0
     assert [e["id"] for e in job.result["events"]] == urls
-    assert job.last_error == "timed out loading 1 link(s)"   # kept after the retry healed it
+    assert job.last_error == "could not load 1 link(s)"   # kept after the retry healed it
 
 
 @pytest.mark.asyncio
@@ -424,7 +424,7 @@ async def test_retries_stop_at_the_cap_and_the_job_still_finishes():
     assert len(calls) == 3 and job.attempts == 3        # first try + 2 retries, no more
     assert job.state == "done"                          # reported as unreadable, not failed
     assert job.result["unreadable"] == 1 and job.result["added"] == 0
-    assert job.last_error == "timed out loading 1 link(s)"
+    assert job.last_error == "could not load 1 link(s), still failing after 2 retries"
 
 
 @pytest.mark.asyncio
@@ -533,6 +533,124 @@ def test_an_old_job_database_gains_the_new_columns(tmp_path):
     q = JobQueue(fake_run, store=store)
     assert q.recover() == {"requeued": 1, "failed": 0}  # an old row still recovers
     store.close()
+
+
+# ── Codex review of #26 (2026-09-23): three findings, one test each ─────────
+
+
+def test_a_transient_playwright_network_error_is_retryable_and_a_policy_refusal_is_not():
+    """Finding 1: net::ERR_* fetch errors are transient; they came through as
+    FetchStatus.ERROR and bypassed retries entirely."""
+    from src.ingestion.schemas.results import FetchStatus, IngestionResult
+    from src.ingestion.serving.jobs import retryable_urls
+
+    def failed(url, status, error=None):
+        return IngestionResult(url=url, fetch_status=status, fetch_error=error)
+
+    results = [
+        failed("https://x.test/timeout", FetchStatus.TIMEOUT),
+        failed("https://x.test/reset", FetchStatus.ERROR,
+               "Page.goto: net::ERR_CONNECTION_RESET at https://x.test/reset"),
+        failed("https://x.test/dns", FetchStatus.ERROR, "net::ERR_NAME_NOT_RESOLVED"),
+        # permanent: refused by policy before any fetch, a login wall, a 404, a TLS
+        # failure (on this network that's interception, and it fails every time)
+        failed("https://x.test/policy", FetchStatus.ERROR, "file:// URLs are not allowed"),
+        failed("https://x.test/wall", FetchStatus.LOGIN_WALL),
+        failed("https://x.test/gone", FetchStatus.NOT_FOUND),
+        failed("https://x.test/tls", FetchStatus.ERROR, "net::ERR_CERT_AUTHORITY_INVALID"),
+        failed("https://x.test/bare", FetchStatus.ERROR),          # no text → not retried
+        IngestionResult(url="https://x.test/rejected", fetch_status=FetchStatus.OK,
+                        rejection_reason="no venue found"),
+    ]
+    assert retryable_urls(results) == [
+        "https://x.test/timeout", "https://x.test/reset", "https://x.test/dns",
+    ]
+
+
+def test_the_pipeline_keeps_the_fetchers_error_text(tmp_path):
+    """Finding 1, the other half: the text that tells a network error from a
+    policy refusal used to be dropped in IngestionPipeline._process."""
+    from datetime import datetime, timezone
+
+    from src.ingestion.config import IngestionSettings
+    from src.ingestion.pipeline.orchestrator import IngestionPipeline
+    from src.ingestion.schemas.results import FetchStatus
+    from src.ingestion.schemas.snapshot import PageSnapshot
+
+    pipeline = IngestionPipeline(IngestionSettings(raw_dir=tmp_path, llm_enabled=False))
+    snap = PageSnapshot(url="https://x.test/1", status=FetchStatus.ERROR,
+                        fetched_at=datetime.now(timezone.utc),
+                        error="net::ERR_CONNECTION_RESET")
+    result = pipeline._process(snap)
+    assert result.fetch_status is FetchStatus.ERROR
+    assert result.fetch_error == "net::ERR_CONNECTION_RESET"
+
+
+def test_an_old_database_does_not_hand_out_a_second_recovery(tmp_path):
+    """Finding 2: under #24, a restart was counted in `attempts`; a row with
+    attempts=2 had already been recovered once. The migration must say so."""
+    import sqlite3
+
+    db = tmp_path / "jobs.db"
+    old = sqlite3.connect(db)
+    old.executescript("""
+        CREATE TABLE jobs (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, urls TEXT NOT NULL,
+          state TEXT NOT NULL, stage TEXT NOT NULL, done_urls INTEGER NOT NULL DEFAULT 0,
+          result TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+          created_at REAL NOT NULL, updated_at REAL NOT NULL, finished_at REAL);
+        INSERT INTO jobs VALUES ('used','g1','["https://x.test/1"]','running','fetching',
+          0,NULL,NULL,2,1.0,1.0,NULL);
+        INSERT INTO jobs VALUES ('fresh','g1','["https://x.test/2"]','running','fetching',
+          0,NULL,NULL,1,1.0,1.0,NULL);
+    """)
+    old.commit(); old.close()
+
+    store = SqliteJobStore(db)
+    assert store.load("used").recoveries == 1 and store.load("fresh").recoveries == 0
+    q = JobQueue(fake_run, store=store)
+    assert q.recover() == {"requeued": 1, "failed": 1}
+    assert q.get("used").state == "failed" and q.get("fresh").state == "queued"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_last_error_describes_the_final_attempt_not_an_earlier_one():
+    """Finding 3: when retries run out with links still timing out, last_error
+    kept the count from an earlier attempt."""
+    calls = []
+
+    async def two_then_one(urls, guild_id, on_stage):
+        calls.append(list(urls))
+        bad = list(urls) if len(calls) == 1 else [urls[-1]]   # 2 time out, then 1 still does
+        good = [u for u in urls if u not in bad]
+        return {"added": len(good), "rejected": 0, "unreadable": len(bad),
+                "retryable_urls": bad, "events": [{"id": u} for u in good], "log": []}
+
+    q = JobQueue(two_then_one, max_retries=1, backoff_base_s=0)
+    job = q.submit(["https://x.test/1", "https://x.test/2"], "g1")
+    await q.drain()
+    assert len(calls) == 2
+    assert job.result["added"] == 1 and job.result["unreadable"] == 1
+    assert job.last_error == "could not load 1 link(s), still failing after 1 retry"
+
+
+@pytest.mark.asyncio
+async def test_last_error_names_the_failure_that_ended_the_job():
+    """Finding 3, the raise path: a transient error then a final one — the
+    field has to describe the one that actually stopped the job."""
+    calls = []
+
+    async def reset_then_bug(urls, guild_id, on_stage):
+        calls.append(urls)
+        if len(calls) == 1:
+            raise ConnectionResetError("dropped")
+        raise ValueError("venue field missing")
+
+    q = JobQueue(reset_then_bug, backoff_base_s=0)
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    assert job.state == "failed" and job.attempts == 2
+    assert job.last_error == job.error == "ValueError: venue field missing"
 
 
 def test_failed_jobs_endpoint_is_tenant_scoped(monkeypatch):

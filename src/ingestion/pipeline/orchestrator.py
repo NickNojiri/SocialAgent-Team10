@@ -217,6 +217,9 @@ class IngestionPipeline:
                 url=snapshot.url,
                 fetch_status=snapshot.status,
                 raw_ref=self._save_raw(snapshot),
+                # PageSnapshot allows extra fields; the fetcher puts its error
+                # text there. Keep it — the retry policy needs it (feature #26).
+                fetch_error=getattr(snapshot, "error", None),
             )
 
         page_extractor = select_extractor(snapshot.final_url or snapshot.url)

@@ -87,6 +87,47 @@ def is_transient_error(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TransportError)
 
 
+# Chromium network errors that describe the connection, not the link: a second
+# try on a working network can succeed. Deliberately an allow-list — anything not
+# named here (a certificate error, which on an intercepting network fails every
+# time; ERR_ABORTED; a URL refused on policy) is final.
+_TRANSIENT_NET_ERRORS = (
+    "net::ERR_CONNECTION_RESET",
+    "net::ERR_CONNECTION_CLOSED",
+    "net::ERR_CONNECTION_REFUSED",
+    "net::ERR_CONNECTION_TIMED_OUT",
+    "net::ERR_TIMED_OUT",
+    "net::ERR_EMPTY_RESPONSE",
+    "net::ERR_NETWORK_CHANGED",
+    "net::ERR_INTERNET_DISCONNECTED",
+    "net::ERR_NAME_NOT_RESOLVED",
+    "net::ERR_ADDRESS_UNREACHABLE",
+    "net::ERR_HTTP2_PROTOCOL_ERROR",
+)
+
+
+def retryable_urls(results) -> list[str]:
+    """Links in a pipeline run whose failure a second try can fix (feature #26).
+
+    A page-load timeout, or a Chromium network error from the allow-list above.
+    Not a login wall, a 404, a rejected extraction, a URL refused before any
+    fetch, or a FetchStatus.ERROR with no error text to judge it by.
+    """
+    from src.ingestion.schemas.results import FetchStatus
+
+    out = []
+    for r in results:
+        if r.record is not None or r.rejection_reason:
+            continue
+        if r.fetch_status is FetchStatus.TIMEOUT:
+            out.append(r.url)
+        elif r.fetch_status is FetchStatus.ERROR and r.fetch_error and any(
+            code in r.fetch_error for code in _TRANSIENT_NET_ERRORS
+        ):
+            out.append(r.url)
+    return out
+
+
 def _merge_results(first: dict, retry: dict, retried_urls: list[str]) -> dict:
     """Fold a retry of some links into the result of the run before it.
 
@@ -286,6 +327,12 @@ class SqliteJobStore(JobStore):
             for name, decl in self._ADDED_COLUMNS.items():
                 if name not in have:
                     self._db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {decl}")
+            if "recoveries" not in have:
+                # Before #26 a restart was counted in `attempts` (one per worker
+                # pickup), and recover() failed a job at attempts > 1. So a row
+                # with attempts >= 2 has already had its one recovery — carry
+                # that over, or the migration would hand it a second one.
+                self._db.execute("UPDATE jobs SET recoveries = 1 WHERE attempts >= 2")
             self._db.commit()
 
     def save(self, job: Job) -> None:
@@ -620,22 +667,29 @@ class JobQueue:
             try:
                 result = await self._run(urls, job.guild_id, on_stage)
             except Exception as exc:
+                # last_error always names the most recent failure, whatever
+                # happens next — never one from an earlier attempt.
+                job.last_error = f"{type(exc).__name__}: {exc}"
                 final = not is_transient_error(exc) or retry >= self.max_retries
                 if final and merged is not None:
-                    # A retry of the timed-out links blew up. The spots the
-                    # first run saved are real — keep them, record why the
-                    # rest are still missing, and don't fail the whole job.
-                    job.last_error = f"{type(exc).__name__}: {exc}"
+                    # A retry of the unloaded links blew up. The spots the
+                    # first run saved are real — keep them, and don't fail
+                    # the whole job over the links that were already missing.
                     return merged
                 if final:
                     raise
-                job.last_error = f"{type(exc).__name__}: {exc}"
             else:
                 merged = result if merged is None else _merge_results(merged, result, urls)
                 again = [u for u in (result.get("retryable_urls") or []) if u in urls]
-                if not again or retry >= self.max_retries:
+                if again:
+                    job.last_error = f"could not load {len(again)} link(s)"
+                if not again:
                     return merged
-                job.last_error = f"timed out loading {len(again)} link(s)"
+                if retry >= self.max_retries:
+                    job.last_error += (
+                        f", still failing after {retry} retr{'y' if retry == 1 else 'ies'}"
+                    )
+                    return merged
                 urls = again
             retry += 1
             delay = self.backoff_s(retry)

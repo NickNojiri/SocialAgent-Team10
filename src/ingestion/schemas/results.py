@@ -25,6 +25,10 @@ class IngestionResult(BaseModel):
     fetch_status: FetchStatus
     record: Optional[EventInspiration] = None
     rejection_reason: Optional[str] = None  # set when fetch was OK but validation failed
+    # The fetcher's own error text for a non-OK fetch (e.g. "net::ERR_CONNECTION_RESET").
+    # FetchStatus.ERROR covers both a dropped connection and a URL refused on policy;
+    # this is what tells them apart for the job queue's retry policy (feature #26).
+    fetch_error: Optional[str] = None
     raw_ref: Optional[Path] = None          # saved page snapshot for debugging failures
 
     @property

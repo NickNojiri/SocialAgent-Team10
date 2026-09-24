@@ -28,12 +28,12 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
-from src.ingestion.schemas.results import FetchStatus
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
     QueueFull,
     SqliteJobStore,
+    retryable_urls,
 )
 from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
@@ -308,12 +308,9 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         # Per-event detail the Discord bot needs to build cards + vote buttons.
         "events": [_event_summary(r, existing_ids, sink) for r in report.validated],
         "log": [result_line(r) for r in report.results],
-        # Links that only timed out while loading — the one failure a second try
-        # can fix. The job queue retries these (feature #26). ERROR is not here
-        # on purpose: it also covers bad links, blown budgets and bugs.
-        "retryable_urls": [
-            r.url for r in report.connectivity_failures if r.fetch_status is FetchStatus.TIMEOUT
-        ],
+        # Links whose failure a second try can fix — a page-load timeout or a
+        # Chromium network error. The job queue retries only these (feature #26).
+        "retryable_urls": retryable_urls(report.results),
     }
 
 
