@@ -132,6 +132,10 @@ class Job:
             },
         }
 
+    def url_keys(self) -> list[str]:
+        """This job's links as dedup keys (feature #25)."""
+        return [capture_key(self.guild_id, u) for u in self.urls]
+
     def log_row(self) -> dict:
         """One line for the capture log â€” what `scripts/summarize_captures.py` reads.
 
@@ -321,14 +325,57 @@ class JobQueue:
             job = self.store.load(job_id)
         return job
 
+    def find_active(self, guild_id: str, urls: list[str]) -> Optional[Job]:
+        """The job already capturing all of these links for this server, if any.
+
+        This is what makes a double paste — or the Retry button — return the
+        capture that is already running instead of starting a second one
+        (feature #25). Only queued and running jobs count: once a capture has
+        finished, pasting the link again is a deliberate re-capture.
+        """
+        wanted = {capture_key(guild_id, u) for u in urls}
+        if not wanted:
+            return None
+        for job in self._jobs.values():
+            if job.state in ("queued", "running") and wanted <= set(job.url_keys()):
+                return job
+        return None
+
     def submit(self, urls: list[str], guild_id: str = "") -> Job:
-        """Queue a capture. Must be called from within the event loop."""
+        """Queue a capture. Must be called from within the event loop.
+
+        Idempotent: the same links, from the same server, while a capture of
+        them is still in flight, return that capture. Links that are already
+        in flight are dropped from a partly-new request, so a link is never
+        captured twice at once.
+        """
         self._ensure_workers()
         self.sweep()
+        guild_id = str(guild_id or "")
+
+        existing = self.find_active(guild_id, urls)
+        if existing is not None:
+            log.info("[jobs] %s already capturing those link(s) — reusing it", existing.id)
+            return existing
+        in_flight = {
+            k for j in self._jobs.values() if j.state in ("queued", "running")
+            for k in j.url_keys()
+        }
+        fresh = [u for u in urls if capture_key(guild_id, u) not in in_flight]
+        if not fresh:                       # every link is already being captured
+            covering = self.find_active(guild_id, urls[:1])
+            if covering is not None:
+                return covering
+            fresh = list(urls)
+        if len(fresh) < len(urls):
+            log.info("[jobs] %d of %d link(s) are already in flight — capturing the rest",
+                     len(urls) - len(fresh), len(urls))
+        urls = fresh
+
         waiting = sum(1 for j in self._jobs.values() if j.state == "queued")
         if waiting >= self.max_queued:
             raise QueueFull(f"{waiting} captures already waiting")
-        job = Job(id=uuid.uuid4().hex[:12], guild_id=str(guild_id or ""), urls=list(urls))
+        job = Job(id=uuid.uuid4().hex[:12], guild_id=guild_id, urls=list(urls))
         self._jobs[job.id] = job
         self._save(job)
         self._queue.put_nowait(job.id)

@@ -345,11 +345,14 @@ _jobs = JobQueue(
 async def create_job(body: IngestBody, x_tenant_token: str | None = TenantToken):
     authorize(body.guild_id, x_tenant_token)
     urls = _ingest_urls(body)
+    # A second paste of the same reel, or the bot's Retry button, joins the
+    # capture already in flight instead of starting a second one (feature #25).
+    duplicate = _jobs.find_active(body.guild_id, urls) is not None
     try:
         job = _jobs.submit(urls, body.guild_id)
     except QueueFull as exc:
         raise HTTPException(429, f"capture queue is full — {exc}")
-    return {"job_id": job.id, "state": job.state}
+    return {"job_id": job.id, "state": job.state, "duplicate": duplicate}
 
 
 @app.get("/api/jobs/{job_id}")

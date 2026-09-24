@@ -286,6 +286,73 @@ async def test_sweeping_a_finished_job_clears_the_durable_copy_too(tmp_path):
     q.store.close()
 
 
+# ── Idempotent submission (feature #25) ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_same_link_twice_makes_one_job():
+    gate = asyncio.Event()
+
+    async def slow(urls, guild_id, on_stage):
+        await gate.wait()
+        return {"added": len(urls), "events": []}
+
+    q = JobQueue(slow)
+    first = q.submit(["https://www.instagram.com/reel/AAA/"], "g1")
+    await asyncio.sleep(0)                       # first is running
+    again = q.submit(["https://instagram.com/reel/AAA?igsh=noise"], "g1")   # same post
+    assert again.id == first.id                  # the Retry path joins it
+
+    other_server = q.submit(["https://www.instagram.com/reel/AAA/"], "g2")
+    assert other_server.id != first.id           # different server, its own capture
+
+    gate.set()
+    await q.drain()
+    # Once it has finished, pasting it again is a deliberate re-capture.
+    assert q.submit(["https://www.instagram.com/reel/AAA/"], "g1").id != first.id
+
+
+@pytest.mark.asyncio
+async def test_a_partly_new_paste_only_captures_what_is_not_in_flight():
+    gate = asyncio.Event()
+    captured = []
+
+    async def slow(urls, guild_id, on_stage):
+        captured.append(list(urls))
+        await gate.wait()
+        return {"added": len(urls), "events": []}
+
+    q = JobQueue(slow, workers=2)
+    q.submit(["https://x.test/1"], "g1")
+    await asyncio.sleep(0)
+    second = q.submit(["https://x.test/1", "https://x.test/2"], "g1")
+    assert second.urls == ["https://x.test/2"]   # link 1 is already being captured
+    gate.set()
+    await q.drain()
+    assert sorted(sum(captured, [])) == ["https://x.test/1", "https://x.test/2"]
+
+
+def test_job_endpoint_reports_a_duplicate_submission(monkeypatch):
+    import src.ingestion.serving.admin as admin
+    from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
+
+    monkeypatch.setenv(ENV_VAR, "0" * 64)
+    auth = {"X-Tenant-Token": mint_token("g1")}
+
+    async def slow(urls, guild_id, on_stage):
+        await asyncio.sleep(0.3)
+        return {"added": len(urls), "events": []}
+
+    monkeypatch.setattr(admin, "_jobs", JobQueue(slow))
+    with TestClient(admin.app) as client:
+        body = {"urls": ["https://www.instagram.com/reel/AAA/"], "guild_id": "g1"}
+        first = client.post("/api/jobs", json=body, headers=auth).json()
+        second = client.post("/api/jobs", json=body, headers=auth).json()
+        assert first["duplicate"] is False
+        assert second["duplicate"] is True and second["job_id"] == first["job_id"]
+        _wait_done(client, first["job_id"], headers=auth)
+
+
 # ── HTTP endpoints ──────────────────────────────────────────────────────────
 
 
@@ -344,10 +411,11 @@ def test_job_endpoint_returns_429_when_the_queue_is_full(monkeypatch):
 
     monkeypatch.setattr(admin, "_jobs", JobQueue(slow, max_queued=1))
     with TestClient(admin.app) as client:
-        body = {"urls": ["https://x.test/1"]}
-        first = client.post("/api/jobs", json=body)      # picked up by the worker
-        second = client.post("/api/jobs", json=body)     # waits in the queue
-        third = client.post("/api/jobs", json=body)      # over the cap
+        # Distinct links: the same link twice would join the first capture
+        # instead of queueing a second one (feature #25).
+        first = client.post("/api/jobs", json={"urls": ["https://x.test/1"]})   # worker takes it
+        second = client.post("/api/jobs", json={"urls": ["https://x.test/2"]})  # waits in the queue
+        third = client.post("/api/jobs", json={"urls": ["https://x.test/3"]})   # over the cap
         assert (first.status_code, second.status_code, third.status_code) == (202, 202, 429)
         assert "queue is full" in third.json()["detail"]
         _wait_done(client, second.json()["job_id"])
