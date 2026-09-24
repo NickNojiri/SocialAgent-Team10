@@ -123,18 +123,48 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 
 ## 4. Concurrency and time budgets
 
-- `POST /api/ingest` is `async def`; Playwright runs on the event loop, and every
-  post-fetch stage runs in `asyncio.to_thread` under `capture_budget_s`
-  (default 180 s per URL). Whisper is CPU-bound, so two simultaneous captures
-  contend for cores.
-- The bot waits synchronously with a **300 s** client timeout
-  (`app/bot.py::handle_reel_capture`). A multi-link paste can legitimately exceed
-  that while the server keeps working; the bot then reports failure and a Retry
-  re-ingests. This is the defect ADR-0004 (async job queue) removes.
+- The default bot path is still synchronous: `POST /api/ingest` waits for every URL,
+  with a **300 s** bot timeout. Playwright runs on the event loop and post-fetch work
+  runs in `asyncio.to_thread`, under `capture_budget_s` (default **180 s per URL**).
+  A multi-link request can outlive the bot timeout while the server keeps working.
+  This synchronous endpoint has **no in-flight deduplication** yet, so Retry can start
+  the same capture again; Task 2 makes the async path the default.
+- With `INGEST_ASYNC=1`, the bot instead enqueues through `POST /api/jobs` and polls
+  `GET /api/jobs/{id}`. The admin app has one in-process worker by default
+  (`INGEST_WORKERS=1`) and accepts at most 50 waiting jobs; a full queue returns 429.
+  Finished jobs remain pollable for one hour. Whisper is CPU-bound, so increasing the
+  worker count makes captures contend for cores.
+- A job whose stage is `retrying` is sleeping between transient attempts: 5 s, 10 s,
+  then exponentially up to 60 s. For per-link results, only a page-load `TIMEOUT` or an
+  exact allow-listed Chromium network code is retried. The code must be either bare or
+  parsed from Playwright's `Page.goto: net::ERR_* at …` shape; an allow-listed word in
+  the URL does not count. The allow-list is `net::ERR_CONNECTION_RESET`,
+  `net::ERR_CONNECTION_CLOSED`, `net::ERR_CONNECTION_REFUSED`,
+  `net::ERR_CONNECTION_TIMED_OUT`, `net::ERR_TIMED_OUT`, `net::ERR_EMPTY_RESPONSE`,
+  `net::ERR_NETWORK_CHANGED`, `net::ERR_INTERNET_DISCONNECTED`,
+  `net::ERR_NAME_NOT_RESOLVED`, `net::ERR_ADDRESS_UNREACHABLE`, and
+  `net::ERR_HTTP2_PROTOCOL_ERROR`. A whole run is retried only when
+  `is_transient_error` sees `TimeoutError`, `ConnectionError`, or
+  `httpx.TransportError`. Login walls, 404s, certificate/SSL errors, rejected
+  extraction, and unexpected bugs are final.
+- The in-memory store remains the default. `JOB_STORE=sqlite` persists state and
+  recovers a queued or running job once after restart; a second interruption fails it
+  with a reason. See [ADR-0005](adr/0005-sqlite-job-store.md), which supersedes
+  ADR-0004's volatile-store decision without changing the queue or polling contracts.
 - Ollama gets one 2 s pre-flight per run; if it is down the run is
   heuristics-only with no summaries, instantly.
 - Per-domain throttling in the session manager; ≤ 10 URLs per request; 50 MB
   cap on any video download.
+
+Job-queue switches (unset values use these code defaults):
+
+| Variable | Process | Default | Effect |
+|---|---|---|---|
+| `JOB_STORE` | admin | in-memory | Set to `sqlite` to persist jobs and enable restart recovery. |
+| `JOB_DB` | admin | `data/jobs.db` | SQLite file used only when `JOB_STORE=sqlite`. |
+| `INGEST_MAX_RETRIES` | admin | `2` | Maximum retries after the first pipeline attempt. `0` disables retries; a retryable link result records `could not load N link(s); retries disabled`. |
+| `INGEST_SLOW_AFTER_S` | bot | `180` seconds | Adds a “still working” status after this elapsed time; it does not cancel or retry the job. |
+| `CAPTURE_LOG` | admin | `data/capture_jobs.jsonl` | Appends one timing/statistics JSON row per finished job; set to `off` to disable it. |
 
 ---
 
@@ -144,7 +174,10 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/ingest` | `{urls, guild_id}` → `{events, added, rejected, unreadable, log}` |
+| POST | `/api/ingest` | Synchronous `{urls, guild_id}` → `{events, added, rejected, unreadable, log, retryable_urls}`; no in-flight deduplication. |
+| POST | `/api/jobs` | Enqueue `{urls, guild_id}` → HTTP 202 `{job_id, state, duplicate}`. |
+| GET | `/api/jobs/{job_id}` | Poll one job's state, progress, attempts, errors, result, and timing. |
+| GET | `/api/jobs?guild_id=&state=failed` | Newest failed jobs for one tenant; optional `limit` defaults to 20 and is clamped to 1–100. |
 | GET | `/api/events?guild_id=` | catalog listing for cards, `/catalog`, `/browse`, `/digest` |
 | POST | `/api/events/{id}/vote` | `{delta, user_id, user_name}` — identity votes drive quorum |
 | POST | `/api/events/{id}/edit` · `/lock` · `/went` | edit modal, Scheduled Event lock-in, went-there confirmations |
@@ -153,6 +186,42 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
 | GET | `/api/followups?guild_id=&now=` | the hourly went-there loop |
 | GET | `/api/stats` · `/api/nights` | dashboard, 100 Nights counter |
 | GET | `/` · `/share?guild_id=` · `/dash` | admin page, public read-only catalog, ops dashboard |
+
+### Async capture job calls
+
+Every job call is tenant-authorized. The bot creates its header with
+`tenant_headers(guild_id)`; the admin service verifies it with `authorize(...)`.
+
+| Call | Authentication and request | Successful response |
+|---|---|---|
+| `POST /api/jobs` | Write-capable `X-Tenant-Token` for the body `guild_id`; JSON body `{"urls":["https://…"],"guild_id":"123"}`. | HTTP 202 `{"job_id":"…","state":"queued","duplicate":false}`. `duplicate:true` means the request reused an existing queued/running job for those normalized links. A full queue returns 429. |
+| `GET /api/jobs/{job_id}` | Read-capable `X-Tenant-Token` for the job's tenant. The server loads the job first, then calls `authorize(job.guild_id, …, need=SCOPE_READ)`; no caller-supplied `guild_id` is trusted. | The job object below. Unknown, expired, or volatile jobs lost on restart return 404. |
+| `GET /api/jobs?guild_id=123&state=failed&limit=20` | Read-capable `X-Tenant-Token` for query `guild_id=123`; checked with `authorize(guild_id, …, need=SCOPE_READ)`. Only `state=failed` is supported. | `{"jobs":[…]}` newest first. Each row has the job object fields plus its tenant's original `urls`. |
+
+`GET /api/jobs/{job_id}` returns this shape (values abbreviated):
+
+```json
+{
+  "id": "7e91c18bc133",
+  "guild_id": "123",
+  "state": "queued | running | done | failed",
+  "stage": "queued | fetching | transcribing | extracting | saving | retrying | done",
+  "progress": {"done": 0, "total": 1},
+  "result": null,
+  "error": null,
+  "created_at": 1790236800.0,
+  "updated_at": 1790236800.0,
+  "attempts": 0,
+  "last_error": null,
+  "timing": {"duration_s": 0.125, "stages": {"queued": 0.125}}
+}
+```
+
+`attempts` counts pipeline runs, including transient retries. `last_error` keeps the
+most recent attempt failure, including one that a later retry heals; `error` is
+populated when the job itself ends failed. On success, `result` becomes the same
+`{events, added, rejected, unreadable, log, retryable_urls}` payload returned by the
+capture runner.
 
 **Bot → recommend `:8003`** (`app.py`)
 

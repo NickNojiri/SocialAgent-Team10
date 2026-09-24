@@ -22,7 +22,7 @@ then use `.\.venv\Scripts\python.exe` in place of `python` below.
 ## Checks — run before you say a task is done
 
 ```bash
-python -m pytest -k "not live" -q                        # offline suite, must stay green (253+)
+python -m pytest -k "not live" -q                        # offline suite, must stay green (324)
 python -m src.ingestion.eval --offline --split test      # accuracy scorecard (Track B work)
 ```
 Neither needs a Discord token, Ollama, or internet (the suite does need Chromium).
@@ -51,6 +51,8 @@ real Instagram and need internet. They run on a teammate's own machine.
   currently `mxbai-embed-large`). Don't hardcode another one.
 - The bot must never ping: keep `allowed_mentions=discord.AllowedMentions.none()` on the
   client (`docs/THREAT_MODEL.md` T1).
+- Retry policy lives in `serving/jobs.py::retryable_urls` and `is_transient_error`;
+  don't retry anything outside them.
 - **Every catalog call is tenant-authorized.** Any new bot → `:8010`/`:8003` request
   that names a `guild_id` must send `headers=tenant_headers(guild_id)` (with
   `user_id=` when it acts for a user, like a vote), and any new endpoint that takes a
