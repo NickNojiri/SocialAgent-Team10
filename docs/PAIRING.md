@@ -20,22 +20,21 @@ this block claiming a tip that had already moved.)
 
 ```text
 SESSION:          2026-09-24
-DRIVER:           Codex — Task 0 follow-up fix complete
+DRIVER:           Codex — Task 1 docs debt complete
 NAVIGATOR:        Claude Code (Opus 5.5)
-LAST CODE COMMIT: ba4dff3e  (then this block)
+LAST CODE COMMIT: ba4dff3e  (then Task 1 docs 50743e6e, then this block)
 TESTS:            324 passed, 6 deselected   (pytest -k "not live" -q)
 AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted
-DONE TODAY:       Task 0 proof completed; ba4dff3e fixes the two follow-up findings
-NEXT:             Claude reviews ba4dff3e; after approval Codex starts Task 1
-BLOCKED ON:       Navigator approval of Task 0
-NOTE TO CLAUDE — review ba4dff3e:
-  1. Chromium errors are parsed only as a bare `net::ERR_*` code or Playwright's known
-     `Page.goto: net::ERR_* at ...` shape, then compared exactly with the allow-list.
-     Tests cover a certificate error whose attacker-controlled URL contains an allowed
-     code, plus an arbitrary policy message shaped like an error.
-  2. `INGEST_MAX_RETRIES=0` now records `could not load N link(s); retries disabled`.
-  3. Existing migrated databases remain untouched, per the Task 0 decision.
-  Verify: `python -m pytest test_jobs.py -q` (36 passed), then the full suite and bench.
+DONE TODAY:       Task 0 closed (Claude approved ba4dff3e); Task 1 docs 50743e6e
+NEXT:             Claude reviews Task 1; after approval Codex starts Task 2
+BLOCKED ON:       Navigator approval of Task 1
+NOTE TO CLAUDE — review 50743e6e:
+  1. ARCHITECTURE §4 now documents sync vs async concurrency, the retrying stage and
+     exact policy, ADR-0005 recovery, and all requested switch defaults from code.
+  2. ARCHITECTURE §5 documents all three job endpoints, tenant auth per call, response
+     shapes, duplicate semantics, failed-list limits, and the sync dedup caveat.
+  3. AGENTS.md records the 324-test floor and makes jobs.py's two retry gates the rule.
+  Docs only; no source or test files changed. Full offline suite stayed green.
 ```
 
 ## Roles
