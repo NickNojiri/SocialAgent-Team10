@@ -64,9 +64,12 @@ view is memory-only); one more file to back up and to include in a data-deletion
 (feature #21); SQLite is single-writer, which is fine at one uvicorn worker and would
 need revisiting if the service is ever run multi-process.
 
-**Follow-ups:** feature #26 (retry only transient failures, using `attempts` and
-`last_error`); feature #27 flips `INGEST_ASYNC` on by default once this has run on
-staging; `/privacy` deletion must clear a server's rows here too.
+**Follow-ups:** feature #26 — done 2026-09-23 (`146daa00`): it split the restart
+counter out into `recoveries` so a job that retried a timeout still gets its one
+recovery, and added `last_error`; both columns are migrated in place on open. Feature
+#27 flips `INGEST_ASYNC` on by default once this has run on staging — until then the
+sync `/api/ingest` path has no dedup. `/privacy` deletion must clear a server's rows
+here too.
 
 ## Evidence
 

@@ -20,11 +20,11 @@ the dates they say.
 | Piece | Where | State |
 |---|---|---|
 | Pipeline orchestration | `src/ingestion/pipeline/orchestrator.py` | `IngestionPipeline` + `RunReport`, `on_stage` callback wired at fetch/transcribe/extract/save/done |
-| Async job queue | `src/ingestion/serving/jobs.py`, ADR-0004 | In-process `asyncio.Queue`, bounded (429 when full), polled by the bot, behind `INGEST_ASYNC=1` — **off by default** |
-| Multi-tenancy | `tenant_auth.py` (×2), ADR-0001 | HMAC tenant tokens on every guild-scoped call; one Chroma collection per guild. 32/32 forged rejected |
+| Async job queue | `src/ingestion/serving/jobs.py`, ADR-0004/0005 | Bounded queue (429 when full), polled by the bot, behind `INGEST_ASYNC=1` — **off by default**. Stage timings (#23), optional SQLite store with restart recovery (#24, `JOB_STORE=sqlite`), one capture per link in flight (#25), retries for timeouts only (#26) |
+| Multi-tenancy | `tenant_auth.py` (×2), ADR-0001 | HMAC tenant tokens on every guild-scoped call; one Chroma collection per guild. Bench: 34/34 forged rejected, 16/16 authentic (Sept 23) |
 | Serving | `src/ingestion/serving/app.py` (:8003), `admin.py` (:8010) | Recommend/plan + admin & share |
-| Docs | `docs/ARCHITECTURE.md`, `docs/adr/0001–0004`, `docs/SRS.md`, `docs/THREAT_MODEL.md`, `docs/RUNBOOK.md` | Current as of Sept 17 |
-| Tests | `pytest -k "not live" -q` | **291 passing** (Sept 17) |
+| Docs | `docs/ARCHITECTURE.md`, `docs/adr/0001–0005`, `docs/SRS.md`, `docs/THREAT_MODEL.md`, `docs/RUNBOOK.md` | ADRs current as of Sept 23; ARCHITECTURE §4 not yet updated for #23–#26 |
+| Tests | `pytest -k "not live" -q` | **318 passing** (Sept 23) |
 
 **Open platform risks:** no always-on host (demo runs on a laptop today); no rate
 limiting; the job queue is in-process, so a restart loses in-flight work and the same reel
@@ -74,33 +74,39 @@ Postgres), `INGEST_ASYNC` default unchanged, `X-Tenant-Token` checks preserved o
 guild call (fail closed, 503), all existing tests pass.
 
 **#23 Capture timing + capture statistics — New (30)**
-- [ ] Per-job stage timings on the job record, via the existing `on_stage` callback — no
+- [x] Per-job stage timings on the job record, via the existing `on_stage` callback — no
       second instrumentation path.
-- [ ] `scripts/summarize_captures.py`: duration distribution, how many captures ran past
+- [x] `scripts/summarize_captures.py`: duration distribution, how many captures ran past
       300 s and 180 s, and duplicate-capture counts.
-- [ ] **Done when:** one command prints those numbers for the reels captured so far.
+- [x] **Done when:** one command prints those numbers for the reels captured so far.
 - *Hand-off note:* self-contained and the smallest of the four — the easiest to give away.
 
 **#24 Durable job store + crash recovery ★ — New (60)**
-- [ ] A SQLite-backed `JobStore` behind the existing interface, selected by config;
+- [x] A SQLite-backed `JobStore` behind the existing interface, selected by config;
       **in-memory stays the default**.
-- [ ] On startup, jobs left `running` are requeued once, then marked failed with a
+- [x] On startup, jobs left `running` are requeued once, then marked failed with a
       reason.
-- [ ] Test: simulate a crash mid-job, restart, and the job reaches a deterministic state.
-- [ ] `docs/adr/0005-sqlite-job-store.md`, superseding ADR-0004's in-memory choice —
+- [x] Test: simulate a crash mid-job, restart, and the job reaches a deterministic state.
+- [x] `docs/adr/0005-sqlite-job-store.md`, superseding ADR-0004's in-memory choice —
       Evidence section left as placeholders until the Phase 1 numbers exist.
-- [ ] **Done when:** a capture killed mid-run ends in a state we can explain, every time.
+- [x] **Done when:** a capture killed mid-run ends in a state we can explain, every time.
 - *Hand-off note:* depends on #23's job record; whoever takes it needs ADR-0004 read.
 
 **#25 Idempotent capture submission ★ — New (40)**
-- [ ] Submission key = hash(guild_id, normalized URL). A duplicate while queued or
+- [x] Submission key = hash(guild_id, normalized URL). A duplicate while queued or
       running returns the existing `job_id`.
-- [ ] Tests: a double POST and a Retry-path resubmit each produce one job.
-- [ ] Bot side, **separate PR** (`app/bot.py`): Retry polls the existing job instead of
+- [x] Tests: a double POST and a Retry-path resubmit each produce one job.
+- [x] Bot side, **separate PR** (`app/bot.py`): Retry polls the existing job instead of
       resubmitting, and the status line says "still working" once 180 s have passed,
       before any failure is shown. Test: pressing Retry during a slow capture gives one
       job and one card.
-- [ ] **Done when:** the same reel pasted twice makes one job and one card.
+- [x] **Done when:** the same reel pasted twice makes one job and one card.
+- **Caveat (Sept 23):** this holds on the async path (`INGEST_ASYNC=1`): the bot follows
+  whatever job id the server returns, so Retry joins the running capture. The default
+  sync path (`POST /api/ingest`) has no dedup — Retry there still re-runs the capture
+  (the content-hash upsert stops a duplicate *row*, not the duplicate work). #27 closes
+  this by making async the default. No end-to-end test drives the Discord button itself;
+  the tests cover the server dedup and the client following the returned id.
 - *Hand-off note:* the `app/` half is Track C's home turf — the natural person to hand
   this to if I run out of time.
 
@@ -134,11 +140,11 @@ guild call (fail closed, 503), all existing tests pass.
 - [ ] **Done when:** a teammate on another network can use the bot with the laptop closed.
 
 **#26 Retry only what's worth retrying — New (40)**
-- [ ] Transient failures only (fetch timeout, network) retry, with capped exponential
+- [x] Transient failures only (fetch timeout, network) retry, with capped exponential
       backoff; extraction failures never retry.
-- [ ] Store `attempts` and `last_error`; list failed jobs in the admin API
+- [x] Store `attempts` and `last_error`; list failed jobs in the admin API
       (tenant-authorized like every other guild call).
-- [ ] **Done when:** a dropped connection recovers on its own, and a bad caption fails
+- [x] **Done when:** a dropped connection recovers on its own, and a bad caption fails
       once instead of five times.
 - *Hand-off note:* needs #24 in place first; independent of everything else.
 
