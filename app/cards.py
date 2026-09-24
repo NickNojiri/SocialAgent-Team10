@@ -70,6 +70,10 @@ class CaptureQueueFull(CaptureFailed):
     """The admin service has no room for another waiting capture."""
 
 
+class CaptureRateLimited(CaptureFailed):
+    """The signed user or server has reached a configured capture limit."""
+
+
 class CaptureLost(CaptureFailed):
     """The admin service no longer has the job the bot was polling."""
 
@@ -97,6 +101,7 @@ def stage_line(job: dict, total: int, elapsed_s: float = 0.0) -> str:
 async def capture_urls(
     urls: list[str],
     guild_id: str,
+    user_id: str,
     progress: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> dict:
     """Run a capture and return the /api/ingest result shape.
@@ -105,17 +110,24 @@ async def capture_urls(
     the admin app could not be reached. `progress(text)` is awaited whenever the
     stage changes (async path only).
     """
-    payload = {"urls": urls, "guild_id": guild_id}
-    headers = tenant_headers(guild_id)
+    payload = {"urls": urls, "guild_id": guild_id, "user_id": user_id}
+    submit_headers = tenant_headers(guild_id, user_id=user_id)
+    poll_headers = tenant_headers(guild_id)
     if not INGEST_ASYNC:
         async with httpx.AsyncClient(timeout=300.0) as client:
-            resp = await client.post(f"{ADMIN_URL}/api/ingest", json=payload, headers=headers)
+            resp = await client.post(
+                f"{ADMIN_URL}/api/ingest", json=payload, headers=submit_headers
+            )
             resp.raise_for_status()
             return resp.json()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload, headers=headers)
+        resp = await client.post(
+            f"{ADMIN_URL}/api/jobs", json=payload, headers=submit_headers
+        )
         if resp.status_code == 429:
+            if resp.headers.get("Retry-After"):
+                raise CaptureRateLimited("Capture limit reached — try again later.")
             raise CaptureQueueFull("Lots of captures in line — try again in a minute.")
         resp.raise_for_status()
         # A duplicate paste, or the Retry button, gets the id of the capture
@@ -137,7 +149,9 @@ async def capture_urls(
         while time.monotonic() < deadline:
             await asyncio.sleep(JOB_POLL_S)
             try:
-                resp = await client.get(f"{ADMIN_URL}/api/jobs/{job_id}", headers=headers)
+                resp = await client.get(
+                    f"{ADMIN_URL}/api/jobs/{job_id}", headers=poll_headers
+                )
             except httpx.TransportError as exc:
                 if poll_outage_expired():
                     raise CapturePollingFailed(
@@ -688,9 +702,11 @@ class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:ret
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
         try:
-            data = await capture_urls([self.url], guild_key(interaction))
+            data = await capture_urls(
+                [self.url], guild_key(interaction), str(interaction.user.id)
+            )
             events = data.get("events", [])
-        except (CaptureQueueFull, CaptureLost, CapturePollingFailed) as exc:
+        except (CaptureQueueFull, CaptureRateLimited, CaptureLost, CapturePollingFailed) as exc:
             await interaction.followup.send(f"⚠️ {exc}")
             return
         except CaptureFailed as exc:

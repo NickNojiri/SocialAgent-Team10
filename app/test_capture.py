@@ -16,8 +16,9 @@ pytestmark = pytest.mark.asyncio
 
 
 class _Resp:
-    def __init__(self, payload, status=200):
+    def __init__(self, payload, status=200, headers=None):
         self._payload, self.status_code = payload, status
+        self.headers = headers or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -73,12 +74,16 @@ async def test_sync_path_posts_to_ingest(monkeypatch):
     fake = _FakeClient(_Resp({"events": [{"id": "e1"}], "added": 1}))
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    data = await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1")
+    data = await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1", "u1")
 
     assert data["added"] == 1
     assert [c[1] for c in fake.calls if c[0] == "POST"] == [f"{cards.ADMIN_URL}/api/ingest"]
-    assert fake.calls[1][2] == {"urls": ["https://www.instagram.com/reel/A/"], "guild_id": "g1"}
-    assert fake.headers == [tenant_headers("g1")]         # signed for the tenant it names
+    assert fake.calls[1][2] == {
+        "urls": ["https://www.instagram.com/reel/A/"],
+        "guild_id": "g1",
+        "user_id": "u1",
+    }
+    assert fake.headers == [tenant_headers("g1", user_id="u1")]
 
 
 async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
@@ -103,12 +108,17 @@ async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
     async def progress(text):
         seen.append(text)
 
-    data = await cards.capture_urls(urls, "g1", progress=progress)
+    data = await cards.capture_urls(urls, "g1", "u1", progress=progress)
 
     assert data == result
-    assert fake.calls[1] == ("POST", f"{cards.ADMIN_URL}/api/jobs", {"urls": urls, "guild_id": "g1"})
+    assert fake.calls[1] == (
+        "POST",
+        f"{cards.ADMIN_URL}/api/jobs",
+        {"urls": urls, "guild_id": "g1", "user_id": "u1"},
+    )
     assert all(c[1] == f"{cards.ADMIN_URL}/api/jobs/j1" for c in fake.calls if c[0] == "GET")
-    assert fake.headers and all(h == tenant_headers("g1") for h in fake.headers)   # submit and every poll
+    assert fake.headers[0] == tenant_headers("g1", user_id="u1")
+    assert all(header == tenant_headers("g1") for header in fake.headers[1:])
     assert seen == [
         "⏳ Waiting for a free capture slot… (0/2 done)",
         "🔎 Reading those 2 links — caption and location… (0/2 done)",
@@ -127,7 +137,7 @@ async def test_async_path_raises_capture_failed_on_a_failed_job(monkeypatch):
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
     with pytest.raises(cards.CaptureFailed, match="chromium crashed"):
-        await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1")
+        await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1", "u1")
 
 
 async def test_full_queue_gets_its_own_bot_message(monkeypatch):
@@ -145,7 +155,7 @@ async def test_full_queue_gets_its_own_bot_message(monkeypatch):
     status = Status()
     message = SimpleNamespace(
         guild=SimpleNamespace(id=1),
-        author=SimpleNamespace(display_name="nick"),
+        author=SimpleNamespace(id=7, display_name="nick"),
     )
 
     async def reply(*args, **kwargs):
@@ -165,6 +175,21 @@ async def test_full_queue_gets_its_own_bot_message(monkeypatch):
     )
 
 
+async def test_rate_limit_response_is_not_called_a_full_queue(monkeypatch):
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    fake = _FakeClient(
+        _Resp(
+            {"detail": "capture rate limit exceeded (user)"},
+            429,
+            headers={"Retry-After": "600"},
+        )
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    with pytest.raises(cards.CaptureRateLimited, match="Capture limit reached"):
+        await cards.capture_urls(["https://x.test/1"], "g1", "u1")
+
+
 async def test_one_poll_timeout_is_tolerated(monkeypatch):
     monkeypatch.setattr(cards, "INGEST_ASYNC", True)
     monkeypatch.setattr(cards, "JOB_POLL_S", 0)
@@ -179,8 +204,9 @@ async def test_one_poll_timeout_is_tolerated(monkeypatch):
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
-    assert all(header == tenant_headers("g1") for header in fake.headers)
+    assert await cards.capture_urls(["https://x.test/1"], "g1", "u1") == result
+    assert fake.headers[0] == tenant_headers("g1", user_id="u1")
+    assert all(header == tenant_headers("g1") for header in fake.headers[1:])
 
 
 async def test_one_poll_5xx_is_tolerated(monkeypatch):
@@ -196,7 +222,7 @@ async def test_one_poll_5xx_is_tolerated(monkeypatch):
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+    assert await cards.capture_urls(["https://x.test/1"], "g1", "u1") == result
 
 
 async def test_three_quick_poll_errors_are_tolerated(monkeypatch):
@@ -225,7 +251,7 @@ async def test_three_quick_poll_errors_are_tolerated(monkeypatch):
     monkeypatch.setattr(cards.time, "monotonic", monotonic)
     monkeypatch.setattr(cards.asyncio, "sleep", advance)
 
-    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+    assert await cards.capture_urls(["https://x.test/1"], "g1", "u1") == result
 
 
 async def test_poll_outage_fails_after_time_budget(monkeypatch):
@@ -249,7 +275,7 @@ async def test_poll_outage_fails_after_time_budget(monkeypatch):
     monkeypatch.setattr(cards.asyncio, "sleep", advance)
 
     with pytest.raises(cards.CapturePollingFailed, match="may still be running"):
-        await cards.capture_urls(["https://x.test/1"], "g1")
+        await cards.capture_urls(["https://x.test/1"], "g1", "u1")
 
     assert clock["now"] == 80.0
 
@@ -267,7 +293,7 @@ async def test_poll_404_uses_plain_user_message(monkeypatch):
         cards.CaptureLost,
         match="The catalog restarted and lost this capture — tap Retry",
     ):
-        await cards.capture_urls(["https://x.test/1"], "g1")
+        await cards.capture_urls(["https://x.test/1"], "g1", "u1")
 
 
 async def test_lost_job_logs_operator_storage_detail(monkeypatch, caplog):
@@ -286,7 +312,7 @@ async def test_lost_job_logs_operator_storage_detail(monkeypatch, caplog):
 
     message = SimpleNamespace(
         guild=SimpleNamespace(id=1),
-        author=SimpleNamespace(display_name="nick"),
+        author=SimpleNamespace(id=7, display_name="nick"),
         reply=reply,
     )
     monkeypatch.setattr(bot, "_add_reaction", no_reaction)
@@ -306,7 +332,7 @@ async def test_async_path_gives_up_after_the_wait_budget(monkeypatch):
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
     with pytest.raises(cards.CaptureFailed, match="did not finish"):
-        await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1")
+        await cards.capture_urls(["https://www.instagram.com/reel/A/"], "g1", "u1")
 
 
 async def test_stage_line_wording():
@@ -354,7 +380,9 @@ async def test_a_stalled_stage_still_refreshes_once_it_is_slow(monkeypatch):
     async def progress(text):
         seen.append(text)
 
-    assert await cards.capture_urls(["https://x.test/1"], "g1", progress=progress) == result
+    assert await cards.capture_urls(
+        ["https://x.test/1"], "g1", "u1", progress=progress
+    ) == result
     assert len(seen) == 2                        # refreshed although the stage never moved
     assert all("Still working" in line for line in seen)
     assert seen[0] != seen[1]                    # the minute count moved
@@ -372,7 +400,7 @@ async def test_retry_follows_the_job_the_server_gives_back(monkeypatch):
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+    assert await cards.capture_urls(["https://x.test/1"], "g1", "u1") == result
     assert [c[1] for c in fake.calls if c[0] == "GET"] == [
         f"{cards.ADMIN_URL}/api/jobs/already-running"
     ]
