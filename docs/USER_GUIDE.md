@@ -26,11 +26,23 @@ say the venue out loud without writing it) and can read **text typed over the
 video**. If a time like "this Friday 8pm" is mentioned, the card shows the real
 date.
 
-**Where pasting works:** every channel SpotBot can read, plus DMs. DM captures go
-to your own private stash instead of the server's list.
+**Where pasting works:** every channel SpotBot can read, plus DMs — unless your
+server picked one **reels channel** in `/setup`, in which case only that channel
+(and threads inside it) captures. DM captures go to your own private stash
+instead of the server's list.
 
 > 🔇 Don't want captures in a channel (e.g. #serious-talk)? A mod runs `/mute`
 > there. Run it again to turn capture back on.
+
+### Setting up a server — `/setup` (about 30 seconds)
+Someone with **Manage Server** runs `/setup` and gets a private three-step form:
+1. **Reels channel** — pick one, tap **➕ Create #spot-drops**, or keep **Every channel**
+2. **📍 Home city** — e.g. "Long Beach, CA" (used for distance on cards)
+3. **✅ Save**
+
+Nothing else changes: saved spots, votes and plans stay put, and running `/setup`
+again only changes what you change. Everyone else who runs `/setup` sees how the
+server is set up.
 
 ### If a capture fails
 Some reels are private, deleted, or Instagram is being Instagram. You'll get an
@@ -102,7 +114,7 @@ Three things make the picks smarter:
 
 | Command | What it does |
 |---|---|
-| `/setup` | 20-second explainer + this channel's settings (only you see it) |
+| `/setup` | Pick the reels channel and home city *(Manage Server)*; everyone else sees the explainer and current settings (only you see it) |
 | `/browse` | Flip through saved spots by category (🍽️ 🍸 🎶 …) as votable cards |
 | `/catalog` | The leaderboard — your server's top-voted spots |
 | `/digest` | One-message summary: spot count, top picks, nights out |

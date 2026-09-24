@@ -58,6 +58,7 @@ reason capture concurrency is bounded (see [§4](#4-concurrency-and-time-budgets
 | **JSONL sink** | `data/inspirations.jsonl` | every validated `EventInspiration`, appended per capture | the source of truth; Chroma can be rebuilt from it |
 | **ChromaDB** | `data/` (`PersistentClient`, SQLite + HNSW) | vectors + metadata per spot: venue, category, theme, votes, voters, schedule, summary, image | one collection per Discord guild — `chroma_sink.collection_for_guild`; `""` is the legacy single-tenant collection `event_inspirations` |
 | **Bot config** | `channels.json` | muted channels, suggestion channels, tipped guilds | written by the bot, not the admin app |
+| **Server settings** | `data/guild_settings/<guild>.json` | `/setup`'s reels channel (`drop_channel_id`, null = every channel) and `home_city` | one file per server, via `GET/PUT /api/settings` (tenant token, full scope); must move with `data/` to staging; #21 deletes it |
 | **Failed-fetch HTML** | `data/raw/snapshot-*.html` | page HTML of rejected / unreadable fetches | debugging only; no retention policy yet |
 | **IG session** | `data/ig_session.json` | burner-account cookie for the authed fetch path | gitignored; optional |
 | **Label corpus** | `fixtures/labels.jsonl` | 433 labeled reels — the accuracy benchmark | committed; scored by `src/ingestion/eval.py` |

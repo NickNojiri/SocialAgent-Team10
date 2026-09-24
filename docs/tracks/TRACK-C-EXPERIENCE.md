@@ -1,6 +1,6 @@
 # Track C — Experience & User Research
 
-**Specialist:** [Member 4 full name] · **Directed by:** Nick (Architecture & Platform)
+**Specialist:** Nick (took Track C over, 2026-09-24) · **Directed by:** Nick (Architecture & Platform)
 **Points:** 470 across 9 features · **Demo-day claim:** *"I ran a study with real users;
 I cut time-to-first-card and raised the SUS score."*
 
@@ -65,11 +65,16 @@ measures how long a capture takes from the user's side.
 ### Phase 1 — Sep 15 – Oct 3 (100 pts)
 
 **#8 /setup onboarding wizard (100)**
-- [ ] Step-by-step: pick the channel to watch for reels, set the group's home city,
-      confirm, done.
-- [ ] Store per-server settings through the existing per-guild path — never a global.
-- [ ] Handle re-running `/setup` on an already-configured server without wiping data.
-- [ ] Time it on a genuinely fresh server, with a stopwatch.
+- [x] Step-by-step: pick the channel to watch for reels, set the group's home city,
+      confirm, done. *(`app/setup_wizard.py`: channel picker or "Create #spot-drops" or
+      "Every channel" → city form → Save. Manage Server only; a welcome on join points to it.)*
+- [x] Store per-server settings through the existing per-guild path — never a global.
+      *(`GET/PUT /api/settings`, tenant-authorized; one file per server in
+      `data/guild_settings/`. Settings keys for staging: `drop_channel_id`, `home_city`.)*
+- [x] Handle re-running `/setup` on an already-configured server without wiping data.
+      *(Save sends only what changed; `test_rerunning_setup_never_touches_the_catalog`.)*
+- [ ] Time it on a genuinely fresh server, with a stopwatch. *(Needs a real Discord
+      server — not something the tests can do.)*
 - [ ] **Done when:** a brand-new server is posting its first card in **under a minute**,
       and you have the recording or the timing to prove it.
 
