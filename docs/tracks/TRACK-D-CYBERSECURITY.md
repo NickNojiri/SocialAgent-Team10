@@ -33,10 +33,10 @@ no mentions (`AllowedMentions.none()`).
 
 **What's openly weak, and yours to close:**
 - **Tokens never expire** and cannot be revoked individually — whoever copies one keeps
-  access until the whole signing key is rotated. That's your #26.
-- No dependency scanning, no secret scanning in CI. That's your #27.
+  access until the whole signing key is rotated. That's your #27.
+- No dependency scanning, no secret scanning in CI. That's your #28.
 - Nothing logs or alerts on refused authorizations, rate-limit hits, or blocked hosts —
-  we can't see an attack even in hindsight. That's your #28.
+  we can't see an attack even in hindsight. That's your #29.
 
 **Traps:**
 - The signing key must never be committed, printed, or logged — not even a prefix. If you
@@ -53,10 +53,10 @@ no mentions (`AllowedMentions.none()`).
 | # | Feature | Need | Pts | Phase |
 |---|---|---|---|---|
 | 12 | Security test suite + simulated attack ★ | Must | 100 | 1 |
-| 26 | Authentication & session hardening ★ | Should | 100 | 2 |
+| 27 | Authentication & session hardening ★ | Should | 100 | 2 |
 | 13 | Threat model & security review | Must | 60 | 3 |
-| 27 | Dependency & supply-chain scanning | Should | 60 | 3 |
-| 28 | Abuse & intrusion monitoring ★ | Should | 100 | 4 |
+| 28 | Dependency & supply-chain scanning | Should | 60 | 3 |
+| 29 | Abuse & intrusion monitoring ★ | Should | 100 | 4 |
 
 ★ unique to SpotBot
 
@@ -83,7 +83,7 @@ no mentions (`AllowedMentions.none()`).
 
 ### Phase 2 — Oct 6 – Oct 24 (100 pts)
 
-**#26 Authentication & session hardening ★ (100)**
+**#27 Authentication & session hardening ★ (100)**
 - [ ] Add an expiry to the signed tenant tokens, and a token id so one can be revoked
       without rotating the master key.
 - [ ] Revocation list (or key-version) check on every verify; keep it fail-closed.
@@ -105,7 +105,7 @@ no mentions (`AllowedMentions.none()`).
 - [ ] **Done when:** the staging release (Nick's #11) is signed off by a written review
       and every finding is closed or explicitly accepted with a reason.
 
-**#27 Dependency & supply-chain scanning (60)**
+**#28 Dependency & supply-chain scanning (60)**
 - [ ] Automated dependency audit in CI that fails the build on a known vulnerability.
 - [ ] Pin versions; add a secret scanner so a key can never be committed.
 - [ ] **Done when:** CI is green, and a deliberate test commit containing a fake secret is
@@ -113,10 +113,10 @@ no mentions (`AllowedMentions.none()`).
 
 ### Phase 4 — Nov 17 – Dec 11 (100 pts)
 
-**#28 Abuse & intrusion monitoring ★ (100)**
+**#29 Abuse & intrusion monitoring ★ (100)**
 - [ ] Log security events: refused authorizations, rate-limit hits, blocked hosts, unusual
       capture volume. Event text only — never token material, never raw credentials.
-- [ ] Alert on spikes; add a panel to the operations dashboard (Nick's #25).
+- [ ] Alert on spikes; add a panel to the operations dashboard (Nick's #26).
 - [ ] Write the incident runbook: what to do when a key leaks, when one server is abused,
       who is told, in what order, and how a rotation is announced.
 - [ ] **Done when:** a simulated abuse run raises an alert you can point at, and the team

@@ -10,9 +10,10 @@ handoffs you owe other tracks.
 | B | Accuracy & Evaluation | [TRACK-B-ACCURACY.md](TRACK-B-ACCURACY.md) | 470 |
 | C | Experience & User Research | [TRACK-C-EXPERIENCE.md](TRACK-C-EXPERIENCE.md) | 470 |
 | D | Cybersecurity | [TRACK-D-CYBERSECURITY.md](TRACK-D-CYBERSECURITY.md) | 420 |
-| — | Architecture & Platform (Nick) | [TRACK-N-PLATFORM.md](TRACK-N-PLATFORM.md) | 470 |
+| — | Architecture & Platform (Nick) | [TRACK-N-PLATFORM.md](TRACK-N-PLATFORM.md) | 570 |
 
-33 features · 2,290 points · four phases of ~3 weeks.
+34 features · 2,390 points · four phases of ~3 weeks. Nick's Phase 1 shows 200 points
+because 100 of them (per-server data isolation) were finished before the phase began.
 
 **Read first, whatever your track:** [`docs/KICKOFF.md`](../KICKOFF.md) (clone, install, run
 the tests), [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) (how the pieces fit),

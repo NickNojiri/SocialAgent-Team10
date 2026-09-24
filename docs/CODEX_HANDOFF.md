@@ -112,12 +112,36 @@ Read src/ingestion/serving/tenant_auth.py, test_admin_authz.py, scripts/bench_ad
 and docs/THREAT_MODEL.md first. Never log or print token material.
 ```
 
-**Platform (Nick) — non-blocking capture (feature #23):**
+**Platform (Nick) — durable, idempotent capture jobs (feature #23):**
 ```text
-Task: make INGEST_ASYNC the default path. Read src/ingestion/serving/jobs.py, ADR-0004,
-app/cards.py (capture_urls) and pipeline/orchestrator.py first. Tell me what happens to
-in-flight jobs on a restart today, and give me the two options (drop with a clear user
-message, or persist) with the trade-offs, before writing any code.
+Read AGENTS.md, docs/ARCHITECTURE.md, docs/adr/0004-async-capture-job-queue.md,
+src/ingestion/serving/jobs.py, test_jobs.py, and app/bot.py::handle_reel_capture.
+Stay inside the Architecture & Platform paths in ARCHITECTURE.md §7. I own Track C (app/)
+as well, so app/ changes are in scope — but keep platform and app/ changes in SEPARATE PRs.
+
+Task, in order, one PR each:
+1) Add per-job stage timing to the job record using the existing on_stage callback. Add
+   scripts/summarize_captures.py: the capture duration distribution, how many exceeded
+   300 s and 180 s, and duplicate-capture counts.
+2) Add a SQLite-backed JobStore behind the existing JobStore interface, selected by
+   config (in-memory stays the default). On startup, jobs left in 'running' are requeued
+   once, then marked failed with a reason. Test: simulate a crash mid-job, restart, and
+   the job reaches a deterministic state.
+3) Idempotent submission: key = hash(guild_id, normalized URL). A duplicate while queued
+   or running returns the existing job_id. Tests: double POST, and a Retry-path resubmit,
+   each produce one job.
+4) Retry transient failures only (fetch timeout, network) with capped exponential
+   backoff. Extraction failures never retry. Store attempts and last_error, and list
+   failed jobs in the admin API.
+5) Draft docs/adr/0005-sqlite-job-store.md superseding ADR-0004's in-memory choice.
+   Leave the Evidence section as placeholders for my Phase 1 numbers.
+6) In app/bot.py (separate PR), make the Retry button reuse the existing job_id (poll it)
+   instead of resubmitting, and show "still working" once 180 s have passed, before any
+   failure. Test: pressing Retry during a slow capture gives one job and one card.
+
+Rules: no new services or dependencies (no Redis, Kafka, Postgres). Keep INGEST_ASYNC
+default unchanged. Preserve the X-Tenant-Token checks on every guild call (fail closed,
+503). All existing tests must pass.
 ```
 
 ---

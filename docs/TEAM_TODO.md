@@ -141,9 +141,31 @@ The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
   endpoints become `/api/guilds/{gid}/...`.
 
 ### P0.7 · Hosted architecture basics  *(roadmap 0.3)*
-- **Job queue for ingestion.** Today the bot does a synchronous `POST /api/ingest`
-  with a 180s timeout — a thundering-herd risk when hosted. Enqueue → worker pool
-  → bot edits its "⏳" message when done.
+- **Job queue for ingestion.** Built as a spike (`src/ingestion/serving/jobs.py`,
+  ADR-0004, behind `INGEST_ASYNC=1`): enqueue → worker → bot edits its "⏳" message
+  with the stage. Still off by default.
+- **Durable, idempotent capture jobs** — 491A feature #23, Nick, Phase 1, in progress.
+  The queue is in-process, so a restart loses in-flight work and the same reel pasted
+  twice is captured twice. Five PRs, in order:
+  1. Per-job stage timings via the existing `on_stage` callback, plus
+     `scripts/summarize_captures.py` (duration distribution, captures past 300 s and
+     180 s, duplicate counts).
+  2. SQLite-backed `JobStore` behind the existing interface, chosen by config
+     (in-memory stays the default); on startup, jobs left `running` are requeued once,
+     then failed with a reason.
+  3. Idempotent submission keyed on hash(guild_id, normalized URL) — a duplicate while
+     queued or running returns the existing `job_id`.
+  4. Retry transient failures only (fetch timeout, network) with capped exponential
+     backoff; extraction failures never retry. `attempts` + `last_error` stored, failed
+     jobs listed in the admin API.
+  5. `docs/adr/0005-sqlite-job-store.md`, superseding ADR-0004's in-memory choice.
+  6. Bot side, separate PR (`app/`): the Retry button polls the existing `job_id` instead
+     of resubmitting, and the status line says "still working" after 180 s rather than
+     showing a failure.
+
+  Constraints: no new services or dependencies (no Redis/Kafka/Postgres), `INGEST_ASYNC`
+  default unchanged, tenant-token checks preserved on every guild call (fail closed,
+  503), all existing tests pass. Platform and `app/` changes ship as separate PRs.
 - Pick the always-on box for the dogfood deploy (spare PC or cheapest VPS,
   `llama3.2:3b` profile).
 - ToS + privacy-policy pages (capture is user-initiated paste only — never

@@ -49,7 +49,7 @@ Phase 1 feature, and it is the number the whole semester's reliability story res
 | 2 | Authenticated capture + fallback chain | Must | 100 | 2 |
 | 15 | Gatekept-reel recovery ★ | Should | 100 | 3 |
 | 14 | Safe-link guard | Should | 40 | 4 |
-| 29 | TikTok + YouTube Shorts capture | Nice | 100 | 4 |
+| 30 | TikTok + YouTube Shorts capture | Nice | 100 | 4 |
 
 ★ unique to SpotBot · 🔒 your security feature
 
@@ -110,7 +110,7 @@ Phase 1 feature, and it is the number the whole semester's reliability story res
       before any network call, with a plain-language message.
 - [ ] **Done when:** a pasted non-supported link is refused instantly, with a test.
 
-**#29 TikTok + YouTube Shorts capture (100)**
+**#30 TikTok + YouTube Shorts capture (100)**
 - [ ] Move the TikTok extractor from test pages to live pages (`test_tiktok.py` is your
       starting point).
 - [ ] Add YouTube Shorts as a third source behind the same fetch interface from #2.
@@ -148,7 +148,7 @@ your code can make. D's simulated attack (#12) targets exactly those.
 **You owe Track C (Experience)** — by **Phase 2**: the final failure-class names, so
 their "clear failure messages" (#19) say the right thing per class.
 
-**You receive from Nick** — Phase 2: capture moves to a background job (#23). Your fetch
+**You receive from Nick** — Phase 2: capture moves to a background job (#24). Your fetch
 path must report stage progress through the `on_stage` callback in `orchestrator.py`
 rather than assuming it runs inline.
 
