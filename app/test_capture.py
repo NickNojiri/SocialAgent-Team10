@@ -186,8 +186,30 @@ async def test_rate_limit_response_is_not_called_a_full_queue(monkeypatch):
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    with pytest.raises(cards.CaptureRateLimited, match="Capture limit reached"):
+    with pytest.raises(cards.CaptureRateLimited, match="capture limit.*try again in 10 minutes"):
         await cards.capture_urls(["https://x.test/1"], "g1", "u1")
+
+
+async def test_the_sync_path_tells_a_rate_limit_apart_too(monkeypatch):
+    """INGEST_ASYNC=0 used to turn a 429 into 'couldn't reach the catalog'."""
+    monkeypatch.setattr(cards, "INGEST_ASYNC", False)
+    limited = _FakeClient(_Resp({"detail": "limit"}, 429, headers={"Retry-After": "30"}))
+    monkeypatch.setattr(cards.httpx, "AsyncClient", limited)
+    with pytest.raises(cards.CaptureRateLimited, match="try again in a minute"):
+        await cards.capture_urls(["https://x.test/1"], "g1", "u1")
+
+    full = _FakeClient(_Resp({"detail": "queue is full"}, 429))
+    monkeypatch.setattr(cards.httpx, "AsyncClient", full)
+    with pytest.raises(cards.CaptureQueueFull):
+        await cards.capture_urls(["https://x.test/1"], "g1", "u1")
+
+
+async def test_retry_after_reads_as_plain_time():
+    assert cards._wait_phrase(30) == "in a minute"
+    assert cards._wait_phrase(600) == "in 10 minutes"
+    assert cards._wait_phrase(601) == "in 11 minutes"            # rounds up, never early
+    assert cards._wait_phrase(3 * 3600) == "in about 3 hours"
+    assert cards._wait_phrase(86400) == "in about 24 hours"
 
 
 async def test_one_poll_timeout_is_tolerated(monkeypatch):

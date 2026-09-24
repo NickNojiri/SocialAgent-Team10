@@ -98,6 +98,35 @@ def stage_line(job: dict, total: int, elapsed_s: float = 0.0) -> str:
     return text
 
 
+def _wait_phrase(seconds: int) -> str:
+    """'in a minute', 'in 7 minutes', 'in about 3 hours' — for a Retry-After value."""
+    if seconds <= 90:
+        return "in a minute"
+    minutes = -(-seconds // 60)                       # round up
+    if minutes < 90:
+        return f"in {minutes} minutes"
+    hours = round(minutes / 60)
+    return f"in about {hours} hour{'s' if hours != 1 else ''}"
+
+
+def _raise_if_refused(resp) -> None:
+    """Turn the admin service's 429s into the two messages a user should see.
+
+    A capture limit carries Retry-After; a full queue doesn't. Same rule on the
+    sync (/api/ingest) and async (/api/jobs) paths.
+    """
+    if resp.status_code != 429:
+        return
+    retry_after = (resp.headers or {}).get("Retry-After")
+    if retry_after:
+        try:
+            when = _wait_phrase(int(float(retry_after)))
+        except ValueError:
+            when = "later"
+        raise CaptureRateLimited(f"You've hit the capture limit for now — try again {when}.")
+    raise CaptureQueueFull("Lots of captures in line — try again in a minute.")
+
+
 async def capture_urls(
     urls: list[str],
     guild_id: str,
@@ -118,6 +147,7 @@ async def capture_urls(
             resp = await client.post(
                 f"{ADMIN_URL}/api/ingest", json=payload, headers=submit_headers
             )
+            _raise_if_refused(resp)
             resp.raise_for_status()
             return resp.json()
 
@@ -125,10 +155,7 @@ async def capture_urls(
         resp = await client.post(
             f"{ADMIN_URL}/api/jobs", json=payload, headers=submit_headers
         )
-        if resp.status_code == 429:
-            if resp.headers.get("Retry-After"):
-                raise CaptureRateLimited("Capture limit reached — try again later.")
-            raise CaptureQueueFull("Lots of captures in line — try again in a minute.")
+        _raise_if_refused(resp)
         resp.raise_for_status()
         # A duplicate paste, or the Retry button, gets the id of the capture
         # that is already running rather than starting a second one — the
