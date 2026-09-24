@@ -112,7 +112,7 @@ Read src/ingestion/serving/tenant_auth.py, test_admin_authz.py, scripts/bench_ad
 and docs/THREAT_MODEL.md first. Never log or print token material.
 ```
 
-**Platform (Nick) — durable, idempotent capture jobs (feature #23):**
+**Platform (Nick) — durable, idempotent capture jobs (features #23–#26):**
 ```text
 Read AGENTS.md, docs/ARCHITECTURE.md, docs/adr/0004-async-capture-job-queue.md,
 src/ingestion/serving/jobs.py, test_jobs.py, and app/bot.py::handle_reel_capture.

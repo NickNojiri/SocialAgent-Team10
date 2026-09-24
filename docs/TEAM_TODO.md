@@ -144,7 +144,9 @@ The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
 - **Job queue for ingestion.** Built as a spike (`src/ingestion/serving/jobs.py`,
   ADR-0004, behind `INGEST_ASYNC=1`): enqueue → worker → bot edits its "⏳" message
   with the stage. Still off by default.
-- **Durable, idempotent capture jobs** — 491A feature #23, Nick, Phase 1, in progress.
+- **Durable, idempotent capture jobs** — 491A features **#23–#26** (New, Sept 23), Nick,
+  started now; #23–#25 in Phase 1, #26 in Phase 3. Nick owns them, and each is scoped
+  small enough that another specialist can take one over if he doesn't finish it.
   The queue is in-process, so a restart loses in-flight work and the same reel pasted
   twice is captured twice. Five PRs, in order:
   1. Per-job stage timings via the existing `on_stage` callback, plus

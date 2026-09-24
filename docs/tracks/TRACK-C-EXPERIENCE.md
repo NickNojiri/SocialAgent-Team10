@@ -49,12 +49,12 @@ measures how long a capture takes from the user's side.
 | 8 | /setup onboarding wizard | Must | 100 | 1 |
 | 18 | Time-to-card measurement | Should | 30 | 2 |
 | 20 | In-Discord feedback + survey ★ | Should | 40 | 2 |
-| 33 | Distance + map on spot cards | Nice | 40 | 2 |
+| 36 | Distance + map on spot cards | Nice | 40 | 2 |
 | 21 | Privacy & data-deletion UX — /privacy + delete my data ★ 🔒 | Should | 60 | 3 |
 | 22 | Usability fixes from the study | Should | 60 | 3 |
 | 19 | Clear failure messages | Should | 30 | 4 |
-| 32 | Catalog browsing v2 | Nice | 60 | 4 |
-| 34 | Accessibility pass | Nice | 50 | 4 |
+| 35 | Catalog browsing v2 | Nice | 60 | 4 |
+| 37 | Accessibility pass | Nice | 50 | 4 |
 
 ★ unique to SpotBot · 🔒 your security feature
 
@@ -77,7 +77,7 @@ measures how long a capture takes from the user's side.
 
 **#18 Time-to-card measurement (30)**
 - [ ] Log elapsed time from paste → card posted, per capture.
-- [ ] Expose median and p95 to Nick's operations dashboard (#26).
+- [ ] Expose median and p95 to Nick's operations dashboard (#29).
 - [ ] **Done when:** you can quote today's median and p95, and watch them move.
 
 **#20 In-Discord feedback + survey ★ (40)**
@@ -85,7 +85,7 @@ measures how long a capture takes from the user's side.
 - [ ] The 10-question SUS survey, taken inside Discord, for study participants.
 - [ ] **Done when:** you can collect a SUS score from a participant without leaving Discord.
 
-**#33 Distance + map on spot cards (40)**
+**#36 Distance + map on spot cards (40)**
 - [ ] Show distance from the group's home city and a map link on each card.
 - [ ] **Done when:** cards show both, and a spot with no coordinates degrades cleanly.
 
@@ -113,11 +113,11 @@ measures how long a capture takes from the user's side.
       no video, timeout, no venue, not a place) — each saying what to do next.
 - [ ] **Done when:** no user-visible failure is a bare error or a silent nothing.
 
-**#32 Catalog browsing v2 (60)**
+**#35 Catalog browsing v2 (60)**
 - [ ] `/browse` filters by category, area, and whether a spot has a date set.
 - [ ] **Done when:** the filters work on a server with 50+ spots without a wall of text.
 
-**#34 Accessibility pass (50)**
+**#37 Accessibility pass (50)**
 - [ ] Alt text on card images, readable contrast, screen-reader labels on cards and the
       share/web pages.
 - [ ] **Done when:** the checklist is completed and recorded in the final report.
@@ -141,7 +141,7 @@ python -m app.bot
 you added (they have to survive deployment to staging in Phase 3).
 
 **You owe Nick** — **Phase 2**: the time-to-card metric names/shape, so the dashboard
-(#26) can chart them rather than inventing its own.
+(#29) can chart them rather than inventing its own.
 
 **You owe the whole team** — **Phase 3**: the usability round-1 findings, ranked. Fixes
 outside your area (a capture wait, a wrong venue) get handed to A or B with the
@@ -153,7 +153,7 @@ deleted data is actually gone and that one server can't trigger another's deleti
 **You receive from Track A** — **Phase 2**: the final failure-class names for #19.
 **From Track B** — **Phase 3**: the confidence behind the place-or-not gate, so a card can
 say "a real place, name unclear — what is it?" instead of failing.
-**From Nick** — **Phase 2**: non-blocking capture (#24) with a live stage line; your
+**From Nick** — **Phase 2**: non-blocking capture (#27) with a live stage line; your
 messages must update in place rather than posting a new message per stage.
 
 ---

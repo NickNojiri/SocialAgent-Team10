@@ -67,7 +67,7 @@ you add an alias, ask: *could this row's answer be leaking into its own score?*
 | 17 | Evaluation report generator | Should | 30 | 2 |
 | 6 | Place-or-not gate ★ | Must | 100 | 3 |
 | 7 | Extraction grounding guard — anti prompt-injection ★ 🔒 | Must | 60 | 4 |
-| 31 | Location-aware ranking | Nice | 80 | 4 |
+| 34 | Location-aware ranking | Nice | 80 | 4 |
 
 ★ unique to SpotBot · 🔒 your security feature
 
@@ -130,7 +130,7 @@ you add an alias, ask: *could this row's answer be leaking into its own score?*
 - [ ] **Done when:** those tests pass in CI. This is threat-model **T4**, and it's the
       feature Track D's injection attack (#12) will aim at.
 
-**#31 Location-aware ranking (80)**
+**#34 Location-aware ranking (80)**
 - [ ] Rank suggestions by distance from the group's home city plus vote count. The
       coordinates are already stored and currently ignored.
 - [ ] **Done when:** `/plan` and recommendations visibly prefer nearer, better-voted spots.
