@@ -138,3 +138,64 @@ async def test_stage_line_wording():
     assert cards.stage_line(_job("running", "extracting"), 1) == "🧠 Working out the venue…"
     assert cards.stage_line(_job("running", "saving", 2, 3), 3) == "💾 Saving to the catalog… (2/3 done)"
     assert cards.stage_line({"state": "running"}, 1).startswith("🔎 Reading that reel")
+
+
+async def test_a_slow_capture_says_it_is_still_working(monkeypatch):
+    """Past the budget the user hears 'slow', not silence and not a failure."""
+    monkeypatch.setattr(cards, "JOB_SLOW_AFTER_S", 180.0)
+    assert "Still working" not in cards.stage_line(_job("running", "extracting"), 1, 179.0)
+    slow = cards.stage_line(_job("running", "extracting"), 1, 245.0)
+    assert slow.startswith("🧠 Working out the venue…")
+    assert "Still working — 4 min so far" in slow
+
+
+async def test_a_stalled_stage_still_refreshes_once_it_is_slow(monkeypatch):
+    """The same stage for minutes must not leave the message frozen."""
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    monkeypatch.setattr(cards, "JOB_SLOW_AFTER_S", 0.0)     # every poll counts as slow
+    monkeypatch.setattr(cards, "JOB_WAIT_S", 10_000.0)
+    ticking = {"t": 0.0}                                    # a minute per reading
+
+    def fake_monotonic():
+        ticking["t"] += 61.0
+        return ticking["t"]
+
+    monkeypatch.setattr(cards.time, "monotonic", fake_monotonic)
+    result = {"events": [], "added": 0}
+    fake = _FakeClient(
+        _Resp({"job_id": "j1", "state": "queued", "duplicate": False}, 202),
+        gets=[
+            _job("running", "extracting"),      # same stage…
+            _job("running", "extracting"),      # …three polls running
+            _job("done", "done", 1, 1, result=result),
+        ],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+    seen = []
+
+    async def progress(text):
+        seen.append(text)
+
+    assert await cards.capture_urls(["https://x.test/1"], "g1", progress=progress) == result
+    assert len(seen) == 2                        # refreshed although the stage never moved
+    assert all("Still working" in line for line in seen)
+    assert seen[0] != seen[1]                    # the minute count moved
+
+
+async def test_retry_follows_the_job_the_server_gives_back(monkeypatch):
+    """The server returns the running job's id for a duplicate paste; the bot
+    polls that job instead of starting a second capture (feature #25)."""
+    monkeypatch.setattr(cards, "INGEST_ASYNC", True)
+    monkeypatch.setattr(cards, "JOB_POLL_S", 0)
+    result = {"events": [{"id": "e1"}], "added": 1}
+    fake = _FakeClient(
+        _Resp({"job_id": "already-running", "state": "running", "duplicate": True}, 202),
+        gets=[_job("done", "done", 1, 1, result=result)],
+    )
+    monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
+
+    assert await cards.capture_urls(["https://x.test/1"], "g1") == result
+    assert [c[1] for c in fake.calls if c[0] == "GET"] == [
+        f"{cards.ADMIN_URL}/api/jobs/already-running"
+    ]

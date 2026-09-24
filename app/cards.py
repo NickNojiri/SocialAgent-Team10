@@ -47,6 +47,10 @@ BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 INGEST_ASYNC = os.getenv("INGEST_ASYNC", "").strip().lower() in ("1", "true", "on", "yes")
 JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
 JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
+# Past the per-URL budget (config.capture_budget_s) a capture is unusually slow
+# but not failed. Say so, and keep saying so, instead of showing a stage line
+# that hasn't moved in minutes (feature #25).
+JOB_SLOW_AFTER_S = float(os.getenv("INGEST_SLOW_AFTER_S", "180"))
 
 _STAGE_TEXT = {
     "queued": "⏳ Waiting for a free capture slot…",
@@ -61,13 +65,19 @@ class CaptureFailed(RuntimeError):
     """The capture job ran and failed — as opposed to the service being unreachable."""
 
 
-def stage_line(job: dict, total: int) -> str:
-    """Status text for a job's current stage, e.g. '🎙️ Listening to the audio… (1/3 done)'."""
+def stage_line(job: dict, total: int, elapsed_s: float = 0.0) -> str:
+    """Status text for a job's current stage, e.g. '🎙️ Listening to the audio… (1/3 done)'.
+
+    Past `JOB_SLOW_AFTER_S` it also says how long it has been going, so a slow
+    capture reads as slow rather than as broken.
+    """
     noun = "that reel" if total == 1 else f"those {total} links"
     text = _STAGE_TEXT.get(job.get("stage") or "", _STAGE_TEXT["fetching"]).format(noun=noun)
     done = int((job.get("progress") or {}).get("done", 0))
     if total > 1:
         text += f" ({done}/{total} done)"
+    if elapsed_s >= JOB_SLOW_AFTER_S:
+        text += f"\n⏱️ Still working — {int(elapsed_s // 60)} min so far. This one's slow; I'll keep going."
     return text
 
 
@@ -93,8 +103,12 @@ async def capture_urls(
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(f"{ADMIN_URL}/api/jobs", json=payload, headers=headers)
         resp.raise_for_status()
+        # A duplicate paste, or the Retry button, gets the id of the capture
+        # that is already running rather than starting a second one — the
+        # server decides that (feature #25); this just follows whatever it says.
         job_id = resp.json()["job_id"]
-        deadline = time.monotonic() + JOB_WAIT_S
+        started = time.monotonic()
+        deadline = started + JOB_WAIT_S
         last: Optional[tuple] = None
         while time.monotonic() < deadline:
             await asyncio.sleep(JOB_POLL_S)
@@ -105,10 +119,14 @@ async def capture_urls(
                 return job.get("result") or {}
             if job["state"] == "failed":
                 raise CaptureFailed(job.get("error") or "capture failed")
-            key = (job.get("stage"), (job.get("progress") or {}).get("done"))
+            elapsed = time.monotonic() - started
+            # Once it is slow, refresh every minute even if the stage hasn't
+            # moved, so the message never looks frozen.
+            key = (job.get("stage"), (job.get("progress") or {}).get("done"),
+                   int(elapsed // 60) if elapsed >= JOB_SLOW_AFTER_S else 0)
             if progress is not None and key != last:
                 last = key
-                await progress(stage_line(job, len(urls)))
+                await progress(stage_line(job, len(urls), elapsed))
         raise CaptureFailed(f"capture did not finish within {JOB_WAIT_S:.0f}s")
 
 def guild_key(source) -> str:
