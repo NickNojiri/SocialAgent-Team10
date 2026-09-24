@@ -149,9 +149,17 @@ Ask whoever runs the bot for the link.
 
 | You see | What it means |
 |---|---|
-| "I couldn't read that reel" | It's private/removed, or IG walled it. Retry once, then Add manually. |
-| "I read it, but couldn't find a venue" | The reel had no place info anywhere. Add manually if you know it. |
-| "Can't reach the catalog service" | The host's admin app isn't running — ping your server's bot owner. |
+| 🔒 "That reel is private or needs a login" | Instagram won't show it without an account. Retry if it's public; otherwise Add manually. |
+| 🚫 "That post is gone" | Deleted, or the link is wrong. Check the link. |
+| ⏱️ "The site took too long" / "took too long to read" | Instagram/TikTok was slow, or the video is long. Retry usually works. |
+| 📶 "I couldn't reach the site" | A network blip. Retry in a minute. |
+| 🤷 "I couldn't find a caption, spoken words or on-screen text" | Nothing to read in the post. Add manually — a name and the vibe. |
+| 🤔 "doesn't look like it's about a place" | SpotBot thinks it's not a spot (an ad, a music clip). Add it yourself if it is. |
+| 🔎 "couldn't tell which place it's about" | It read the post but no venue was clear. Add manually if you know it. |
+| 📅 "That event has already happened" | It's in the past, so it wasn't saved. |
+| 😵 "Something broke on our side" | A SpotBot bug. Retry; if it repeats, `/feedback bug`. |
+| ⚠️ "N of M links didn't make a spot" | Some links in a paste worked; the list says why each other one didn't. |
+| ⚠️ "SpotBot's catalog isn't answering" | The host's admin app is down — ping your server's bot owner. |
 | Card has "no fixed date" | The reel never mentioned a time. It's saved as an idea, not an event. |
 | Suggestions feel empty | The catalog is young — paste ~10 reels and try again. |
 

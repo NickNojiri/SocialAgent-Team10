@@ -147,9 +147,15 @@ measures how long a capture takes from the user's side.
 ### Phase 4 — Nov 17 – Dec 11 (140 pts)
 
 **#19 Clear failure messages (30)**
-- [ ] One plain-language message per failure class from Track A's taxonomy (private reel,
+- [x] One plain-language message per failure class from Track A's taxonomy (private reel,
       no video, timeout, no venue, not a place) — each saying what to do next.
-- [ ] **Done when:** no user-visible failure is a bare error or a silent nothing.
+      *(11 classes from what the pipeline reports today — `serving/failures.py`, worded in
+      `app/cards.py::FAILURE_MESSAGES`. **Provisional**: when Track A hands over its final
+      taxonomy, map it in `failures.py`; `test_failures.py` fails if the bot lacks words
+      for a class.)*
+- [x] **Done when:** no user-visible failure is a bare error or a silent nothing.
+      *(Raw exception text no longer reaches the channel — it goes to the log; a paste
+      where only some links worked now names the ones that didn't. `app/test_messages.py`.)*
 
 **#35 Catalog browsing v2 (60)**
 - [x] `/browse` filters by category, area, and whether a spot has a date set.
