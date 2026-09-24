@@ -58,6 +58,7 @@ _STAGE_TEXT = {
     "transcribing": "🎙️ Listening to the audio…",
     "extracting": "🧠 Working out the venue…",
     "saving": "💾 Saving to the catalog…",
+    "retrying": "🔁 That timed out — trying again in a moment…",
 }
 
 

@@ -138,6 +138,8 @@ async def test_stage_line_wording():
     assert cards.stage_line(_job("running", "extracting"), 1) == "🧠 Working out the venue…"
     assert cards.stage_line(_job("running", "saving", 2, 3), 3) == "💾 Saving to the catalog… (2/3 done)"
     assert cards.stage_line({"state": "running"}, 1).startswith("🔎 Reading that reel")
+    # The queue's own backoff stage (feature #26) gets its own words, not "Reading…".
+    assert cards.stage_line(_job("running", "retrying"), 1) == "🔁 That timed out — trying again in a moment…"
 
 
 async def test_a_slow_capture_says_it_is_still_working(monkeypatch):
