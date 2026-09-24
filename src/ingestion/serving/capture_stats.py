@@ -11,6 +11,7 @@ repeats and never returned, so nothing that identifies a post leaves this module
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -48,11 +49,17 @@ def read_rows(path: Path, max_bytes: Optional[int] = None) -> list[dict]:
 
 
 def percentile(values: list[float], pct: float) -> float:
-    """Nearest-rank percentile — no numpy, and exact on small samples."""
+    """Nearest-rank percentile: the value at rank ceil(pct/100 × n). No numpy.
+
+    The first version rounded (pct/100 × n + 0.5), and Python rounds halves to
+    even, so whenever pct/100 × n was a whole number it came out one rank high —
+    p95 of 20 values was the maximum, the median of 10 was the 6th. Found by the
+    #18 tests, 2026-09-24.
+    """
     if not values:
         return 0.0
     ordered = sorted(values)
-    rank = max(1, min(len(ordered), int(round(pct / 100.0 * len(ordered) + 0.5))))
+    rank = max(1, min(len(ordered), math.ceil(pct * len(ordered) / 100.0 - 1e-9)))
     return ordered[rank - 1]
 
 

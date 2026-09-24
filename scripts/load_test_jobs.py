@@ -32,18 +32,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# The one nearest-rank percentile (it had an off-by-one; fixed there, 2026-09-24).
+from src.ingestion.serving.capture_stats import percentile  # noqa: E402,F401
 from src.ingestion.serving.jobs import JobQueue, QueueFull  # noqa: E402
 
 DEFAULT_LEVELS = (1, 5, 10, 25, 50, 60, 100)
-
-
-def percentile(values: list[float], pct: float) -> float:
-    """Nearest-rank percentile (same definition as scripts/summarize_captures.py)."""
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    rank = max(1, min(len(ordered), int(round(pct / 100.0 * len(ordered) + 0.5))))
-    return ordered[rank - 1]
 
 
 async def run_level(
