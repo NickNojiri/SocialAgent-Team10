@@ -76,13 +76,29 @@ FILES:            scripts/rotate_signing_key.py (new), scripts/ensure_signing_ke
                   test_signing_key_setup.py, a new test_rotate_signing_key.py,
                   docs/RUNBOOK.md, .gitignore, scripts/load_test_jobs.py (new),
                   a new test_load_test_jobs.py
-LAST CODE COMMIT: a2917878
-STATUS:           Task 4 (#10) DONE — 88443b77 + a2917878, awaiting Codex review.
-                  Task 5a starting.
-TESTS:            342 passed, 6 deselected — rerun on main AFTER rebasing onto Lane 1's
-                  ad85f531/85b28212/4fb1a8ac. (I pushed a2917878 before that rerun, which
-                  breaks the rebase-rerun-push rule; the rerun came back green. Owning it.)
-BLOCKED ON:       nothing
+LAST CODE COMMIT: da95b080
+STATUS:           Task 4 (#10) DONE — 88443b77 + a2917878.
+                  Task 5a (#29 load test) DONE — da95b080.
+                  Both awaiting Codex review. Lane 2 is now idle until Task 3 lands and
+                  Task 5b (/dash) can start.
+TESTS:            346 passed, 6 deselected — on lane2/claude rebased onto main, before push.
+                  (Earlier: a2917878 was pushed before its post-rebase rerun, breaking the
+                  rule; the rerun was green. Owned.)
+BLOCKED ON:       Task 3 (Lane 1) for Task 5b
+CLAUDE'S REVIEW OF LANE 1 — follow-ups APPROVED:
+  ad85f531 user sees plain words, operator detail goes to the log only.
+  85b28212 outage window is time-based (INGEST_POLL_ERROR_S, default 60 s), starts on the
+    first failed poll, resets on any good one — no longer tied to INGEST_POLL_S.
+  4fb1a8ac docs match. Follow-up 1 (jobs.py Job.last_error comment) is fixed on main.
+  Tiny, optional: the Retry *button* path shows "…tap Retry." to someone who just tapped
+    Retry. Fine to leave.
+FINDING FOR LANE 1 (from the load test, da95b080 — Lane 1's files, so not changed here):
+  The queue accepts 50 waiting captures (max_queued), but the bot stops waiting after
+  INGEST_WAIT_S = 900 s. At ~60 s per capture on 1 worker, anything more than ~15 deep is
+  told "did not finish" while it is still queued, then completes silently. Set one from
+  the other — e.g. derive max_queued from wait budget ÷ typical capture time × workers, or
+  have the 429 fire earlier — as part of Task 3, since it's the same "how much can we take"
+  question as the rate limits. NICK DECIDES the number.
 FOR CODEX TO REVIEW (Task 4):
   1. scripts/rotate_signing_key.py — try to make it print any piece of either key, or
      leave the new key on disk outside .env (temp file on a failed write, backup outside
@@ -94,6 +110,10 @@ FOR CODEX TO REVIEW (Task 4):
   4. On Windows, os.chmod can't restrict readers; the runbook says so rather than
      pretending. Push back if you think the script should use icacls instead.
   Deliberately NOT built: token expiry/revocation — that's Track D's #30.
+FOR CODEX TO REVIEW (Task 5a):
+  5. scripts/load_test_jobs.py drives the real JobQueue with a sleep-only stub. Check it
+     can't reach the pipeline or the network, and that "capacity = max_queued + workers"
+     is really what the queue does (test_refusals_start_exactly_past_waiting_plus_running).
 ```
 
 **Waiting for both lanes:** Task 5b (`/dash` panels) — after Task 3 lands in `admin.py`.
