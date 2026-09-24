@@ -94,7 +94,10 @@ measures how long a capture takes from the user's side.
 **#21 Privacy & data-deletion UX ★ 🔒 (60)**
 - [ ] `/privacy` explains in plain language what's stored, where, and for how long.
 - [ ] A one-command "delete this server's data" that actually purges the per-guild Chroma
-      collection **and** the raw files — not just hides them.
+      collection **and** the raw files — not just hides them. Two platform stores also
+      hold a server's `guild_id` and must be purged too: `data/jobs.db` (job rows, when
+      `JOB_STORE=sqlite`) and `data/capture_jobs.jsonl` (one timing row per capture,
+      written by default on the async path). Found in review 2026-09-24.
 - [ ] Require a confirmation step, and make it obvious the deletion is irreversible.
 - [ ] Test: create a test server's data, delete it, assert nothing comes back from any
       endpoint or file path.

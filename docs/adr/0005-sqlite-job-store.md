@@ -68,8 +68,9 @@ need revisiting if the service is ever run multi-process.
 counter out into `recoveries` so a job that retried a timeout still gets its one
 recovery, and added `last_error`; both columns are migrated in place on open. Feature
 #27 flips `INGEST_ASYNC` on by default once this has run on staging — until then the
-sync `/api/ingest` path has no dedup. `/privacy` deletion must clear a server's rows
-here too.
+sync `/api/ingest` path has no dedup. `/privacy` deletion (#21) must clear a server's
+rows here too — and in `data/capture_jobs.jsonl`, the #23 timing log, which also
+carries `guild_id` on every row.
 
 ## Evidence
 
