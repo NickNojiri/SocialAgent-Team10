@@ -45,6 +45,58 @@ BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 HOME_LOOKUP: Optional[Callable[[str], Awaitable[Optional[dict]]]] = None
 
 
+# ── Failure messages (#19) ───────────────────────────────────────────────────
+# One plain sentence per failure class from the admin app (serving/failures.py),
+# each saying what to do next. "Retry" only appears where the Retry button does:
+# under a single-link failure.
+
+FAILURE_MESSAGES = {
+    "private": "🔒 That reel is private or needs a login, so I can't read it. If it's public, {retry}; otherwise add the spot yourself.",
+    "removed": "🚫 That post is gone — it was deleted, or the link is wrong. Check the link, or add the spot yourself.",
+    "timeout": "⏱️ The site took too long to answer. {Retry} — it usually works the second time.",
+    "network": "📶 I couldn't reach the site just now. {Retry} in a minute.",
+    "unsupported": "🔗 I can only read public Instagram and TikTok links. Add the spot yourself instead.",
+    "too_slow": "⏱️ That one took too long to read (a long video?). {Retry}, or add the spot yourself.",
+    "no_text": "🤷 I couldn't find a caption, spoken words or on-screen text to go on. Add the spot yourself — just a name and the vibe.",
+    "not_a_place": "🤔 That post doesn't look like it's about a place, an event or food. If it is, add it yourself.",
+    "past_event": "📅 That event has already happened, so I didn't save it. If there's a next one, paste that post.",
+    "no_venue": "🔎 I read it, but couldn't tell which place it's about. If you know, add it yourself.",
+    "bug": "😵 Something broke on our side. {Retry} — if it keeps happening, tell us with `/feedback bug`.",
+}
+FAILURE_SHORT = {
+    "private": "private or needs a login", "removed": "deleted, or a wrong link",
+    "timeout": "took too long to load", "network": "couldn't reach the site",
+    "unsupported": "not an Instagram or TikTok link", "too_slow": "took too long to read",
+    "no_text": "nothing to read in it", "not_a_place": "not about a place",
+    "past_event": "that event already happened", "no_venue": "couldn't tell which place",
+    "bug": "broke on our side",
+}
+_GENERIC_UNREADABLE = "🚫 I couldn't read that reel — it may be private or removed. Add the spot yourself:"
+_GENERIC_NO_VENUE = "🤔 I read it, but couldn't find a venue worth saving. Add it yourself if I missed it:"
+
+
+def failure_message(data: dict, *, single: bool, can_retry: Optional[bool] = None) -> str:
+    """What to say when a paste made no spot at all. `can_retry`: whether a Retry
+    button sits under this message (by default, when it's a single link)."""
+    found = data.get("failures") or []
+    classes = [f.get("class") for f in found if f.get("class") in FAILURE_MESSAGES]
+    if not classes:                                    # an older admin app, or nothing classified
+        return _GENERIC_UNREADABLE if data.get("unreadable") else _GENERIC_NO_VENUE
+    if single or len(set(classes)) == 1:
+        retry = "tap Retry" if (single if can_retry is None else can_retry) else "paste it again later"
+        return FAILURE_MESSAGES[classes[0]].format(retry=retry, Retry=retry[0].upper() + retry[1:])
+    return f"⚠️ None of those {len(found)} links worked:\n" + failure_lines(found)
+
+
+def failure_lines(found: list[dict]) -> str:
+    """'• instagram.com/reel/A — private or needs a login', one line per link."""
+    lines = []
+    for f in found[:10]:
+        link = re.sub(r"^https?://(www\.)?", "", str(f.get("url", "")))[:60]
+        lines.append(f"• {link} — {FAILURE_SHORT.get(f.get('class'), 'didn’t work')}")
+    return "\n".join(lines)
+
+
 async def report_time_to_card(guild: str, seconds: float, outcome: str, links: int) -> None:
     """Tell the admin app how long a paste took to become a card (#18). Sent
     after the card is up, so it never slows anyone down; a failure is ignored."""
@@ -806,15 +858,19 @@ class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:ret
         except (CaptureQueueFull, CaptureRateLimited, CaptureLost, CapturePollingFailed) as exc:
             await interaction.followup.send(f"⚠️ {exc}")
             return
-        except CaptureFailed as exc:
-            await interaction.followup.send(f"⚠️ Capture failed again — {exc}")
+        except CaptureFailed:
+            await interaction.followup.send(
+                "😵 That broke on our side again. Try later, or tell us with `/feedback bug`."
+            )
             return
         except Exception:
-            await interaction.followup.send("⚠️ Still couldn't reach the catalog service.")
+            await interaction.followup.send(
+                "⚠️ SpotBot's catalog still isn't answering — try again in a few minutes."
+            )
             return
         if not events:
             await interaction.followup.send(
-                "🚫 Still unreadable — it may be private. Add it yourself instead:",
+                failure_message(data, single=True, can_retry=False),
                 view=build_failure_view(None),
             )
             return

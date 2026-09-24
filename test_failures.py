@@ -1,5 +1,7 @@
 """Failure classes for the bot's plain-language messages (Track C #19)."""
 
+import re
+
 import pytest
 
 from src.ingestion.schemas.results import FetchStatus, IngestionResult
@@ -38,6 +40,17 @@ def test_every_failure_gets_a_class(status, reason, error, expected):
 def test_only_failed_links_are_listed():
     ok = IngestionResult.model_construct(url="https://ok.test/", fetch_status=FetchStatus.OK, record=object())
     assert failures([ok, _result(FetchStatus.TIMEOUT)]) == [{"url": URL, "class": "timeout"}]
+
+
+def test_the_bot_has_words_for_every_class():
+    """app/cards.py mirrors these classes (the bot image can't import src/), so a
+    class added here without a message there would reach users as a generic line."""
+    from pathlib import Path
+
+    source = (Path(__file__).parent / "app" / "cards.py").read_text(encoding="utf-8")
+    for table in ("FAILURE_MESSAGES", "FAILURE_SHORT"):
+        block = source.split(f"{table} = {{", 1)[1].split("\n}", 1)[0]
+        assert set(re.findall(r'"([a-z_]+)":', block)) == set(CLASSES), table
 
 
 def test_a_retry_replaces_the_first_failure_of_the_links_it_retried():

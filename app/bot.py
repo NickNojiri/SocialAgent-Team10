@@ -260,18 +260,20 @@ async def _capture(message: discord.Message, urls: list[str]) -> str:
         )
         return "error"
     except cards.CaptureFailed as exc:
-        log.warning(f"[capture] job failed: {exc}")
+        log.warning(f"[capture] job failed: {exc}")      # the detail is for the operator
         await _swap_reaction(message, "⏳", "⚠️")
         await status.edit(
-            content=f"⚠️ Capture failed — {exc}",
+            content=("😵 That capture broke on our side. "
+                     + ("Tap Retry — if" if len(urls) == 1 else "Paste it again later — if")
+                     + " it keeps happening, tell us with `/feedback bug`."),
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
         return "error"
     except Exception as exc:
-        log.warning(f"[capture] ingest failed: {exc}")
+        log.warning(f"[capture] ingest failed (is the admin app running?): {exc}")
         await _swap_reaction(message, "⏳", "⚠️")
         await status.edit(
-            content="⚠️ Couldn't reach the catalog service — is the admin app running?",
+            content="⚠️ SpotBot's catalog isn't answering right now — try again in a minute.",
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
         return "error"
@@ -288,7 +290,7 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
 
     if not events:
         await status.edit(
-            content=_capture_failure_text(data),
+            content=cards.failure_message(data, single=len(urls) == 1),
             view=cards.build_failure_view(urls[0] if len(urls) == 1 else None),
         )
         return
@@ -315,6 +317,19 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
                 view=cards.build_spot_view(event["id"], int(event.get("votes", 0))),
                 mention_author=False,
             )
+
+    # Some links worked and some didn't: say which, rather than nothing (#19).
+    missed = data.get("failures") or []
+    if missed:
+        try:
+            await message.reply(
+                f"⚠️ {len(missed)} of {len(urls)} links didn't make a spot:\n"
+                + cards.failure_lines(missed)
+                + "\n-# Paste those again later, or add them yourself.",
+                mention_author=False,
+            )
+        except Exception:
+            pass
 
     await _maybe_first_card_tip(message)
 
@@ -348,12 +363,6 @@ async def _swap_reaction(message: discord.Message, old: str, new: str):
     except Exception:
         pass
     await _add_reaction(message, new)
-
-
-def _capture_failure_text(data: dict) -> str:
-    if data.get("unreadable"):
-        return "🚫 I couldn't read that reel — it may be private or removed. Retry, or add the spot yourself:"
-    return "🤔 I read it, but couldn't find a venue worth saving. Add it yourself if I missed it:"
 
 
 def _summary_embed(events: list[dict], sharer: str) -> discord.Embed:
