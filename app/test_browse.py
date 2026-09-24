@@ -90,6 +90,12 @@ async def test_a_page_of_sixty_spots_is_a_short_scannable_list():
     assert "Page 1/6" in embed.footer.text
 
 
+async def test_pager_buttons_have_names_not_just_arrows():
+    """#37: an emoji-only button reads as 'black left-pointing triangle'."""
+    view = cards.BrowseView(_catalog(), label=None)
+    assert [child.label for child in view.children] == ["Previous", "Next"]
+
+
 async def test_rows_show_where_and_when():
     row = cards.build_browse_embed([_spot(1, area="123 Pine Ave, Long Beach, CA 90802",
                                          start_epoch=FRI_OCT_2)], 0).description

@@ -1054,11 +1054,13 @@ class BrowseView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.embed(), view=self)
 
-    @discord.ui.button(emoji="◀", style=discord.ButtonStyle.secondary)
+    # Labels as well as arrows: an emoji-only button reads as "black left-pointing
+    # triangle" to a screen reader (#37).
+    @discord.ui.button(label="Previous", emoji="◀", style=discord.ButtonStyle.secondary)
     async def prev_page(self, interaction: discord.Interaction, _button: discord.ui.Button):
         await self._turn(interaction, -1)
 
-    @discord.ui.button(emoji="▶", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Next", emoji="▶", style=discord.ButtonStyle.secondary)
     async def next_page(self, interaction: discord.Interaction, _button: discord.ui.Button):
         await self._turn(interaction, +1)
 
