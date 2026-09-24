@@ -39,11 +39,8 @@ BOT_TZ = os.getenv("BOT_TZ", "America/Los_Angeles")
 BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 
 # ── Capture transport ────────────────────────────────────────────────────────
-# Default: one synchronous POST /api/ingest that returns when the capture is done.
-# INGEST_ASYNC=1 (ADR-0004): POST /api/jobs, then poll GET /api/jobs/{id} and
-# report each stage, so the status message follows the capture instead of
-# freezing for a minute — and a slow multi-link paste can no longer outlive the
-# HTTP timeout and get retried while it is still running.
+# The async transport (ADR-0004) POSTs /api/jobs, then polls GET /api/jobs/{id}
+# and reports each stage. The fallback is one blocking POST /api/ingest request.
 INGEST_ASYNC = os.getenv("INGEST_ASYNC", "").strip().lower() in ("1", "true", "on", "yes")
 JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
 JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
