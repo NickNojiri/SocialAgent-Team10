@@ -81,9 +81,16 @@ measures how long a capture takes from the user's side.
 ### Phase 2 — Oct 6 – Oct 24 (110 pts)
 
 **#18 Time-to-card measurement (30)**
-- [ ] Log elapsed time from paste → card posted, per capture.
-- [ ] Expose median and p95 to Nick's operations dashboard (#29).
+- [x] Log elapsed time from paste → card posted, per capture. *(The bot times from
+      seeing the paste to the card or failure message being up, then reports it —
+      `data/time_to_card.jsonl`, no server/user/link stored. Failures are logged too.)*
+- [x] Expose median and p95 to Nick's operations dashboard (#29). *(/dash "Time to
+      card": median and p95 for the last 24 h, cards/pastes, all-time median. Shape
+      in ARCHITECTURE `TIME_TO_CARD_LOG`.)*
 - [ ] **Done when:** you can quote today's median and p95, and watch them move.
+      *(Built and tested; needs real pastes before there's a number to quote. Also
+      found and fixed: the shared percentile was one rank high — earlier p95s from
+      summarize_captures.py may read slightly high.)*
 
 **#20 In-Discord feedback + survey ★ (40)**
 - [x] `/feedback` for bug reports and ideas (stored per server, no message scraping).
