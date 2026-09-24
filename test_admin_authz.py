@@ -330,6 +330,64 @@ def test_daily_server_capture_limit_returns_retry_after(client, monkeypatch):
     assert response.json()["detail"] == "capture rate limit exceeded (daily)"
 
 
+def test_a_duplicate_paste_does_not_use_up_a_slot(client, monkeypatch):
+    """Retry and a second paste of the same reel join the running capture (#25), so
+    they must not count against the limit — or Retry would lock people out."""
+    import asyncio
+
+    async def slow(urls, guild_id, on_stage):
+        await asyncio.sleep(0.5)
+        return {"added": 1, "events": []}
+
+    monkeypatch.setattr(admin, "_jobs", JobQueue(slow))
+    monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter(user_limit=1))
+
+    first = _submit_capture(client, "https://x.test/1")
+    again = _submit_capture(client, "https://x.test/1")
+    assert (first.status_code, again.status_code) == (202, 202)
+    assert again.json()["duplicate"] is True
+    assert _submit_capture(client, "https://x.test/2").status_code == 429   # the one real slot
+
+
+def test_a_full_queue_does_not_use_up_a_slot(client, monkeypatch):
+    """Refused because the queue is full → the user's quota is untouched."""
+    import asyncio
+
+    gate = asyncio.Event()
+
+    async def stuck(urls, guild_id, on_stage):
+        await gate.wait()
+        return {"added": 0, "events": []}
+
+    monkeypatch.setattr(admin, "_jobs", JobQueue(stuck, max_queued=1))
+    limits = CaptureRateLimiter(user_limit=10)
+    monkeypatch.setattr(admin, "_capture_limits", limits)
+
+    codes = [_submit_capture(client, f"https://x.test/{i}").status_code for i in range(4)]
+    assert codes[:2] == [202, 202] and codes[2:] == [429, 429]
+    # only the two accepted captures were charged
+    assert len(limits._users[(MINE, ME)]) == 2
+
+
+def test_a_server_capture_must_name_its_user(client):
+    body = {"urls": ["https://x.test/1"], "guild_id": MINE}
+    assert client.post("/api/jobs", json=body, headers=hdr(mint_token(MINE))).status_code == 400
+    assert client.post("/api/ingest", json=body, headers=hdr(mint_token(MINE))).status_code == 400
+
+
+def test_the_sync_path_is_rate_limited_too(client, monkeypatch):
+    async def fake_ingest(urls, guild_id, on_stage=None):
+        return {"added": 1, "events": []}
+
+    monkeypatch.setattr(admin, "_run_ingest", fake_ingest)
+    monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter(user_limit=1))
+    body = {"urls": ["https://x.test/1"], "guild_id": MINE, "user_id": ME}
+    token = hdr(mint_token(MINE, user_id=ME))
+    assert client.post("/api/ingest", json=body, headers=token).status_code == 200
+    refused = client.post("/api/ingest", json=body, headers=token)
+    assert refused.status_code == 429 and refused.headers["Retry-After"]
+
+
 def test_failed_job_list_only_readable_by_its_tenant(client):
     """The failed-job list names a guild's pasted links (feature #26)."""
     assert client.get(f"/api/jobs?guild_id={MINE}", headers=hdr(mint_token(MINE))).status_code == 200

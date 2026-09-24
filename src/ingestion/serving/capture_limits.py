@@ -60,22 +60,36 @@ class CaptureRateLimiter:
         return max(1, math.ceil(bucket[overflow - 1] + window_s - now))
 
     def _limits(self, guild_id: str, user_id: str):
-        return (
-            ("user", self.user_limit, self.user_window_s,
-             self._users.setdefault((guild_id, user_id), deque())),
-            ("server", self.server_limit, self.server_window_s,
-             self._servers.setdefault(guild_id, deque())),
-            ("daily", self.daily_limit, self.daily_window_s,
-             self._daily.setdefault(guild_id, deque())),
-        )
+        """(name, limit, window, table, key) for each limit that is switched on.
+
+        A disabled limit yields nothing, so it never allocates a counter.
+        """
+        for name, limit, window_s, table, key in (
+            ("user", self.user_limit, self.user_window_s, self._users, (guild_id, user_id)),
+            ("server", self.server_limit, self.server_window_s, self._servers, guild_id),
+            ("daily", self.daily_limit, self.daily_window_s, self._daily, guild_id),
+        ):
+            if limit:
+                yield name, limit, window_s, table, key
+
+    def _live(self, table: dict, key, now: float, window_s: float) -> deque[float]:
+        """The bucket for `key` with expired entries dropped; forgotten once empty,
+        so a server or user who stops pasting stops costing memory."""
+        bucket = table.get(key)
+        if bucket is None:
+            return deque()
+        self._prune(bucket, now, window_s)
+        if not bucket:
+            del table[key]
+        return bucket
 
     def check(self, guild_id: str, user_id: str, *, amount: int = 1) -> None:
         """Raise before recording when any configured limit would be exceeded."""
         amount = max(1, int(amount))
         now = self._clock()
-        for name, limit, window_s, bucket in self._limits(str(guild_id), str(user_id)):
-            self._prune(bucket, now, window_s)
-            if limit and len(bucket) + amount > limit:
+        for name, limit, window_s, table, key in self._limits(str(guild_id), str(user_id)):
+            bucket = self._live(table, key, now, window_s)
+            if len(bucket) + amount > limit:
                 raise CaptureRateLimitExceeded(
                     name, self._retry_after(bucket, amount, limit, now, window_s)
                 )
@@ -84,7 +98,10 @@ class CaptureRateLimiter:
         """Record an accepted request after all other admission checks pass."""
         amount = max(1, int(amount))
         now = self._clock()
-        for _name, limit, window_s, bucket in self._limits(str(guild_id), str(user_id)):
-            self._prune(bucket, now, window_s)
-            if limit:
-                bucket.extend([now] * amount)
+        for _name, _limit, window_s, table, key in self._limits(str(guild_id), str(user_id)):
+            self._live(table, key, now, window_s)
+            table.setdefault(key, deque()).extend([now] * amount)
+
+    def tracked(self) -> int:
+        """How many counters are held right now (for tests and /dash)."""
+        return len(self._users) + len(self._servers) + len(self._daily)

@@ -156,6 +156,19 @@ Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accura
   recovers a queued or running job once after restart; a second interruption fails it
   with a reason. See [ADR-0005](adr/0005-sqlite-job-store.md), which supersedes
   ADR-0004's volatile-store decision without changing the queue or polling contracts.
+- Capture admission is enforced in the admin service, before sync work starts or an
+  async job enters the queue. It has rolling per-user, per-server, and per-server daily
+  counters. The counters are in memory and reset with the single admin process. A
+  refusal returns 429 with `Retry-After` and logs one
+  `[capture_rate_limit] refused guild=… user=… limit=…` line; tokens are never logged.
+  A limit counts **accepted pastes**, not links: one request of up to 10 links is one.
+  A duplicate paste or Retry that joins an in-flight job is free. Count defaults
+  remain disabled (`0`) until Nick approves feature #28's values.
+- Queue depth and the bot's patience must agree. The bot waits up to `INGEST_WAIT_S`
+  (900 s) for a job; the queue holds up to `INGEST_MAX_QUEUED` (50) waiting. At ~60 s a
+  capture on one worker, anything past ~15 deep is reported "did not finish" while still
+  queued, and completes unseen. `scripts/load_test_jobs.py` measures this; choosing the
+  number is Nick's call.
 - Ollama gets one 2 s pre-flight per run; if it is down the run is
   heuristics-only with no summaries, instantly.
 - Per-domain throttling in the session manager; ≤ 10 URLs per request; 50 MB
@@ -170,6 +183,10 @@ Job-queue switches (unset values use these code defaults):
 | `JOB_STORE` | admin | in-memory | Set to `sqlite` to persist jobs and enable restart recovery. |
 | `JOB_DB` | admin | `data/jobs.db` | SQLite file used only when `JOB_STORE=sqlite`. |
 | `INGEST_MAX_RETRIES` | admin | `2` | Maximum retries after the first pipeline attempt. `0` disables retries; a retryable link result records `could not load N link(s); retries disabled`. |
+| `INGEST_MAX_QUEUED` | admin | `50` | Waiting jobs before `POST /api/jobs` returns 429 (queue full, no `Retry-After`). |
+| `CAPTURE_USER_LIMIT` / `CAPTURE_USER_WINDOW_S` | admin | `0` / `600` seconds | Per-user accepted capture requests in the rolling window; `0` disables it. |
+| `CAPTURE_SERVER_LIMIT` / `CAPTURE_SERVER_WINDOW_S` | admin | `0` / `3600` seconds | Per-server accepted capture requests in the rolling window; `0` disables it. |
+| `CAPTURE_DAILY_LIMIT` / `CAPTURE_DAILY_WINDOW_S` | admin | `0` / `86400` seconds | Per-server accepted capture requests in the rolling daily window; `0` disables it. |
 | `INGEST_SLOW_AFTER_S` | bot | `180` seconds | Adds a “still working” status after this elapsed time; it does not cancel or retry the job. |
 | `CAPTURE_LOG` | admin | `data/capture_jobs.jsonl` | Appends one timing/statistics JSON row per finished job; set to `off` to disable it. |
 
@@ -181,8 +198,8 @@ Job-queue switches (unset values use these code defaults):
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/ingest` | Synchronous `{urls, guild_id}` → `{events, added, rejected, unreadable, log, retryable_urls}`; no in-flight deduplication. |
-| POST | `/api/jobs` | Enqueue `{urls, guild_id}` → HTTP 202 `{job_id, state, duplicate}`. |
+| POST | `/api/ingest` | Synchronous `{urls, guild_id, user_id}` with a user-bound tenant token → `{events, added, rejected, unreadable, log, retryable_urls}`; rate-limited, with no in-flight deduplication. |
+| POST | `/api/jobs` | Enqueue `{urls, guild_id, user_id}` with a user-bound tenant token → HTTP 202 `{job_id, state, duplicate}`. |
 | GET | `/api/jobs/{job_id}` | Poll one job's state, progress, attempts, errors, result, and timing. |
 | GET | `/api/jobs?guild_id=&state=failed` | Newest failed jobs for one tenant; optional `limit` defaults to 20 and is clamped to 1–100. |
 | GET | `/api/events?guild_id=` | catalog listing for cards, `/catalog`, `/browse`, `/digest` |
@@ -196,12 +213,16 @@ Job-queue switches (unset values use these code defaults):
 
 ### Async capture job calls
 
-Every job call is tenant-authorized. The bot creates its header with
-`tenant_headers(guild_id)`; the admin service verifies it with `authorize(...)`.
+Every job call is tenant-authorized. Capture submission includes a `user_id` and uses
+`tenant_headers(guild_id, user_id=user_id)`, so changing the claimed user invalidates
+the signature instead of selecting a fresh rate-limit counter. A server capture with no
+`user_id` is refused (400); only the legacy empty tenant (the local web page) may omit
+it. Polling uses `tenant_headers(guild_id)`; the admin service verifies both shapes with
+`authorize(...)`.
 
 | Call | Authentication and request | Successful response |
 |---|---|---|
-| `POST /api/jobs` | Write-capable `X-Tenant-Token` for the body `guild_id`; JSON body `{"urls":["https://…"],"guild_id":"123"}`. | HTTP 202 `{"job_id":"…","state":"queued","duplicate":false}`. `duplicate:true` means the request reused an existing queued/running job for those normalized links. A full queue returns 429. |
+| `POST /api/jobs` | User-bound write `X-Tenant-Token` for body `guild_id` + `user_id`; JSON body `{"urls":["https://…"],"guild_id":"123","user_id":"456"}`. | HTTP 202 `{"job_id":"…","state":"queued","duplicate":false}`. `duplicate:true` means the request reused an existing queued/running job and does not consume another rate-limit slot. A full queue or exceeded capture limit returns 429; only limit responses include `Retry-After`, which is how the bot tells them apart. |
 | `GET /api/jobs/{job_id}` | Read-capable `X-Tenant-Token` for the job's tenant. The server loads the job first, then calls `authorize(job.guild_id, …, need=SCOPE_READ)`; no caller-supplied `guild_id` is trusted. | The job object below. Unknown, expired, or volatile jobs lost on restart return 404. |
 | `GET /api/jobs?guild_id=123&state=failed&limit=20` | Read-capable `X-Tenant-Token` for query `guild_id=123`; checked with `authorize(guild_id, …, need=SCOPE_READ)`. Only `state=failed` is supported. | `{"jobs":[…]}` newest first. Each row has the job object fields plus its tenant's original `urls`. |
 

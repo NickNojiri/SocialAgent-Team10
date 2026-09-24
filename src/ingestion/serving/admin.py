@@ -354,6 +354,9 @@ _jobs = JobQueue(
     # Retries for timed-out links and network errors only (feature #26);
     # INGEST_MAX_RETRIES=0 turns them off.
     max_retries=int(os.getenv("INGEST_MAX_RETRIES", "").strip() or 2),
+    # Waiting jobs before a new one gets 429. Must stay under what the bot will
+    # wait for (INGEST_WAIT_S ÷ capture time × workers) — see load_test_jobs.py.
+    max_queued=int(os.getenv("INGEST_MAX_QUEUED", "").strip() or 50),
 )
 
 # Counts default to zero (disabled) until Nick approves the proposed values.

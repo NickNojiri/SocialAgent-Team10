@@ -339,7 +339,8 @@ def test_job_endpoint_reports_a_duplicate_submission(monkeypatch):
     from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
 
     monkeypatch.setenv(ENV_VAR, "0" * 64)
-    auth = {"X-Tenant-Token": mint_token("g1")}
+    auth = {"X-Tenant-Token": mint_token("g1")}                     # polling
+    submit = {"X-Tenant-Token": mint_token("g1", user_id="u1")}     # capture is per user (#28)
 
     async def slow(urls, guild_id, on_stage):
         await asyncio.sleep(0.3)
@@ -347,9 +348,9 @@ def test_job_endpoint_reports_a_duplicate_submission(monkeypatch):
 
     monkeypatch.setattr(admin, "_jobs", JobQueue(slow))
     with TestClient(admin.app) as client:
-        body = {"urls": ["https://www.instagram.com/reel/AAA/"], "guild_id": "g1"}
-        first = client.post("/api/jobs", json=body, headers=auth).json()
-        second = client.post("/api/jobs", json=body, headers=auth).json()
+        body = {"urls": ["https://www.instagram.com/reel/AAA/"], "guild_id": "g1", "user_id": "u1"}
+        first = client.post("/api/jobs", json=body, headers=submit).json()
+        second = client.post("/api/jobs", json=body, headers=submit).json()
         assert first["duplicate"] is False
         assert second["duplicate"] is True and second["job_id"] == first["job_id"]
         _wait_done(client, first["job_id"], headers=auth)
@@ -689,9 +690,13 @@ def test_failed_jobs_endpoint_is_tenant_scoped(monkeypatch):
 
     monkeypatch.setattr(admin, "_jobs", JobQueue(boom, backoff_base_s=0))
     mine = {"X-Tenant-Token": mint_token("g1")}
+    submit = {"X-Tenant-Token": mint_token("g1", user_id="u1")}
     with TestClient(admin.app) as client:
-        job_id = client.post("/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": "g1"},
-                             headers=mine).json()["job_id"]
+        job_id = client.post(
+            "/api/jobs",
+            json={"urls": ["https://x.test/1"], "guild_id": "g1", "user_id": "u1"},
+            headers=submit,
+        ).json()["job_id"]
         _wait_done(client, job_id, headers=mine)
 
         listed = client.get("/api/jobs?guild_id=g1&state=failed", headers=mine)
@@ -725,14 +730,17 @@ def test_job_endpoints_enqueue_poll_and_finish(monkeypatch):
     from src.ingestion.serving.tenant_auth import ENV_VAR, mint_token
 
     monkeypatch.setenv(ENV_VAR, "0" * 64)
-    auth = {"X-Tenant-Token": mint_token("g1")}      # what the bot sends for guild g1
+    auth = {"X-Tenant-Token": mint_token("g1")}      # what the bot polls with for guild g1
+    submit = {"X-Tenant-Token": mint_token("g1", user_id="u1")}   # and submits with (#28)
     monkeypatch.setattr(admin, "_jobs", JobQueue(fake_run))
     # The context manager keeps one event loop alive across requests, which is
     # what the worker task needs (uvicorn has one loop; TestClient without the
     # `with` would spin a fresh one per request).
     with TestClient(admin.app) as client:
         resp = client.post(
-            "/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": "g1"}, headers=auth
+            "/api/jobs",
+            json={"urls": ["https://x.test/1"], "guild_id": "g1", "user_id": "u1"},
+            headers=submit,
         )
         assert resp.status_code == 202
         job_id = resp.json()["job_id"]
