@@ -9,32 +9,32 @@ is pushed. Both agents start every turn by pulling and reading the state block b
 
 ---
 
-## Live state
+## Live state — two lanes
 
-Whoever finishes a turn overwrites this block, commits it on its own, and pushes.
+From 2026-09-24 there are **two lanes working at once**. Each agent drives one lane and
+reviews the other's. Each lane has its own block below; **only edit your own lane's
+block**, so two pushes never fight over the same lines.
 
-`LAST CODE COMMIT` is the newest commit that changed code or tests. The commit that
-updates this block always lands on top of it, so a block can never name its own sha —
-compare against `git log`, not against the tip. (Codex caught the first version of
-this block claiming a tip that had already moved.)
+**The lanes may not share files.** Before touching a file, check it isn't in the other
+lane's `FILES` list. If you need one, stop and say so in your handoff — don't edit it.
+
+`LAST CODE COMMIT` is the newest commit in that lane that changed code or tests. The
+commit that updates a block lands on top of it, so a block never names its own sha.
+
+**Shared, both lanes:** tests must be green on `main` before either lane pushes (pull
+with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR-0005).
+
+### Lane 1 — Codex drives, Claude reviews
 
 ```text
-SESSION:          2026-09-24
-DRIVER:           Codex — go on Task 2 follow-ups (below), then Task 3
-NAVIGATOR:        Claude Code (Opus 5.5)
-LAST CODE COMMIT: 92f7fd36  (then an ADR-0005 decision record, then this block)
-TESTS:            329 passed, 6 deselected   (rerun by Claude, not copied)
-AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted (rerun by Claude)
-DONE TODAY:       Task 0 + ba4dff3e — approved. Task 1 50743e6e + 1ea46ca2 — approved.
-                  Task 2 #27 6375587b, 4009ba12, 6e25f617, 92f7fd36 — APPROVED by Claude,
-                  with three follow-ups below.
-DECISION:         Nick KEEPS the async default on (asked 2026-09-24, after 92f7fd36 had
-                  already been pushed). Recorded in ADR-0005 Consequences.
-PROCESS NOTE:     92f7fd36 was a NICK DECIDES change and was pushed to main before Nick
-                  decided, while this block called the decision "pending". Rule added
-                  below: a NICK DECIDES commit waits on a branch until Nick answers.
-NEXT:             Codex: the three follow-ups in one small commit each, then Task 3.
+TASKS:            Task 2 follow-ups (below), then docs/CODEX_TASKS.md Task 3 (#28)
+FILES:            app/cards.py, app/bot.py, app/test_capture.py, src/ingestion/serving/admin.py,
+                  src/ingestion/serving/jobs.py, test_jobs.py, test_admin_authz.py,
+                  scripts/bench_admin_authz.py, a new rate-limit module and its tests
+LAST CODE COMMIT: 92f7fd36
+STATUS:           Task 2 APPROVED by Claude; follow-ups not started
 BLOCKED ON:       nothing
+NICK DECIDES:     Task 3 rate-limit numbers → build on branch decide/rate-limits, ask
 FOLLOW-UPS FOR CODEX (non-blocking, found in review):
   1. Task 1 nit 3 was not done. 1ea46ca2 rewrote the inline comment in
      _run_with_retries, but the one my note named is the Job field at jobs.py:183 —
@@ -52,6 +52,23 @@ FOLLOW-UPS FOR CODEX (non-blocking, found in review):
      doesn't silently change when someone tunes INGEST_POLL_S. Test with the fake clock
      pattern from test_a_stalled_stage_still_refreshes_once_it_is_slow.
 ```
+
+### Lane 2 — Claude drives, Codex reviews
+
+```text
+TASKS:            docs/CODEX_TASKS.md Task 4 (#10 key rotation), then Task 5a
+                  (offline load test script only — the /dash half waits for Task 3,
+                  because it touches admin.py)
+FILES:            scripts/rotate_signing_key.py (new), scripts/ensure_signing_key.py,
+                  test_signing_key_setup.py, a new test_rotate_signing_key.py,
+                  docs/RUNBOOK.md, scripts/load_test_jobs.py (new)
+LAST CODE COMMIT: —
+STATUS:           Task 4 starting
+BLOCKED ON:       nothing
+```
+
+**Waiting for both lanes:** Task 5b (`/dash` panels) — after Task 3 lands in `admin.py`.
+Nick-only: #11 staging, ADR-0005 evidence numbers.
 
 ## Roles
 
