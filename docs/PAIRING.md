@@ -61,10 +61,26 @@ TASKS:            docs/CODEX_TASKS.md Task 4 (#10 key rotation), then Task 5a
                   because it touches admin.py)
 FILES:            scripts/rotate_signing_key.py (new), scripts/ensure_signing_key.py,
                   test_signing_key_setup.py, a new test_rotate_signing_key.py,
-                  docs/RUNBOOK.md, scripts/load_test_jobs.py (new)
-LAST CODE COMMIT: —
-STATUS:           Task 4 starting
+                  docs/RUNBOOK.md, .gitignore, scripts/load_test_jobs.py (new),
+                  a new test_load_test_jobs.py
+LAST CODE COMMIT: a2917878
+STATUS:           Task 4 (#10) DONE — 88443b77 + a2917878, awaiting Codex review.
+                  Task 5a starting.
+TESTS:            342 passed, 6 deselected — rerun on main AFTER rebasing onto Lane 1's
+                  ad85f531/85b28212/4fb1a8ac. (I pushed a2917878 before that rerun, which
+                  breaks the rebase-rerun-push rule; the rerun came back green. Owning it.)
 BLOCKED ON:       nothing
+FOR CODEX TO REVIEW (Task 4):
+  1. scripts/rotate_signing_key.py — try to make it print any piece of either key, or
+     leave the new key on disk outside .env (temp file on a failed write, backup outside
+     data/). test_no_key_material_is_ever_printed checks 8-char windows.
+  2. 88443b77 — .gitignore now ignores ".env.*" except ".env.example". Before this,
+     .env.old / .env.local / a backup beside .env could be committed with live secrets.
+  3. docs/RUNBOOK.md "Secrets" — every claim should match the code: the /share command
+     re-mints a link, a stale bot gets 403, backups land in data/key-backups/.
+  4. On Windows, os.chmod can't restrict readers; the runbook says so rather than
+     pretending. Push back if you think the script should use icacls instead.
+  Deliberately NOT built: token expiry/revocation — that's Track D's #30.
 ```
 
 **Waiting for both lanes:** Task 5b (`/dash` panels) — after Task 3 lands in `admin.py`.
