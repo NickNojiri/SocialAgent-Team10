@@ -116,7 +116,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_VAR, "0" * 64)
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
     sink = ChromaSink(IngestionSettings(chroma_path=str(tmp_path / "chroma")), embedder=_embed)
-    monkeypatch.setattr(admin, "_sink_for", lambda guild_id="": sink)
+    monkeypatch.setattr(admin, "_sink_for", lambda guild_id="", **_: sink)
     headers = {"X-Tenant-Token": mint_token(GUILD)}
     with TestClient(admin.app) as client:
         yield client, headers, sink

@@ -38,7 +38,8 @@ async def _fake_capture(urls, guild_id, on_stage):
     return {"added": 1, "events": [{"id": "new-spot"}]}
 
 
-admin._sink_for = lambda guild_id="": StubSink()
+admin._sink_for = lambda guild_id="", **_: StubSink()
+admin._purge_catalog = lambda guild_id: {"spots": 0}       # never the real data/
 admin._jobs = JobQueue(_fake_capture)
 admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_settings_")))
 serving_app.get_service = lambda guild_id="": _StubService()
@@ -85,6 +86,9 @@ def run(client):
     recommend = lambda g, t: rec.post("/recommend", json={"channel_id": "c", "message": "tacos", "guild_id": g}, headers=hdr(t))  # noqa: E731
     plan = lambda g, t: rec.post("/plan", json={"channel_id": "c", "transcript": "a: tacos?", "guild_id": g}, headers=hdr(t))  # noqa: E731
     settings = lambda g, t: client.get(f"/api/settings?guild_id={g}", headers=hdr(t))  # noqa: E731
+    forget = lambda g, t: client.post(  # noqa: E731
+        "/api/forget", json={"guild_id": g, "confirm": g}, headers=hdr(t)
+    )
     save_settings = lambda g, t: client.put(  # noqa: E731
         "/api/settings", json={"guild_id": g, "home_city": "Long Beach, CA"}, headers=hdr(t)
     )
@@ -137,6 +141,9 @@ def run(client):
         ("change another guild's /setup settings", lambda: save_settings(THEIRS, MINE_RW)),
         ("change /setup settings with a share token", lambda: save_settings(MINE, MINE_R)),
         ("read /setup settings with a share token", lambda: settings(MINE, MINE_R)),
+        ("delete another guild's data", lambda: forget(THEIRS, MINE_RW)),
+        ("delete a guild's data with a share token", lambda: forget(MINE, MINE_R)),
+        ("delete a guild's data with no token", lambda: forget(MINE, None)),
     ]
 
     authentic = [
@@ -157,6 +164,7 @@ def run(client):
         ("query /plan for my guild", lambda: plan(MINE, MINE_RW)),
         ("save my /setup settings", lambda: save_settings(MINE, MINE_RW)),
         ("read my /setup settings", lambda: settings(MINE, MINE_RW)),
+        ("delete my own guild's data", lambda: forget(MINE, MINE_RW)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]
     return forged, authentic

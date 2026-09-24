@@ -30,6 +30,7 @@ from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
 from src.ingestion.serving import capture_stats
+from src.ingestion.serving import forget as data_purge
 from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
@@ -50,7 +51,12 @@ log = logging.getLogger("ingestion.admin")
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    """On startup, deal with whatever a previous process left running (ADR-0005)."""
+    """On startup, deal with whatever a previous process left running (ADR-0005),
+    and finish any server deletion (#21) that couldn't remove its index files."""
+    finished = data_purge.finish_pending(Path(_settings.chroma_path))
+    if finished["removed"] or finished["left"]:
+        print(f"[forget] finished earlier deletions: removed {finished['removed']} index "
+              f"folder(s), {finished['left']} still in use")
     counts = _jobs.recover()
     _jobs.start()
     if counts["requeued"] or counts["failed"]:
@@ -79,6 +85,12 @@ for _env, _field, _cast in (
         _env_overrides[_field] = _cast(_val)
 
 _settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False, **_env_overrides)
+# Each server's captures and failed-page snapshots go in files of its own, so
+# deleting its data (#21) is deleting them. The legacy "" catalog keeps the
+# original shared paths.
+_JSONL_DIR = Path("data/inspirations")
+_LEGACY_JSONL = Path("data/inspirations.jsonl")
+_RAW_ROOT = Path(_settings.raw_dir)
 _TRANSCRIBE_OFF = os.getenv("TRANSCRIBE_ENABLED", "").strip().lower() in ("0", "false", "off", "no")
 
 # One catalog per Discord guild (or DM stash). "" is the legacy/single-tenant
@@ -86,13 +98,41 @@ _TRANSCRIBE_OFF = os.getenv("TRANSCRIBE_ENABLED", "").strip().lower() in ("0", "
 _sinks: dict[str, ChromaSink] = {}
 
 
-def _sink_for(guild_id: str = "") -> ChromaSink:
+def _sink_for(guild_id: str = "", *, create: bool = True) -> ChromaSink:
+    """A server's catalog. Read-only endpoints pass create=False: a server with
+    no catalog then reads as empty instead of getting one made — so a server
+    whose data was deleted (#21) doesn't reappear because someone looked."""
     key = str(guild_id or "")
     if key not in _sinks:
+        if not create and key and not _catalog_exists(key):
+            return _EMPTY_CATALOG
         _sinks[key] = ChromaSink(
             _settings, collection_name=collection_for_guild(_settings, key)
         )
     return _sinks[key]
+
+
+def _catalog_exists(guild_id: str) -> bool:
+    name = collection_for_guild(_settings, guild_id)
+    return any(getattr(c, "name", c) == name for c in _sink_for("").client.list_collections())
+
+
+class _EmptyCollection:
+    def get(self, ids=None, include=None):
+        return {"ids": [], "metadatas": [], "documents": []}
+
+    def count(self):
+        return 0
+
+    def delete(self, ids=None):
+        return None
+
+
+class _EmptyCatalog:
+    collection = _EmptyCollection()
+
+
+_EMPTY_CATALOG = _EmptyCatalog()
 
 # Route host TLS through the Windows cert store so the reel video download works on
 # TLS-intercepting networks (see the transcriber). Best-effort.
@@ -181,6 +221,9 @@ from collections import deque
 
 _CAPTURE_LOG: deque = deque(maxlen=50)
 
+# guild id → captures running in _run_ingest right now (sync or queued path).
+_capturing: dict[str, int] = {}
+
 
 class IngestBody(BaseModel):
     urls: list[str]
@@ -241,7 +284,7 @@ TenantToken = Header(default=None, alias="X-Tenant-Token")
 @app.get("/api/events")
 def list_events(guild_id: str = "", x_tenant_token: str | None = TenantToken):
     authorize(guild_id, x_tenant_token, need=SCOPE_READ)
-    res = _sink_for(guild_id).collection.get(include=["metadatas"])
+    res = _sink_for(guild_id, create=False).collection.get(include=["metadatas"])
     events = []
     for event_id, m in zip(res["ids"], res["metadatas"]):
         m = m or {}
@@ -285,20 +328,28 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
     runs it in a worker with `on_stage` feeding the job's progress."""
     sink = _sink_for(guild_id)
     existing_ids = set(sink.collection.get(include=[])["ids"])  # snapshot before the run
+    key = data_purge.guild_file_key(guild_id)
     pipeline = IngestionPipeline(
-        _settings,
+        _settings.model_copy(update={"raw_dir": _RAW_ROOT / key}) if key else _settings,
         extractor=build_extractor(_settings),
         transcriber=_transcriber,
         summarizer=lambda cap, tr: summarize_place(cap, tr, _settings),
         geo_enricher=None,  # geocoding off here (fast; Nominatim often blocked)
         temporal_resolver=build_temporal_resolver(_settings),
-        jsonl_sink=JsonlSink(Path("data/inspirations.jsonl")),
+        jsonl_sink=JsonlSink(_JSONL_DIR / f"{key}.jsonl" if key else _LEGACY_JSONL),
         chroma_sink=sink,
         authed_source=_ig_source,
         ocr_reader=_ocr_reader,
         on_stage=on_stage,
     )
-    report = await pipeline.run(urls)
+    # Counted so a deletion (#21) can refuse while this server is mid-capture.
+    _capturing[guild_id] = _capturing.get(guild_id, 0) + 1
+    try:
+        report = await pipeline.run(urls)
+    finally:
+        _capturing[guild_id] -= 1
+        if not _capturing[guild_id]:
+            del _capturing[guild_id]
     _CAPTURE_LOG.appendleft(
         {
             "ts": int(time.time()),
@@ -549,7 +600,7 @@ def edit_event(event_id: str, body: EditBody, x_tenant_token: str | None = Tenan
     theme = body.theme.strip()[:280]
     if not venue or len(theme) < 3:
         raise HTTPException(400, "venue and a short vibe description are required")
-    sink = _sink_for(body.guild_id)
+    sink = _sink_for(body.guild_id, create=False)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")
@@ -603,7 +654,7 @@ class LockBody(BaseModel):
 def lock_event(event_id: str, body: LockBody, x_tenant_token: str | None = TenantToken):
     """Record that this spot became a real scheduled event (LockInButton)."""
     authorize(body.guild_id, x_tenant_token)
-    sink = _sink_for(body.guild_id)
+    sink = _sink_for(body.guild_id, create=False)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")
@@ -625,7 +676,7 @@ def followups(guild_id: str = "", now: int = 0, x_tenant_token: str | None = Ten
     # calling it would silently swallow a server's went-there prompts.
     authorize(guild_id, x_tenant_token)
     now = now or int(time.time())
-    sink = _sink_for(guild_id)
+    sink = _sink_for(guild_id, create=False)
     res = sink.collection.get(include=["metadatas"])
     due = []
     for event_id, m in zip(res["ids"], res["metadatas"]):
@@ -662,7 +713,7 @@ def went(
     # Signed over user_id: two confirmations from *different* people is the whole
     # counter, so a caller must not be able to confirm as someone else.
     authorize(guild_id, x_tenant_token, user_id=body.user_id)
-    sink = _sink_for(guild_id)
+    sink = _sink_for(guild_id, create=False)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")
@@ -694,7 +745,7 @@ def _count_nights(sink: ChromaSink) -> int:
 def nights(guild_id: str = "", x_tenant_token: str | None = TenantToken):
     """The counter that matters: confirmed real-world nights out."""
     authorize(guild_id, x_tenant_token, need=SCOPE_READ)
-    return {"nights": _count_nights(_sink_for(guild_id))}
+    return {"nights": _count_nights(_sink_for(guild_id, create=False))}
 
 
 # ── Per-server settings (the /setup wizard, Track C #8) ─────────────────────
@@ -733,10 +784,65 @@ def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
         raise HTTPException(400, str(exc))
 
 
+# ── Delete a server's data (Track C #21, threat model T6) ───────────────────
+
+
+class ForgetBody(BaseModel):
+    guild_id: str
+    confirm: str = ""     # must repeat guild_id, so a typo or a stray call deletes nothing
+
+
+def _purge_catalog(guild_id: str) -> dict:
+    """The catalog and the server's own files (serving/forget.py). Split out so
+    the authorization tests and the bench can stub it."""
+    catalog = data_purge.purge_catalog(
+        Path(_settings.chroma_path), collection_for_guild(_settings, guild_id)
+    )
+    _sinks.pop(str(guild_id), None)            # its collection handle is dead now
+    return {
+        "spots": catalog["spots"],
+        "vacuumed": catalog["vacuumed"],
+        "index_dirs_left": catalog["index_dirs_left"],
+        "shared_file_rows": data_purge.scrub_shared_jsonl(
+            _LEGACY_JSONL, catalog["ids"] - catalog["others"]
+        ),
+        "shared_posts_kept": len(catalog["ids"] & catalog["others"]),
+        **data_purge.purge_files(guild_id, jsonl_dir=_JSONL_DIR, raw_root=_RAW_ROOT),
+    }
+
+
+@app.post("/api/forget")
+async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantToken):
+    """Delete everything kept for one server: spots, votes, settings, capture
+    history. Irreversible.
+
+    `async` on purpose: it runs on the event loop and never awaits, so no
+    capture worker can start a job or append a log line halfway through.
+    """
+    authorize(body.guild_id, x_tenant_token)
+    gid = body.guild_id
+    if not gid:
+        raise HTTPException(400, "the shared catalog can't be deleted this way")
+    if body.confirm != gid:
+        raise HTTPException(400, "confirm must repeat the server id")
+    if _capturing.get(gid) or _jobs.active_for(gid):
+        raise HTTPException(409, "a capture for this server is still running — try again once it finishes")
+    report = {"catalog": _purge_catalog(gid)}
+    report["settings"] = _guild_settings.delete(gid)
+    report["jobs"] = _jobs.forget_guild(gid)
+    kept = [entry for entry in _CAPTURE_LOG if entry.get("guild_id") != gid]
+    report["activity_entries"] = len(_CAPTURE_LOG) - len(kept)
+    _CAPTURE_LOG.clear()
+    _CAPTURE_LOG.extend(kept)
+    _capture_limits.forget_guild(gid)
+    log.info("[forget] deleted server %s: %d spot(s)", gid, report["catalog"]["spots"])
+    return report
+
+
 @app.delete("/api/events/{event_id}")
 def delete_event(event_id: str, guild_id: str = "", x_tenant_token: str | None = TenantToken):
     authorize(guild_id, x_tenant_token)
-    _sink_for(guild_id).collection.delete(ids=[event_id])
+    _sink_for(guild_id, create=False).collection.delete(ids=[event_id])
     return {"deleted": event_id}
 
 
@@ -750,7 +856,7 @@ def vote(
     # user_id is part of the signed payload, so the token proves the caller may
     # vote as *this* user — not merely that they may touch this tenant.
     authorize(guild_id, x_tenant_token, user_id=body.user_id)
-    sink = _sink_for(guild_id)
+    sink = _sink_for(guild_id, create=False)
     res = sink.collection.get(ids=[event_id], include=["metadatas"])
     if not res["ids"]:
         raise HTTPException(404, "event not found")

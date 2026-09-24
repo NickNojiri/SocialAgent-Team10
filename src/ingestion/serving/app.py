@@ -53,9 +53,19 @@ def get_service(guild_id: str = "") -> RecommendationService:
         if _service is None:
             _service = _build_service("")
         return _service
-    if key not in _services:
+    if key not in _services or not _still_there(_services[key]):
         _services[key] = _build_service(key)
     return _services[key]
+
+
+def _still_there(service: RecommendationService) -> bool:
+    """False once the admin app deleted this server's catalog (#21): Chroma then
+    fails every call on the old handle, so it's rebuilt instead."""
+    try:
+        service.sink.collection.count()
+        return True
+    except Exception:
+        return False
 
 
 class RecommendRequest(BaseModel):

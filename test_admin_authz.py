@@ -69,7 +69,8 @@ async def _never_ingest(urls, guild_id, on_stage):
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv(ENV_VAR, KEY)
-    monkeypatch.setattr(admin, "_sink_for", lambda guild_id="": StubSink())
+    monkeypatch.setattr(admin, "_sink_for", lambda guild_id="", **_: StubSink())
+    monkeypatch.setattr(admin, "_purge_catalog", lambda guild_id: {"spots": 0})
     monkeypatch.setattr(admin, "_jobs", JobQueue(_never_ingest))
     monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter())
     monkeypatch.setattr(admin, "_guild_settings", GuildSettingsStore(tmp_path / "settings"))
@@ -223,6 +224,17 @@ def test_settings_reads_need_the_full_token(client):
     assert client.get(url, headers=hdr(mint_token(THEIRS))).status_code == 403
     assert client.get(url, headers=hdr(mint_token(MINE, scope=SCOPE_READ))).status_code == 403
     assert client.get(url, headers=hdr(mint_token(MINE))).status_code == 200
+
+
+def test_deleting_a_servers_data_is_tenant_scoped(client):
+    """#21's one-command delete: the most destructive call in the API."""
+    def forget(guild, token):
+        return client.post("/api/forget", json={"guild_id": guild, "confirm": guild}, headers=hdr(token))
+
+    assert forget(MINE, None).status_code == 403
+    assert forget(THEIRS, mint_token(MINE)).status_code == 403
+    assert forget(MINE, mint_token(MINE, scope=SCOPE_READ)).status_code == 403
+    assert forget(MINE, mint_token(MINE)).status_code == 200
 
 
 def test_followups_needs_write_scope(client):

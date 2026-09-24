@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -278,6 +279,10 @@ class JobStore:
         """Failed jobs for one server, newest first. Empty if volatile."""
         return []
 
+    def forget_guild(self, guild_id: str) -> int:
+        """Delete every stored job for one server (#21). Returns how many."""
+        return 0
+
 
 class MemoryJobStore(JobStore):
     """The historical behaviour: nothing outlives the process."""
@@ -398,6 +403,17 @@ class SqliteJobStore(JobStore):
                 (str(guild_id or ""), int(limit)),
             ).fetchall()
         return [self._to_job(r) for r in rows]
+
+    def forget_guild(self, guild_id: str) -> int:
+        """Delete the rows, then VACUUM: SQLite keeps deleted rows' bytes in free
+        pages until the file is rebuilt, and #21 promises the links are gone."""
+        with self._lock:
+            n = self._db.execute(
+                "DELETE FROM jobs WHERE guild_id = ?", (str(guild_id or ""),)
+            ).rowcount
+            self._db.commit()
+            self._db.execute("VACUUM")
+        return n
 
     def close(self) -> None:
         with self._lock:
@@ -610,6 +626,54 @@ class JobQueue:
     @property
     def pending(self) -> int:
         return sum(1 for j in self._jobs.values() if j.state in ("queued", "running"))
+
+    def active_for(self, guild_id: str) -> int:
+        """How many of this server's captures are queued or running."""
+        gid = str(guild_id or "")
+        return sum(1 for j in self._jobs.values()
+                   if j.guild_id == gid and j.state in ("queued", "running"))
+
+    def forget_guild(self, guild_id: str) -> dict:
+        """Delete every trace of one server's captures (#21): live jobs, stored
+        rows, and its lines in the capture log.
+
+        Refuses while one of its captures is queued or running — that capture
+        would write the server's data straight back. Call it from the event-loop
+        thread, so no worker appends a log line halfway through the rewrite.
+        """
+        gid = str(guild_id or "")
+        if self.active_for(gid):
+            raise RuntimeError("a capture for this server is still in progress")
+        live = [job_id for job_id, j in self._jobs.items() if j.guild_id == gid]
+        for job_id in live:
+            del self._jobs[job_id]
+        return {
+            "live_jobs": len(live),
+            "stored_jobs": self.store.forget_guild(gid),
+            "log_lines": self._scrub_log(gid),
+        }
+
+    def _scrub_log(self, guild_id: str) -> int:
+        """Rewrite the capture log without this server's lines. Returns how many."""
+        if self.log_path is None or not self.log_path.exists():
+            return 0
+        kept, removed = [], 0
+        for line in self.log_path.read_text(encoding="utf-8").split("\n"):
+            if not line.strip():
+                continue
+            try:
+                mine = json.loads(line).get("guild_id") == guild_id
+            except (ValueError, AttributeError):
+                mine = False                        # can't tell whose it is: keep it
+            if mine:
+                removed += 1
+            else:
+                kept.append(line)
+        if removed:
+            tmp = self.log_path.with_suffix(self.log_path.suffix + ".tmp")
+            tmp.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8", newline="\n")
+            os.replace(tmp, self.log_path)
+        return removed
 
     def snapshot(self) -> dict:
         """Counts only, for the /dash operator view — no ids, links or error text."""

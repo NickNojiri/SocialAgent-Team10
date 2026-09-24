@@ -102,6 +102,14 @@ class CaptureRateLimiter:
             self._live(table, key, now, window_s)
             table.setdefault(key, deque()).extend([now] * amount)
 
+    def forget_guild(self, guild_id: str) -> None:
+        """Drop one server's counters (#21) — they name its users' ids."""
+        gid = str(guild_id)
+        for key in [k for k in self._users if k[0] == gid]:
+            del self._users[key]
+        self._servers.pop(gid, None)
+        self._daily.pop(gid, None)
+
     def tracked(self) -> int:
         """How many counters are held right now (for tests and /dash)."""
         return len(self._users) + len(self._servers) + len(self._daily)
