@@ -1053,25 +1053,26 @@ _PAGE = """<!doctype html>
   .del{background:none;border:1px solid var(--line);color:var(--bad);border-radius:6px;padding:6px 10px;cursor:pointer;align-self:center}
   .del:hover{border-color:var(--bad)}
   .empty{color:var(--mut);text-align:center;padding:40px}
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
-<header><h1>🎟️ SocialAgent — Event Catalog</h1>
+<header><h1><span aria-hidden="true">🎟️</span> SocialAgent — Event Catalog</h1>
 <div class="sub">Add public post URLs, curate the list, and vote. Changes are live to the Discord bot.</div></header>
 <main>
   <div class="add">
-    <textarea id="urls" placeholder="Paste one or more public post URLs (one per line)…"></textarea>
+    <textarea id="urls" aria-label="Post links to add, one per line" placeholder="Paste one or more public post URLs (one per line)…"></textarea>
     <button id="addBtn" onclick="addUrls()">Add</button>
   </div>
   <div class="hint">Ingesting runs the full pipeline (fetch → LLM → schedule) — ~20–30s per URL. Login-walled or expired posts are skipped.</div>
-  <div id="status"></div>
+  <div id="status" role="status" aria-live="polite"></div>
   <details style="margin-bottom:16px">
     <summary style="cursor:pointer;color:var(--acc);font-size:13.5px;user-select:none">✏️ Add a spot manually (no link needed)</summary>
     <div style="margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">
-      <input id="mVenue" placeholder="Venue name (e.g. Wasteland, Casa Loma, The Pike)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
-      <textarea id="mTheme" placeholder="Describe the vibe / what happens here…" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit;min-height:60px;resize:vertical"></textarea>
-      <input id="mUrl" placeholder="Source URL (optional)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
+      <input id="mVenue" aria-label="Venue name" placeholder="Venue name (e.g. Wasteland, Casa Loma, The Pike)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
+      <textarea id="mTheme" aria-label="What the place is like" placeholder="Describe the vibe / what happens here…" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit;min-height:60px;resize:vertical"></textarea>
+      <input id="mUrl" aria-label="Source link (optional)" placeholder="Source URL (optional)" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font:inherit"/>
       <div style="display:flex;gap:8px;align-items:center">
         <button id="mBtn" onclick="addManual()" style="background:var(--acc);color:#0D1117;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:600">Add spot</button>
-        <span id="mStatus" style="font-size:13px;color:var(--mut)"></span>
+        <span id="mStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--mut)"></span>
       </div>
     </div>
   </details>
@@ -1108,16 +1109,16 @@ async function load(){
   list.innerHTML=d.events.map(e=>`
     <div class="ev">
       <div class="votes">
-        <button class="vb" onclick="vote('${e.id}',1)">▲</button>
-        <b>${e.votes}</b>
-        <button class="vb" onclick="vote('${e.id}',-1)">▼</button>
+        <button class="vb" onclick="vote('${e.id}',1)" aria-label="Vote up ${esc(e.venue)}">▲</button>
+        <b>${e.votes}<span class="sr"> votes</span></b>
+        <button class="vb" onclick="vote('${e.id}',-1)" aria-label="Vote down ${esc(e.venue)}">▼</button>
       </div>
       <div class="meta">
-        <div><span class="venue">${esc(e.venue)}</span><span class="badge">${EMOJI[e.category]||'📍'} ${esc(e.category.replace(/_/g,' '))}</span></div>
+        <div><span class="venue">${esc(e.venue)}</span><span class="badge"><span aria-hidden="true">${EMOJI[e.category]||'📍'}</span> ${esc(e.category.replace(/_/g,' '))}</span></div>
         <div class="theme">${esc(e.theme||'')}</div>
-        <div class="row">${e.schedule==='scheduled'&&e.start_utc?('🗓️ '+new Date(e.start_utc).toLocaleString()+' · '):''}${e.source_url?`<a href="${esc(e.source_url)}" target="_blank">source ↗</a>`:''}</div>
+        <div class="row">${e.schedule==='scheduled'&&e.start_utc?('<span aria-hidden="true">🗓️</span> '+new Date(e.start_utc).toLocaleString()+' · '):''}${e.source_url?`<a href="${esc(e.source_url)}" target="_blank" rel="noopener noreferrer">source ↗<span class="sr"> for ${esc(e.venue)} (opens in a new tab)</span></a>`:''}</div>
       </div>
-      <button class="del" onclick="del('${e.id}')">🗑 Remove</button>
+      <button class="del" onclick="del('${e.id}')" aria-label="Remove ${esc(e.venue)}"><span aria-hidden="true">🗑</span> Remove</button>
     </div>`).join('');
 }
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -1155,7 +1156,7 @@ _SHARE_PAGE = """<!doctype html>
   .ev{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}
   .thumb{width:72px;height:72px;border-radius:8px;object-fit:cover;background:#26304a;flex:none}
   .votes{min-width:56px;text-align:center;color:var(--ok);font-weight:700;font-size:16px;align-self:center}
-  .votes span{display:block;color:var(--mut);font-weight:400;font-size:11px}
+  .votes .who{display:block;color:var(--mut);font-weight:400;font-size:11px}
   .meta{flex:1;min-width:0}
   .venue{font-weight:700;font-size:16px}
   .badge{display:inline-block;background:#26304a;color:var(--acc);border-radius:999px;padding:1px 9px;font-size:11px;margin-left:8px;vertical-align:middle}
@@ -1164,14 +1165,15 @@ _SHARE_PAGE = """<!doctype html>
   .empty{color:var(--mut);text-align:center;padding:40px}
   footer{max-width:860px;margin:0 auto;padding:8px 24px 32px;color:var(--mut);font-size:13px}
   footer a{color:var(--acc);text-decoration:none;font-weight:600}
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
-<header><h1>📍 Our spots</h1>
+<header><h1><span aria-hidden="true">📍</span> Our spots</h1>
 <div class="sub">A group catalog of places we want to go — captured from shared reels.</div></header>
 <main>
   <div class="count" id="count"></div>
   <div id="list"></div>
 </main>
-<footer>Powered by <a href="https://github.com/NickNojiri/SocialAgent-Team10" target="_blank">SpotBot</a>
+<footer>Powered by <a href="https://github.com/NickNojiri/SocialAgent-Team10" target="_blank" rel="noopener noreferrer">SpotBot<span class="sr"> (opens in a new tab)</span></a>
 — paste a reel in Discord, get a votable spot. Add it to your server.</footer>
 <script>
 const EMOJI={food_drink:"🍽️",cafe_dessert:"🍰",nightlife:"🍸",live_music:"🎶",market_popup:"🛍️",outdoors:"🏞️",community:"🤝",other:"📍"};
@@ -1187,17 +1189,17 @@ async function load(){
   if(!d.events.length){list.innerHTML='<div class="empty">Nothing here yet.</div>';return;}
   list.innerHTML=d.events.map(e=>`
     <div class="ev">
-      ${e.image?`<img class="thumb" src="${esc(e.image)}" alt=""/>`:''}
+      ${e.image?`<img class="thumb" src="${esc(e.image)}" alt="Photo from the post about ${esc(e.venue)}"/>`:''}
       <div class="meta">
-        <div><span class="venue">${esc(e.venue)}</span><span class="badge">${EMOJI[e.category]||'📍'} ${esc((e.category||'other').replace(/_/g,' '))}</span></div>
+        <div><span class="venue">${esc(e.venue)}</span><span class="badge"><span aria-hidden="true">${EMOJI[e.category]||'📍'}</span> ${esc((e.category||'other').replace(/_/g,' '))}</span></div>
         <div class="theme">${esc(e.theme||'')}</div>
         <div class="row">
-          ${e.schedule==='scheduled'&&e.start_utc?('🗓️ '+new Date(e.start_utc).toLocaleString()+' · '):''}
-          ${(e.lat!=null&&e.lng!=null)?`<a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=17/${e.lat}/${e.lng}" target="_blank">map ↗</a> · `:''}
-          ${e.source_url?`<a href="${esc(e.source_url)}" target="_blank">source ↗</a>`:''}
+          ${e.schedule==='scheduled'&&e.start_utc?('<span aria-hidden="true">🗓️</span> '+new Date(e.start_utc).toLocaleString()+' · '):''}
+          ${(e.lat!=null&&e.lng!=null)?`<a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=17/${e.lat}/${e.lng}" target="_blank" rel="noopener noreferrer">map ↗<span class="sr"> of ${esc(e.venue)} (opens in a new tab)</span></a> · `:''}
+          ${e.source_url?`<a href="${esc(e.source_url)}" target="_blank" rel="noopener noreferrer">source ↗<span class="sr"> for ${esc(e.venue)} (opens in a new tab)</span></a>`:''}
         </div>
       </div>
-      <div class="votes">👍 ${e.votes}<span>${esc((e.voters||[]).slice(0,4).join(', '))}</span></div>
+      <div class="votes"><span aria-hidden="true">👍</span> ${e.votes}<span class="sr"> vote${e.votes===1?'':'s'}</span><span class="who">${esc((e.voters||[]).slice(0,4).join(', '))}</span></div>
     </div>`).join('');
 }
 load();
@@ -1267,11 +1269,12 @@ _DASH_PAGE = """<!doctype html>
   footer{color:var(--mut);font-size:11.5px;margin-top:24px}
   /* progress bar animates down to 0 between refreshes */
   #pgbar{height:2px;background:var(--acc);position:fixed;top:0;left:0;transition:width linear 5s;z-index:99}
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
-<div id="pgbar" style="width:100%"></div>
+<div id="pgbar" style="width:100%" aria-hidden="true"></div>
 <main>
   <div id="hdr">
-    <div id="pulse"></div>
+    <div id="pulse" aria-hidden="true"></div>
     <h1>SpotBot — live ops</h1>
     <span id="next">next refresh in 5s</span>
   </div>
@@ -1339,26 +1342,27 @@ async function load(){
     <div class="tile"><b>${t.nights??0}</b>${delta('nights',t.nights??0)}<span>nights out</span></div>
     <div class="tile"><b>${(d.captures||[]).length}</b><span>captures (session)</span></div>`;
 
+  // The dot's color is repeated in words for screen readers (WCAG 1.4.1).
   document.getElementById('chips').innerHTML=Object.entries(d.services||{}).map(([k,up])=>
-    `<span class="chip ${up?'on':'off'}"><span class="dot"></span>${SVC_LABELS[k]||k}</span>`).join('');
+    `<span class="chip ${up?'on':'off'}"><span class="dot" aria-hidden="true"></span>${SVC_LABELS[k]||k}<span class="sr">${up?' — up':' — down'}</span></span>`).join('');
 
   document.getElementById('ml').innerHTML=`
-    <span class="ml"><span class="icon">🔢</span>mxbai-embed-large · 1024-dim</span>
-    <span class="ml"><span class="icon">🔁</span>LLM cross-encoder re-ranking</span>
-    <span class="ml"><span class="icon">👤</span>User taste profile (α=0.25)</span>`;
+    <span class="ml"><span class="icon" aria-hidden="true">🔢</span>mxbai-embed-large · 1024-dim</span>
+    <span class="ml"><span class="icon" aria-hidden="true">🔁</span>LLM cross-encoder re-ranking</span>
+    <span class="ml"><span class="icon" aria-hidden="true">👤</span>User taste profile (α=0.25)</span>`;
 
   const maxSpots=Math.max(1,...(d.tenants||[]).map(x=>x.spots));
   const rows=(d.tenants||[]).map(x=>
     `<tr>
       <td>${esc(x.guild)}</td>
       <td class="num">${x.spots}</td>
-      <td class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(x.spots/maxSpots*100)}%"></div></div></td>
+      <td class="bar-cell" aria-hidden="true"><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(x.spots/maxSpots*100)}%"></div></div></td>
       <td class="num">${x.votes}</td>
       <td class="num">${x.nights}</td>
       <td>${esc(x.last)||'—'}</td>
     </tr>`).join('');
   document.getElementById('tenants').innerHTML=
-    `<tr><th>server / guild id</th><th class="num">spots</th><th class="bar-cell"></th><th class="num">votes</th><th class="num">nights</th><th>last capture</th></tr>`
+    `<tr><th scope="col">server / guild id</th><th scope="col" class="num">spots</th><th class="bar-cell" aria-hidden="true"></th><th scope="col" class="num">votes</th><th scope="col" class="num">nights</th><th scope="col">last capture</th></tr>`
     +(rows||`<tr><td colspan="6" class="empty">no catalogs yet</td></tr>`);
 
   // #29 capture health — counts and seconds from the timing log, never links.
@@ -1379,7 +1383,7 @@ async function load(){
       <div class="tile"><b>${st.failed??0}</b><span>failed</span></div>`;
     const stages=Object.entries(h.stage_median_s||{});
     document.getElementById('stages').innerHTML=
-      `<tr><th>stage</th><th class="num">median time</th></tr>`
+      `<tr><th scope="col">stage</th><th scope="col" class="num">median time</th></tr>`
       +(stages.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${secs(v)}</td></tr>`).join('')
         ||`<tr><td colspan="2" class="empty">no captures logged yet</td></tr>`);
   }
@@ -1387,7 +1391,7 @@ async function load(){
   const q=d.queue||{}, L=d.limits||{};
   const span=s=>s>=3600?Math.round(s/3600)+'h':Math.round(s/60)+'m';
   const lim=(name,x)=>!x||!x.limit?`${name}: off`:`${name}: ${x.limit} per ${span(x.window_s)}`;
-  const qchip=(ok,text)=>`<span class="chip ${ok?'on':'off'}"><span class="dot"></span>${text}</span>`;
+  const qchip=(ok,text)=>`<span class="chip ${ok?'on':'off'}"><span class="dot" aria-hidden="true"></span>${text}<span class="sr">${ok?'':' — needs a look'}</span></span>`;
   document.getElementById('queue').innerHTML=[
     qchip((q.waiting??0)<(q.max_queued??1), `waiting ${q.waiting??0} / ${q.max_queued??'?'}`),
     qchip(true, `running ${q.running??0} of ${q.workers??1} worker${q.workers===1?'':'s'}`),
