@@ -67,6 +67,57 @@ per-guild counts).
 
 Full list: `README.md` → Configuration.
 
+## Secrets — where they live, and rotating the signing key
+
+Threat model T6. One leaked `SPOTBOT_SIGNING_KEY` lets whoever holds it read, change
+or wipe **any** server's catalog, so it gets the most care.
+
+**Where secrets live, and nowhere else:**
+
+| Secret | Lives in | Notes |
+|---|---|---|
+| `SPOTBOT_SIGNING_KEY` | `.env` | Same value for the admin app, recommend service and bot |
+| `DISCORD_TOKEN` | `.env` | Reset in the Discord developer portal if leaked |
+| `IG_USERNAME` / `IG_PASSWORD` | `.env` | Burner account only; change the password on Instagram if leaked |
+| Instagram session cookie | `data/ig_session.json` | Delete the file to force a fresh login |
+| Old `.env` copies from rotation | `data/key-backups/` | Delete once you're sure you won't roll back |
+
+Rules: never in the repo, never in a log line, never in a test fixture, never pasted
+into Codex, Claude or any chat. `.env`, every `.env.*` copy and all of `data/` are
+gitignored — only `.env.example`, which holds no values, is tracked. Check with
+`git status` before every commit. On Windows, `.env` is protected only by your user
+profile's folder permissions; don't keep the repo in a shared or synced folder.
+
+**When to rotate the signing key:** you think it leaked (pasted somewhere, committed,
+on a lost laptop), someone who had `.env` leaves the team, or you're about to deploy to
+staging for the first time with a key that's lived on laptops.
+
+**How to rotate:**
+
+1. Preview — changes nothing:
+   ```bash
+   python scripts/rotate_signing_key.py
+   ```
+2. Rotate:
+   ```bash
+   python scripts/rotate_signing_key.py --confirm
+   ```
+   It backs up `.env` to `data/key-backups/`, writes a new key, and prints what to do
+   next. It never prints either key.
+3. Restart **all three**, admin app and recommend service first, then the bot. Until the
+   bot restarts, every call it makes is refused (403), because it's still signing with
+   the old key. With `run_local.ps1`: stop it and start it again.
+4. Tell your servers their share links broke. Every `/share` link ever issued was
+   signed with the old key and now shows an error; running `/share` again makes a new one.
+5. Once everything works, delete the backup in `data/key-backups/`. It holds the old key.
+
+**Undo** (only before the new key is in use anywhere): copy the backup back over `.env`
+and restart all three.
+
+**What rotation does not do:** it can't kill one leaked token while keeping the rest —
+it kills all of them. Per-token expiry and revocation is Track D's #30 (Authentication &
+session hardening), built on this same key.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
