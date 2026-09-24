@@ -68,8 +68,12 @@ def run(client):
     def body_post(path, g, t, **extra):
         return client.post(path, json={"guild_id": g, **extra}, headers=hdr(t))
 
-    ingest = lambda g, t: body_post("/api/ingest", g, t, urls=URLS)  # noqa: E731
-    job = lambda g, t: body_post("/api/jobs", g, t, urls=URLS)  # noqa: E731
+    ingest = lambda g, t, u: body_post(  # noqa: E731
+        "/api/ingest", g, t, urls=URLS, user_id=u
+    )
+    job = lambda g, t, u: body_post(  # noqa: E731
+        "/api/jobs", g, t, urls=URLS, user_id=u
+    )
     manual = lambda g, t: body_post("/api/manual", g, t, venue="Casa Loma", theme="birria tacos")  # noqa: E731
     edit = lambda g, t: body_post(f"/api/events/{EVENT}/edit", g, t, venue="Casa Loma", theme="birria tacos")  # noqa: E731
     lock = lambda g, t: body_post(f"/api/events/{EVENT}/lock", g, t, end_epoch=1_800_000_000)  # noqa: E731
@@ -79,7 +83,7 @@ def run(client):
     plan = lambda g, t: rec.post("/plan", json={"channel_id": "c", "transcript": "a: tacos?", "guild_id": g}, headers=hdr(t))  # noqa: E731
 
     # a real job in MINE, to probe reading its status from outside
-    job_id = job(MINE, MINE_RW).json()["job_id"]
+    job_id = job(MINE, MINE_ME, ME).json()["job_id"]
     for _ in range(100):
         if client.get(f"/api/jobs/{job_id}", headers=hdr(MINE_RW)).json()["state"] == "done":
             break
@@ -105,9 +109,10 @@ def run(client):
         ("vote in another guild", lambda: vote(THEIRS, MINE_ME, ME)),
         ("confirm a night out as another user", lambda: went(MINE, MINE_ME, YOU)),
         ("dismiss a night out as another user", lambda: went(MINE, MINE_ME, YOU, happened=False)),
-        ("ingest into another guild", lambda: ingest(THEIRS, MINE_RW)),
-        ("ingest with no token", lambda: ingest(MINE, None)),
-        ("queue a capture job in another guild", lambda: job(THEIRS, MINE_RW)),
+        ("ingest into another guild", lambda: ingest(THEIRS, MINE_ME, ME)),
+        ("ingest with no token", lambda: ingest(MINE, None, ME)),
+        ("queue a capture job in another guild", lambda: job(THEIRS, MINE_ME, ME)),
+        ("evade the per-user limit by changing user_id", lambda: job(MINE, MINE_ME, YOU)),
         ("read another guild's capture job result", lambda: job_status(mint_token(THEIRS))),
         ("read a capture job result with no token", lambda: job_status(None)),
         ("list another guild's failed captures", lambda: failed_jobs(THEIRS, MINE_RW)),

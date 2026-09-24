@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 import src.ingestion.serving.admin as admin
 import src.ingestion.serving.app as serving_app
+from src.ingestion.serving.capture_limits import CaptureRateLimiter
 from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_READ, mint_token
 
@@ -69,6 +70,7 @@ def client(monkeypatch):
     monkeypatch.setenv(ENV_VAR, KEY)
     monkeypatch.setattr(admin, "_sink_for", lambda guild_id="": StubSink())
     monkeypatch.setattr(admin, "_jobs", JobQueue(_never_ingest))
+    monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter())
     with TestClient(admin.app) as c:
         yield c
 
@@ -213,23 +215,39 @@ def test_followups_needs_write_scope(client):
 
 
 def test_ingest_without_token_rejected(client):
-    r = client.post("/api/ingest", json={"urls": ["https://x.test/1"], "guild_id": MINE})
+    r = client.post(
+        "/api/ingest",
+        json={"urls": ["https://x.test/1"], "guild_id": MINE, "user_id": ME},
+    )
     assert r.status_code == 403
 
 
 def test_ingest_with_other_guilds_token_rejected(client):
     r = client.post(
         "/api/ingest",
-        json={"urls": ["https://x.test/1"], "guild_id": THEIRS},
-        headers=hdr(mint_token(MINE)),
+        json={"urls": ["https://x.test/1"], "guild_id": THEIRS, "user_id": ME},
+        headers=hdr(mint_token(MINE, user_id=ME)),
     )
     assert r.status_code == 403
 
 
 def test_job_submit_requires_token(client):
-    body = {"urls": ["https://x.test/1"], "guild_id": MINE}
+    body = {"urls": ["https://x.test/1"], "guild_id": MINE, "user_id": ME}
     assert client.post("/api/jobs", json=body).status_code == 403
-    assert client.post("/api/jobs", json={**body, "guild_id": THEIRS}, headers=hdr(mint_token(MINE))).status_code == 403
+    assert client.post(
+        "/api/jobs",
+        json={**body, "guild_id": THEIRS},
+        headers=hdr(mint_token(MINE, user_id=ME)),
+    ).status_code == 403
+
+
+def test_capture_user_identity_is_signed(client):
+    """Changing user_id must invalidate the token instead of selecting a fresh counter."""
+    body = {"urls": ["https://x.test/1"], "guild_id": MINE, "user_id": YOU}
+    response = client.post(
+        "/api/jobs", json=body, headers=hdr(mint_token(MINE, user_id=ME))
+    )
+    assert response.status_code == 403
 
 
 def test_job_status_only_readable_by_its_tenant(client, monkeypatch):
@@ -239,7 +257,9 @@ def test_job_status_only_readable_by_its_tenant(client, monkeypatch):
 
     monkeypatch.setattr(admin, "_jobs", JobQueue(fake))
     resp = client.post(
-        "/api/jobs", json={"urls": ["https://x.test/1"], "guild_id": MINE}, headers=hdr(mint_token(MINE))
+        "/api/jobs",
+        json={"urls": ["https://x.test/1"], "guild_id": MINE, "user_id": ME},
+        headers=hdr(mint_token(MINE, user_id=ME)),
     )
     assert resp.status_code == 202
     job_id = resp.json()["job_id"]
@@ -253,6 +273,61 @@ def test_job_status_only_readable_by_its_tenant(client, monkeypatch):
 
     assert client.get(f"/api/jobs/{job_id}").status_code == 403
     assert client.get(f"/api/jobs/{job_id}", headers=hdr(mint_token(THEIRS))).status_code == 403
+
+
+def _submit_capture(client, url: str, user_id: str = ME):
+    return client.post(
+        "/api/jobs",
+        json={"urls": [url], "guild_id": MINE, "user_id": user_id},
+        headers=hdr(mint_token(MINE, user_id=user_id)),
+    )
+
+
+def test_per_user_capture_limit_returns_retry_after(client, monkeypatch, caplog):
+    monkeypatch.setattr(
+        admin,
+        "_capture_limits",
+        CaptureRateLimiter(user_limit=1, user_window_s=600),
+    )
+    token = mint_token(MINE, user_id=ME)
+
+    assert _submit_capture(client, "https://x.test/1").status_code == 202
+    response = _submit_capture(client, "https://x.test/2")
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "600"
+    assert f"guild={MINE} user={ME} limit=user" in caplog.text
+    assert token not in caplog.text
+
+
+def test_per_server_capture_limit_returns_retry_after(client, monkeypatch):
+    monkeypatch.setattr(
+        admin,
+        "_capture_limits",
+        CaptureRateLimiter(server_limit=1, server_window_s=3600),
+    )
+
+    assert _submit_capture(client, "https://x.test/1", ME).status_code == 202
+    response = _submit_capture(client, "https://x.test/2", YOU)
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "3600"
+    assert response.json()["detail"] == "capture rate limit exceeded (server)"
+
+
+def test_daily_server_capture_limit_returns_retry_after(client, monkeypatch):
+    monkeypatch.setattr(
+        admin,
+        "_capture_limits",
+        CaptureRateLimiter(daily_limit=1, daily_window_s=86400),
+    )
+
+    assert _submit_capture(client, "https://x.test/1", ME).status_code == 202
+    response = _submit_capture(client, "https://x.test/2", YOU)
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "86400"
+    assert response.json()["detail"] == "capture rate limit exceeded (daily)"
 
 
 def test_failed_job_list_only_readable_by_its_tenant(client):

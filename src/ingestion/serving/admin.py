@@ -12,6 +12,7 @@ can later rank by popularity.
 """
 
 import json
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -28,6 +29,10 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
+from src.ingestion.serving.capture_limits import (
+    CaptureRateLimitExceeded,
+    CaptureRateLimiter,
+)
 from src.ingestion.serving.jobs import (
     JobQueue,
     MemoryJobStore,
@@ -38,6 +43,8 @@ from src.ingestion.serving.jobs import (
 from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
+
+log = logging.getLogger("ingestion.admin")
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -176,6 +183,7 @@ _CAPTURE_LOG: deque = deque(maxlen=50)
 class IngestBody(BaseModel):
     urls: list[str]
     guild_id: str = ""      # "" → the legacy/single-tenant catalog
+    user_id: str = ""       # signed into the token for per-user capture limits
 
 
 class VoteBody(BaseModel):
@@ -317,8 +325,11 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
 @app.post("/api/ingest")
 async def ingest(body: IngestBody, x_tenant_token: str | None = TenantToken):
     """Synchronous capture: returns when every URL is done (the bot's default path)."""
-    authorize(body.guild_id, x_tenant_token)
-    return await _run_ingest(_ingest_urls(body), body.guild_id)
+    _authorize_capture(body, x_tenant_token)
+    urls = _ingest_urls(body)
+    _check_capture_rate(body)
+    _capture_limits.record(body.guild_id, body.user_id)
+    return await _run_ingest(urls, body.guild_id)
 
 
 # Async capture (ADR-0004): enqueue, then poll. Same validation, same result
@@ -345,20 +356,58 @@ _jobs = JobQueue(
     max_retries=int(os.getenv("INGEST_MAX_RETRIES", "").strip() or 2),
 )
 
+# Counts default to zero (disabled) until Nick approves the proposed values.
+# Windows are configurable independently so changing one never changes another.
+_capture_limits = CaptureRateLimiter(
+    user_limit=int(os.getenv("CAPTURE_USER_LIMIT", "").strip() or 0),
+    user_window_s=float(os.getenv("CAPTURE_USER_WINDOW_S", "").strip() or 600),
+    server_limit=int(os.getenv("CAPTURE_SERVER_LIMIT", "").strip() or 0),
+    server_window_s=float(os.getenv("CAPTURE_SERVER_WINDOW_S", "").strip() or 3600),
+    daily_limit=int(os.getenv("CAPTURE_DAILY_LIMIT", "").strip() or 0),
+    daily_window_s=float(os.getenv("CAPTURE_DAILY_WINDOW_S", "").strip() or 86400),
+)
+
+
+def _authorize_capture(body: IngestBody, token: str | None) -> None:
+    authorize(body.guild_id, token, user_id=body.user_id)
+    if body.guild_id and not body.user_id:
+        raise HTTPException(400, "user_id is required for a server capture")
+
+
+def _check_capture_rate(body: IngestBody) -> None:
+    try:
+        _capture_limits.check(body.guild_id, body.user_id)
+    except CaptureRateLimitExceeded as exc:
+        log.warning(
+            "[capture_rate_limit] refused guild=%s user=%s limit=%s",
+            body.guild_id,
+            body.user_id,
+            exc.limit_name,
+        )
+        raise HTTPException(
+            429,
+            f"capture rate limit exceeded ({exc.limit_name})",
+            headers={"Retry-After": str(exc.retry_after_s)},
+        ) from exc
+
 
 
 
 @app.post("/api/jobs", status_code=202)
 async def create_job(body: IngestBody, x_tenant_token: str | None = TenantToken):
-    authorize(body.guild_id, x_tenant_token)
+    _authorize_capture(body, x_tenant_token)
     urls = _ingest_urls(body)
     # A second paste of the same reel, or the bot's Retry button, joins the
     # capture already in flight instead of starting a second one (feature #25).
     duplicate = _jobs.find_active(body.guild_id, urls) is not None
+    if not duplicate:
+        _check_capture_rate(body)
     try:
         job = _jobs.submit(urls, body.guild_id)
     except QueueFull as exc:
         raise HTTPException(429, f"capture queue is full — {exc}")
+    if not duplicate:
+        _capture_limits.record(body.guild_id, body.user_id)
     return {"job_id": job.id, "state": job.state, "duplicate": duplicate}
 
 
