@@ -5,6 +5,8 @@ Run from the repo root:  pytest app/test_cards.py -v
 
 from types import SimpleNamespace
 
+import pytest
+
 import cards
 
 
@@ -97,7 +99,104 @@ def test_build_spot_embed_unscheduled_and_already():
     assert "When" not in fields              # v3: no date → no noisy field
     assert any("Already in the catalog" in f.value for f in embed.fields)
     assert embed.thumbnail.url is None       # no image → no thumbnail
-    assert "Where" not in fields             # no coords → no map field
+    # no coords → a map search for the venue instead of a pin, and no distance (#36)
+    assert fields["Where"] == "[Find on map](https://www.openstreetmap.org/search?query=Cafe+X)"
+
+
+# ── distance + map (#36) ─────────────────────────────────────────────────────
+
+LONG_BEACH = {"home_city": "Long Beach, CA", "home_lat": 33.7701, "home_lng": -118.1937}
+
+
+def _where(event, home=None):
+    return {f.name: f.value for f in cards.build_spot_embed(event, home).fields}.get("Where")
+
+
+def test_distance_from_the_home_city_when_both_places_are_known():
+    # Santa Monica Pier is ~24 miles from downtown Long Beach as the crow flies
+    where = _where({"venue": "Pier", "category": "outdoors", "lat": 34.0092, "lng": -118.4976}, LONG_BEACH)
+    assert where.startswith("[Open map](https://www.openstreetmap.org/?mlat=34.0092")
+    assert where.endswith(" · 24 mi from Long Beach, CA")
+
+
+def test_short_distances_keep_a_decimal():
+    near = {"venue": "Cafe", "category": "cafe_dessert", "lat": 33.7801, "lng": -118.1937}
+    assert _where(near, LONG_BEACH).endswith(" · 0.7 mi from Long Beach, CA")
+    same = {"venue": "Cafe", "category": "cafe_dessert", "lat": 33.7701, "lng": -118.1937}
+    assert _where(same, LONG_BEACH).endswith(" · under 0.1 mi from Long Beach, CA")
+
+
+@pytest.mark.parametrize("home", [None, {"home_city": "Long Beach, CA", "home_lat": None, "home_lng": None}])
+def test_no_distance_without_a_located_home_city(home):
+    where = _where({"venue": "Pier", "category": "outdoors", "lat": 34.0, "lng": -118.5}, home)
+    assert where == "[Open map](https://www.openstreetmap.org/?mlat=34.0&mlon=-118.5#map=17/34.0/-118.5)"
+
+
+def test_no_coordinates_degrades_to_a_search_near_the_posts_area():
+    event = {"venue": "Casa Loma", "category": "food_drink", "area": "123 Pine Ave, Long Beach, CA 90802"}
+    assert _where(event, LONG_BEACH) == (
+        "[Find on map](https://www.openstreetmap.org/search?query=Casa+Loma%2C+Long+Beach)")
+
+
+def test_no_coordinates_and_no_area_searches_near_the_home_city():
+    event = {"venue": "Casa Loma", "category": "food_drink"}
+    assert "query=Casa+Loma%2C+Long+Beach%2C+CA" in _where(event, LONG_BEACH)
+
+
+def test_nothing_to_map_means_no_field():
+    assert _where({"venue": "Unknown", "category": "other"}) is None
+    assert _where({"category": "other"}) is None
+
+
+def test_the_home_city_cant_inject_markdown_and_the_query_is_encoded():
+    home = {**LONG_BEACH, "home_city": "[click](https://evil.test)"}
+    where = _where({"venue": "A)B", "category": "other", "lat": 34.0, "lng": -118.5}, home)
+    # The escaped "[" means Discord can't turn it into a disguised link.
+    assert "from \\[click](https://evil.test)" in where
+    assert "A%29B" in _where({"venue": "A)B", "category": "other"})
+
+
+@pytest.mark.asyncio
+async def test_home_for_is_quiet_when_it_cant_help(monkeypatch):
+    async def found(guild):
+        return LONG_BEACH
+
+    async def broken(guild):
+        raise RuntimeError("admin app down")
+
+    monkeypatch.setattr(cards, "HOME_LOOKUP", found)
+    assert await cards.home_for("99") == LONG_BEACH
+    assert await cards.home_for("dm-7") is None             # a DM stash has no home city
+    monkeypatch.setattr(cards, "HOME_LOOKUP", broken)
+    assert await cards.home_for("99") is None               # a card never fails over distance
+    monkeypatch.setattr(cards, "HOME_LOOKUP", None)
+    assert await cards.home_for("99") is None
+
+
+@pytest.mark.asyncio
+async def test_a_captured_card_shows_distance_from_the_servers_city(monkeypatch):
+    import bot
+    import setup_wizard
+
+    async def settings(guild, *, fresh=False):
+        return LONG_BEACH
+
+    monkeypatch.setattr(setup_wizard, "settings_for", settings)
+    edits = []
+
+    async def edit(**kwargs):
+        edits.append(kwargs)
+
+    async def noop(*a, **k):
+        return None
+
+    message = SimpleNamespace(guild=SimpleNamespace(id=99), author=SimpleNamespace(display_name="nick", id=7),
+                              add_reaction=noop, remove_reaction=noop)
+    monkeypatch.setattr(bot, "_maybe_first_card_tip", noop)
+    event = {"id": "e1", "venue": "Pier", "category": "outdoors", "lat": 34.0092, "lng": -118.4976}
+    await bot._render_capture(message, SimpleNamespace(edit=edit), ["https://x.test/1"], {"events": [event]})
+    where = {f.name: f.value for f in edits[0]["embed"].fields}["Where"]
+    assert where.endswith("24 mi from Long Beach, CA")
 
 
 def test_platform_label_from_source_url():

@@ -17,6 +17,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 import discord
@@ -37,6 +38,21 @@ QUORUM = int(os.getenv("SPOT_QUORUM", "3"))
 BOT_TZ = os.getenv("BOT_TZ", "America/Los_Angeles")
 # How many spots /browse shows per page (the ◀ ▶ pager cycles through the rest).
 BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
+
+# Where a server's /setup settings come from, for distance on cards (#36). The
+# bot points this at setup_wizard.settings_for on import; this module can't
+# import that one (it imports this). Unset, cards simply show no distance.
+HOME_LOOKUP: Optional[Callable[[str], Awaitable[Optional[dict]]]] = None
+
+
+async def home_for(guild: str) -> Optional[dict]:
+    """This server's settings for a card, or None (DMs, lookup unset or failing)."""
+    if HOME_LOOKUP is None or not guild or guild.startswith("dm-"):
+        return None
+    try:
+        return await HOME_LOOKUP(guild)
+    except Exception:
+        return None
 
 # ── Capture transport ────────────────────────────────────────────────────────
 # The async transport (ADR-0004) POSTs /api/jobs, then polls GET /api/jobs/{id}
@@ -295,12 +311,53 @@ def _platform_label(source_url: str) -> str:
     return "added manually" if not url else "via the web"
 
 
-def build_spot_embed(event: dict) -> discord.Embed:
+def _miles(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance (haversine), in miles."""
+    from math import asin, cos, radians, sin, sqrt
+
+    rlat1, rlng1, rlat2, rlng2 = map(radians, (lat1, lng1, lat2, lng2))
+    a = sin((rlat2 - rlat1) / 2) ** 2 + cos(rlat1) * cos(rlat2) * sin((rlng2 - rlng1) / 2) ** 2
+    return 2 * 3958.8 * asin(sqrt(a))
+
+
+def _fmt_miles(miles: float) -> str:
+    if miles < 0.1:
+        return "under 0.1 mi"
+    return f"{miles:.1f} mi" if miles < 10 else f"{miles:.0f} mi"
+
+
+def _where_text(event: dict, home: Optional[dict]) -> str:
+    """The card's map link, plus distance from the server's home city (#36).
+
+    With coordinates: a pinned OpenStreetMap link, and the distance when /setup
+    has a home city whose location is known. Without them — most spots, since
+    capture doesn't geocode — a map search for the venue near its area (or the
+    home city) instead, and no distance rather than a guess.
+    """
+    lat, lng = event.get("lat"), event.get("lng")
+    if lat is not None and lng is not None:
+        text = f"[Open map](https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=17/{lat}/{lng})"
+        home_lat, home_lng = (home or {}).get("home_lat"), (home or {}).get("home_lng")
+        if home_lat is not None and home_lng is not None:
+            city = discord.utils.escape_markdown((home or {}).get("home_city") or "home")
+            text += f" · {_fmt_miles(_miles(home_lat, home_lng, lat, lng))} from {city}"
+        return text
+    venue = event.get("venue")
+    if not venue or venue in ("Unknown", "Unknown spot"):
+        return ""
+    near = area_parts(event.get("area", ""))
+    place = near[-1] if near else (home or {}).get("home_city", "")
+    query = ", ".join(p for p in (venue, place) if p)
+    return f"[Find on map](https://www.openstreetmap.org/search?query={quote_plus(query)})"
+
+
+def build_spot_embed(event: dict, home: Optional[dict] = None) -> discord.Embed:
     """Render one catalog event as a Discord embed card (v3 layout).
 
     Quiet by design: the category lives in the title emoji + footer (no
     redundant field), unscheduled spots don't advertise their missing date,
-    and fields only appear when they carry real information."""
+    and fields only appear when they carry real information. `home` is the
+    server's /setup settings, for distance (#36); without it there's none."""
     category = event.get("category", "other")
     embed = discord.Embed(
         title=f"{emoji_for(category)} {event.get('venue') or 'Unknown spot'}",
@@ -327,14 +384,9 @@ def build_spot_embed(event: dict) -> discord.Embed:
             when += f" – <t:{int(event['end_epoch'])}:t>"
         embed.add_field(name="When", value=when, inline=True)
 
-    lat, lng = event.get("lat"), event.get("lng")
-    if lat is not None and lng is not None:
-        # OpenStreetMap, matching the repo's no-paid-APIs ethos.
-        embed.add_field(
-            name="Where",
-            value=f"[Open map](https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=17/{lat}/{lng})",
-            inline=True,
-        )
+    where = _where_text(event, home)
+    if where:
+        embed.add_field(name="Where", value=where, inline=True)
 
     voters = event.get("voters") or []
     if voters:
@@ -573,14 +625,15 @@ class EditSpotModal(discord.ui.Modal, title="Edit this spot"):
             )
             return
         # Re-render the card in place when we can see it; else post the fixed card.
+        embed = build_spot_embed(ev, await home_for(guild_key(interaction)))
         if interaction.message is not None:
             await interaction.response.edit_message(
-                embed=build_spot_embed(ev),
+                embed=embed,
                 view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
             )
         else:
             await interaction.response.send_message(
-                embed=build_spot_embed(ev),
+                embed=embed,
                 view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
             )
 
@@ -750,7 +803,7 @@ class RetryButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:ret
             return
         ev = events[0]
         await interaction.followup.send(
-            embed=build_spot_embed(ev),
+            embed=build_spot_embed(ev, await home_for(guild_key(interaction))),
             view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
         )
 
@@ -789,7 +842,7 @@ class SpotModal(discord.ui.Modal, title="Add a spot"):
             return
         ev["sharer"] = interaction.user.display_name
         await interaction.followup.send(
-            embed=build_spot_embed(ev),
+            embed=build_spot_embed(ev, await home_for(guild_key(interaction))),
             view=build_spot_view(ev["id"], int(ev.get("votes", 0))),
         )
 
@@ -860,9 +913,10 @@ class AddSuggestionsButton(
             f"✨ Added {len(suggestions)} similar spot"
             f"{'' if len(suggestions) == 1 else 's'} to vote on:"
         )
+        home = await home_for(guild)
         for ev in suggestions:
             await interaction.followup.send(
-                embed=build_spot_embed(ev),
+                embed=build_spot_embed(ev, home),
                 view=build_spot_view(ev["id"], ev.get("votes", 0)),
             )
 

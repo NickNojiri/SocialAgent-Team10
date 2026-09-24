@@ -205,7 +205,7 @@ async def test_in_a_dm_you_can_delete_your_own_stash():
 async def test_the_explanation_names_every_place_data_goes():
     text = " ".join(f.value for f in privacy.privacy_embed(in_server=True, can_delete=True).fields)
     for claim in ("Votes", "/setup", "Capture history", "failed to load", "doesn't keep",
-                  "OpenStreetMap", "/share", "/survey"):
+                  "OpenStreetMap", "home city is looked up", "/share", "/survey"):
         assert claim in text
 
 

@@ -54,7 +54,8 @@ def privacy_embed(*, in_server: bool, can_delete: bool) -> discord.Embed:
     embed.add_field(name="Where it goes", inline=False, value=(
         "It stays on the computer running SpotBot. Captions and audio are read by AI models "
         "running on that computer — nothing goes to paid AI services. Place names you "
-        "mention to `/plan` or `/events` may be looked up on OpenStreetMap to rank by distance."
+        "mention to `/plan` or `/events` may be looked up on OpenStreetMap to rank by distance, "
+        "and the `/setup` home city is looked up there once, to show distance on cards."
     ))
     embed.add_field(name="Who can see it", inline=False, value=(
         "People in this server, anyone you send a `/share` link to, and whoever runs SpotBot."

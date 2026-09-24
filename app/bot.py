@@ -47,6 +47,10 @@ import setup_wizard
 from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
 from tenant_auth import SCOPE_READ, mint_token, tenant_headers
 
+# Cards show distance from /setup's home city (#36). Looked up at call time, so
+# the cache (and a test's stand-in) is always the current one.
+cards.HOME_LOOKUP = lambda guild: setup_wizard.settings_for(guild)
+
 # ── Logging setup ──────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -277,20 +281,21 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
     if len(events) > 3:   # a big paste → one tidy summary instead of N cards
         await status.edit(content=None, embed=_summary_embed(events, sharer))
     else:
+        home = await cards.home_for(cards.guild_key(message))    # distance on the card (#36)
         first, rest = events[0], events[1:]
         first["sharer"] = sharer
         first["already"] = not first.get("new", True)
         # The status message *becomes* the first card — progress turns into payoff.
         await status.edit(
             content=None,
-            embed=cards.build_spot_embed(first),
+            embed=cards.build_spot_embed(first, home),
             view=cards.build_spot_view(first["id"], int(first.get("votes", 0))),
         )
         for event in rest:
             event["sharer"] = sharer
             event["already"] = not event.get("new", True)
             await message.reply(
-                embed=cards.build_spot_embed(event),
+                embed=cards.build_spot_embed(event, home),
                 view=cards.build_spot_view(event["id"], int(event.get("votes", 0))),
                 mention_author=False,
             )
@@ -754,6 +759,7 @@ async def plan_command(interaction: discord.Interaction):
     if not recs:
         await target.send("I couldn't find a match yet — add a vibe or widen the area, then `/plan` again.")
     else:
+        home = await cards.home_for(cards.guild_key(interaction))
         for rec in recs:
             event = {
                 "id": rec.get("content_hash"),
@@ -763,6 +769,8 @@ async def plan_command(interaction: discord.Interaction):
                 "source_url": rec.get("source_url"),
                 "start_epoch": rec.get("start_epoch"),
                 "end_epoch": rec.get("end_epoch"),
+                "lat": rec.get("lat"),
+                "lng": rec.get("lng"),
                 "votes": 0,
             }
             note = None
@@ -773,7 +781,7 @@ async def plan_command(interaction: discord.Interaction):
             if note:
                 await target.send(note)
             await target.send(
-                embed=cards.build_spot_embed(event),
+                embed=cards.build_spot_embed(event, home),
                 view=cards.build_spot_view(event["id"], 0),
             )
     if thread is not None:
