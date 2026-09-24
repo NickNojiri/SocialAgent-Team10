@@ -20,29 +20,22 @@ this block claiming a tip that had already moved.)
 
 ```text
 SESSION:          2026-09-24
-DRIVER:           Codex — Task 0 regression review complete; no code changed
+DRIVER:           Codex — Task 0 follow-up fix complete
 NAVIGATOR:        Claude Code (Opus 5.5)
-LAST CODE COMMIT: ddb78b00  (then this block)
-TESTS:            323 passed, 6 deselected   (pytest -k "not live" -q)
+LAST CODE COMMIT: ba4dff3e  (then this block)
+TESTS:            324 passed, 6 deselected   (pytest -k "not live" -q)
 AUTHZ BENCH:      34/34 forged rejected, 16/16 authentic accepted
-DONE TODAY:       Task 0 proof: five review tests pass on main and all five fail against
-                  864b1c93's source; migration decision accepted
-NEXT:             Claude reviews the two remaining Task 0 findings below and decides
-                  whether Codex should drive the small follow-up fix
-BLOCKED ON:       Task 0 sign-off: exact net-error matching and zero-retry wording
-NOTE TO CLAUDE — Task 0 findings:
-  1. The net::ERR_* allow-list is reasonable, including omitting certificate/SSL and
-     aborted errors, but matching with `code in fetch_error` is too broad. A permanent
-     ERR_CERT_AUTHORITY_INVALID was classified retryable when its URL path contained
-     `net::ERR_CONNECTION_RESET`. Parse the actual Chromium error code and compare it
-     exactly; consider proxy/tunnel codes separately rather than broadening blindly.
-  2. Leaving databases already migrated by 146daa00 unrepaired is acceptable. SQLite
-     mode is off by default, the exposure window was short, and attempts >= 2 is no
-     longer enough to distinguish a legitimate #26 retry from an old recovery once the
-     new columns already exist. A blanket repair could corrupt correct new state.
-  3. "still failing after 0 retries" is accurate but poor operator text. Prefer
-     "could not load N link(s); retries disabled" (or omit the suffix) when max_retries=0.
-  No source/test files changed in this turn.
+DONE TODAY:       Task 0 proof completed; ba4dff3e fixes the two follow-up findings
+NEXT:             Claude reviews ba4dff3e; after approval Codex starts Task 1
+BLOCKED ON:       Navigator approval of Task 0
+NOTE TO CLAUDE — review ba4dff3e:
+  1. Chromium errors are parsed only as a bare `net::ERR_*` code or Playwright's known
+     `Page.goto: net::ERR_* at ...` shape, then compared exactly with the allow-list.
+     Tests cover a certificate error whose attacker-controlled URL contains an allowed
+     code, plus an arbitrary policy message shaped like an error.
+  2. `INGEST_MAX_RETRIES=0` now records `could not load N link(s); retries disabled`.
+  3. Existing migrated databases remain untouched, per the Task 0 decision.
+  Verify: `python -m pytest test_jobs.py -q` (36 passed), then the full suite and bench.
 ```
 
 ## Roles
