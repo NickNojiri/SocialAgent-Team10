@@ -15,7 +15,9 @@ from fastapi.testclient import TestClient
 
 from src.ingestion.serving.jobs import (
     JobQueue,
+    MemoryJobStore,
     QueueFull,
+    SqliteJobStore,
     capture_key,
     normalize_capture_url,
 )
@@ -202,6 +204,86 @@ def test_summarize_captures_handles_an_empty_log(tmp_path):
     summary = summarize_captures.summarize(summarize_captures.read_rows(tmp_path / "none.jsonl"))
     assert summary["captures"] == 0
     assert "No captures logged yet" in summarize_captures.render(summary)
+
+
+# ── Durable store + crash recovery (feature #24) ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sqlite_store_survives_the_process_that_wrote_it(tmp_path):
+    db = tmp_path / "state" / "jobs.db"
+    q = JobQueue(fake_run, store=SqliteJobStore(db))
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    q.store.close()
+
+    # A brand-new queue, as if the service had been restarted.
+    reopened = JobQueue(fake_run, store=SqliteJobStore(db))
+    row = reopened.get(job.id)
+    assert row is not None and row.state == "done"
+    assert row.urls == ["https://x.test/1"] and row.guild_id == "g1"
+    assert row.result["added"] == 1
+    assert reopened.recover() == {"requeued": 0, "failed": 0}   # nothing was interrupted
+
+
+@pytest.mark.asyncio
+async def test_a_crash_mid_job_is_retried_once_then_failed(tmp_path):
+    db = tmp_path / "jobs.db"
+    gate = asyncio.Event()
+
+    async def never_finishes(urls, guild_id, on_stage):
+        await gate.wait()
+        return {"added": 0, "events": []}
+
+    crashed = JobQueue(never_finishes, store=SqliteJobStore(db))
+    job = crashed.submit(["https://x.test/1"], "g1")
+    await asyncio.sleep(0)                        # the worker picks it up
+    assert crashed.get(job.id).state == "running"
+    crashed.shutdown()                            # the process dies here
+    crashed.store.close()
+
+    # Restart 1: the interrupted job gets one more attempt and runs to done.
+    restart = JobQueue(fake_run, store=SqliteJobStore(db))
+    assert restart.recover() == {"requeued": 1, "failed": 0}
+    assert restart.get(job.id).state == "queued"
+    restart.start()
+    await restart.drain()
+    assert restart.get(job.id).state == "done"
+    restart.store.close()
+
+    # A job that crashes again, having already used its retry, ends failed —
+    # never queued forever.
+    store = SqliteJobStore(db)
+    stuck = store.load(job.id)
+    stuck.state, stuck.attempts, stuck.finished_at = "running", 2, None
+    store.save(stuck)
+    after = JobQueue(fake_run, store=store)
+    assert after.recover() == {"requeued": 0, "failed": 1}
+    done = after.get(job.id)
+    assert done.state == "failed" and "restarted" in done.error
+    assert done.finished_at is not None
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_the_memory_store_is_the_default_and_forgets(tmp_path):
+    q = JobQueue(fake_run)
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    assert isinstance(q.store, MemoryJobStore)
+    assert q.store.load(job.id) is None
+    assert q.recover() == {"requeued": 0, "failed": 0}
+    assert not (tmp_path / "jobs.db").exists()
+
+
+@pytest.mark.asyncio
+async def test_sweeping_a_finished_job_clears_the_durable_copy_too(tmp_path):
+    q = JobQueue(fake_run, ttl_s=10, store=SqliteJobStore(tmp_path / "jobs.db"))
+    job = q.submit(["https://x.test/1"], "g1")
+    await q.drain()
+    assert q.sweep(now=time.time() + 11) == 1
+    assert q.get(job.id) is None
+    q.store.close()
 
 
 # ── HTTP endpoints ──────────────────────────────────────────────────────────

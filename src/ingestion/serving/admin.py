@@ -14,6 +14,7 @@ can later rank by popularity.
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -27,12 +28,28 @@ from src.ingestion.cli import (
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
 from src.ingestion.pipeline.summarizer import summarize_place
-from src.ingestion.serving.jobs import JobQueue, QueueFull
+from src.ingestion.serving.jobs import (
+    JobQueue,
+    MemoryJobStore,
+    QueueFull,
+    SqliteJobStore,
+)
 from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
-app = FastAPI(title="SocialAgent Admin")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """On startup, deal with whatever a previous process left running (ADR-0005)."""
+    counts = _jobs.recover()
+    _jobs.start()
+    if counts["requeued"] or counts["failed"]:
+        print(f"[jobs] after restart: requeued {counts['requeued']}, failed {counts['failed']}")
+    yield
+    _jobs.shutdown()
+
+
+app = FastAPI(title="SocialAgent Admin", lifespan=_lifespan)
 
 # Speed/quality knobs, tunable from .env without code changes. Capture time is
 # dominated by three stages: page render (SETTLE_TIMEOUT_MS), Whisper on CPU
@@ -306,11 +323,22 @@ async def ingest(body: IngestBody, x_tenant_token: str | None = TenantToken):
 # CAPTURE_LOG=off turns the timing log off; otherwise finished jobs append one
 # line each for scripts/summarize_captures.py (feature #23).
 _capture_log = os.getenv("CAPTURE_LOG", "").strip() or "data/capture_jobs.jsonl"
+# JOB_STORE=sqlite makes captures survive a restart (ADR-0005); the default
+# stays in-memory (ADR-0004), so nothing changes for a self-host that hasn't
+# asked for it. JOB_DB moves the file.
+_job_store = (
+    SqliteJobStore(os.getenv("JOB_DB", "").strip() or "data/jobs.db")
+    if os.getenv("JOB_STORE", "").strip().lower() == "sqlite"
+    else MemoryJobStore()
+)
 _jobs = JobQueue(
     _run_ingest,
     workers=int(os.getenv("INGEST_WORKERS", "").strip() or 1),
     log_path=None if _capture_log.lower() == "off" else Path(_capture_log),
+    store=_job_store,
 )
+
+
 
 
 @app.post("/api/jobs", status_code=202)

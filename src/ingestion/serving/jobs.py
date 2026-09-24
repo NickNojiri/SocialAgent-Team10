@@ -3,7 +3,7 @@
 The bot enqueues a capture with `POST /api/jobs`, gets a job id back at once, and
 polls `GET /api/jobs/{id}` while the admin app works through the queue. No new
 infrastructure: one asyncio worker task per configured slot, an in-memory store,
-finished jobs swept after a TTL. A restart loses in-flight jobs — the bot sees a
+finished jobs swept after a TTL. A restart loses in-flight jobs â€” the bot sees a
 404 on its next poll and shows the Retry view; accepted for the self-host.
 
 `JobQueue` is deliberately small and behind a plain interface (`submit`, `get`)
@@ -17,6 +17,8 @@ import hashlib
 import json
 import logging
 import re
+import sqlite3
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -36,7 +38,7 @@ _TRACKING_PARAMS = ("igsh", "igshid", "utm_", "fbclid", "si", "_r", "_t", "is_fr
 def normalize_capture_url(url: str) -> str:
     """Canonical form of a reel link: no tracking params, no trailing slash.
 
-    Conservative on purpose — it only lowercases the host and drops known
+    Conservative on purpose â€” it only lowercases the host and drops known
     tracking parameters, so two links that normalize alike really are the same
     post. Anything it can't parse comes back stripped but otherwise untouched.
     """
@@ -59,7 +61,7 @@ def normalize_capture_url(url: str) -> str:
 
 
 def capture_key(guild_id: str, url: str) -> str:
-    """Identity of "this server capturing this post" — the dedup key."""
+    """Identity of "this server capturing this post" â€” the dedup key."""
     material = f"{str(guild_id or '')}\n{normalize_capture_url(url)}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
@@ -85,6 +87,7 @@ class Job:
     done_urls: int = 0              # URLs that reached "done"
     result: Optional[dict] = None   # populated when state == "done"
     error: Optional[str] = None     # populated when state == "failed"
+    attempts: int = 0               # runs started, including recovery after a restart
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
@@ -130,7 +133,7 @@ class Job:
         }
 
     def log_row(self) -> dict:
-        """One line for the capture log — what `scripts/summarize_captures.py` reads.
+        """One line for the capture log â€” what `scripts/summarize_captures.py` reads.
 
         Carries no token, no user id and no message text: the links are the
         same ones already stored in the catalog, plus their dedup keys.
@@ -149,6 +152,138 @@ class Job:
         }
 
 
+class JobStore:
+    """Where jobs live between a submit and a poll.
+
+    The default keeps them in memory (ADR-0004): a restart loses in-flight
+    work. `SqliteJobStore` is the durable alternative (ADR-0005) â€” same three
+    methods, chosen by configuration.
+    """
+
+    def save(self, job: Job) -> None:            # pragma: no cover - interface
+        raise NotImplementedError
+
+    def load(self, job_id: str) -> Optional[Job]:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def drop(self, job_id: str) -> None:         # pragma: no cover - interface
+        raise NotImplementedError
+
+    def unfinished(self) -> list[Job]:
+        """Jobs left queued or running by a previous process. Empty if volatile."""
+        return []
+
+
+class MemoryJobStore(JobStore):
+    """The historical behaviour: nothing outlives the process."""
+
+    def save(self, job: Job) -> None:
+        return None
+
+    def load(self, job_id: str) -> Optional[Job]:
+        return None
+
+    def drop(self, job_id: str) -> None:
+        return None
+
+
+class SqliteJobStore(JobStore):
+    """One SQLite file, one table. No server, no new dependency (stdlib).
+
+    Writes happen at state changes (queued â†’ running â†’ done/failed), not on
+    every stage tick: the bot polls the live in-memory job, so the database
+    only has to be good enough to explain what a restart interrupted.
+    """
+
+    _DDL = """
+    CREATE TABLE IF NOT EXISTS jobs (
+        id          TEXT PRIMARY KEY,
+        guild_id    TEXT NOT NULL,
+        urls        TEXT NOT NULL,
+        state       TEXT NOT NULL,
+        stage       TEXT NOT NULL,
+        done_urls   INTEGER NOT NULL DEFAULT 0,
+        result      TEXT,
+        error       TEXT,
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        created_at  REAL NOT NULL,
+        updated_at  REAL NOT NULL,
+        finished_at REAL
+    );
+    CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state);
+    """
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # The worker coroutine and the polling request are different threads
+        # under uvicorn; one connection guarded by a lock keeps writes ordered.
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
+        self._db.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
+        with self._lock:
+            self._db.executescript(self._DDL)
+            self._db.commit()
+
+    def save(self, job: Job) -> None:
+        row = (
+            job.id, job.guild_id, json.dumps(job.urls), job.state, job.stage,
+            job.done_urls,
+            json.dumps(job.result) if job.result is not None else None,
+            job.error, job.attempts, job.created_at, job.updated_at, job.finished_at,
+        )
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO jobs (id, guild_id, urls, state, stage, done_urls, result,"
+                " error, attempts, created_at, updated_at, finished_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET state=excluded.state, stage=excluded.stage,"
+                " done_urls=excluded.done_urls, result=excluded.result, error=excluded.error,"
+                " attempts=excluded.attempts, updated_at=excluded.updated_at,"
+                " finished_at=excluded.finished_at",
+                row,
+            )
+            self._db.commit()
+
+    def load(self, job_id: str) -> Optional[Job]:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return self._to_job(row) if row else None
+
+    def drop(self, job_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            self._db.commit()
+
+    def unfinished(self) -> list[Job]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM jobs WHERE state IN ('queued','running') ORDER BY created_at"
+            ).fetchall()
+        return [self._to_job(r) for r in rows]
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
+    @staticmethod
+    def _to_job(row: sqlite3.Row) -> Job:
+        return Job(
+            id=row["id"],
+            guild_id=row["guild_id"],
+            urls=json.loads(row["urls"]),
+            state=row["state"],
+            stage=row["stage"],
+            done_urls=row["done_urls"],
+            result=json.loads(row["result"]) if row["result"] else None,
+            error=row["error"],
+            attempts=row["attempts"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            finished_at=row["finished_at"],
+        )
+
+
 class JobQueue:
     def __init__(
         self,
@@ -158,6 +293,7 @@ class JobQueue:
         max_queued: int = 50,
         ttl_s: float = 3600.0,
         log_path: Optional[Path] = None,
+        store: Optional[JobStore] = None,
     ):
         self._run = run
         self.workers = max(1, int(workers))
@@ -166,16 +302,24 @@ class JobQueue:
         # Finished jobs are swept after the TTL, so their timings are appended
         # here first; None (the default, and what tests use) writes nothing.
         self.log_path = Path(log_path) if log_path else None
+        self.store: JobStore = store or MemoryJobStore()
         self._jobs: dict[str, Job] = {}
         # Created lazily on the running loop: the module is imported before any
         # loop exists (uvicorn, TestClient), and asyncio primitives bind to one.
         self._queue: Optional[asyncio.Queue] = None
         self._tasks: list[asyncio.Task] = []
+        # Jobs recovered from the store before a loop existed; enqueued as soon
+        # as the workers start.
+        self._pending_recovered: list[str] = []
 
-    # ── public ────────────────────────────────────────────────────────────
+    # â”€â”€ public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def get(self, job_id: str) -> Optional[Job]:
-        return self._jobs.get(job_id)
+        """The live job, or the durable copy left by a previous process."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            job = self.store.load(job_id)
+        return job
 
     def submit(self, urls: list[str], guild_id: str = "") -> Job:
         """Queue a capture. Must be called from within the event loop."""
@@ -186,9 +330,40 @@ class JobQueue:
             raise QueueFull(f"{waiting} captures already waiting")
         job = Job(id=uuid.uuid4().hex[:12], guild_id=str(guild_id or ""), urls=list(urls))
         self._jobs[job.id] = job
+        self._save(job)
         self._queue.put_nowait(job.id)
         log.info("[jobs] queued %s (%d url(s), guild=%r)", job.id, len(job.urls), job.guild_id)
         return job
+
+    def recover(self, max_attempts: int = 1) -> dict[str, int]:
+        """Deal with whatever the last process left behind (ADR-0005).
+
+        A job that was queued or running gets one more attempt; one that has
+        already used it is failed with a reason, so a capture never sits in
+        limbo and the bot never polls a job that will never move again.
+        Returns {"requeued": n, "failed": n}.
+        """
+        counts = {"requeued": 0, "failed": 0}
+        for job in self.store.unfinished():
+            if job.attempts > max_attempts:
+                job.state = "failed"
+                job.error = "lost when the service restarted, after one retry"
+                job.finished_at = time.time()
+                job.touch()
+                self._save(job)
+                counts["failed"] += 1
+                continue
+            job.state = "queued"
+            job.stage = "queued"
+            job.touch()
+            self._jobs[job.id] = job
+            self._save(job)
+            self._pending_recovered.append(job.id)
+            counts["requeued"] += 1
+        if counts["requeued"] or counts["failed"]:
+            log.info("[jobs] recovered %d, failed %d after restart",
+                     counts["requeued"], counts["failed"])
+        return counts
 
     def sweep(self, now: Optional[float] = None) -> int:
         """Drop finished jobs older than the TTL. Returns how many were removed."""
@@ -199,6 +374,7 @@ class JobQueue:
         ]
         for job_id in stale:
             del self._jobs[job_id]
+            self.store.drop(job_id)
         return len(stale)
 
     async def drain(self) -> None:
@@ -206,11 +382,29 @@ class JobQueue:
         if self._queue is not None:
             await self._queue.join()
 
+    def start(self) -> None:
+        """Start the workers (and pick up anything `recover()` requeued).
+
+        Must be called from inside the event loop — the service does it on
+        startup, right after `recover()`.
+        """
+        self._ensure_workers()
+
+    def shutdown(self) -> None:
+        """Stop the workers without waiting â€” what a restart looks like.
+
+        Whatever was running stays `running` in the store; `recover()` in the
+        next process decides what happens to it.
+        """
+        for task in self._tasks:
+            task.cancel()
+        self._tasks = []
+
     @property
     def pending(self) -> int:
         return sum(1 for j in self._jobs.values() if j.state in ("queued", "running"))
 
-    # ── internals ─────────────────────────────────────────────────────────
+    # â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _ensure_workers(self) -> None:
         loop = asyncio.get_running_loop()
@@ -220,17 +414,21 @@ class JobQueue:
         while len(alive) < self.workers:
             alive.append(loop.create_task(self._worker(), name=f"ingest-worker-{len(alive)}"))
         self._tasks = alive
+        while self._pending_recovered:              # requeued by recover()
+            self._queue.put_nowait(self._pending_recovered.pop(0))
 
     async def _worker(self) -> None:
         assert self._queue is not None
         while True:
             job_id = await self._queue.get()
             job = self._jobs.get(job_id)
-            if job is None:                  # swept while waiting — nothing to do
+            if job is None:                  # swept while waiting â€” nothing to do
                 self._queue.task_done()
                 continue
             job.state = "running"
+            job.attempts += 1
             job.touch("fetching")
+            self._save(job)
 
             def on_stage(url: str, stage: str, _job: Job = job) -> None:
                 # Called from the pipeline's worker thread; plain attribute
@@ -252,8 +450,16 @@ class JobQueue:
             finally:
                 job.finished_at = time.time()
                 job.touch()                   # bank the last stage's time
+                self._save(job)
                 self._append_log(job)
                 self._queue.task_done()
+
+    def _save(self, job: Job) -> None:
+        """Persist a state change. A store that is gone must not kill a capture."""
+        try:
+            self.store.save(job)
+        except Exception as exc:                  # a closed/locked database, a full disk
+            log.warning("[jobs] could not persist %s: %s", job.id, exc)
 
     def _append_log(self, job: Job) -> None:
         """Append one JSON line per finished job. Never fails the job."""
