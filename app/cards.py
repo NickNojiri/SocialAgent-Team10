@@ -41,7 +41,7 @@ BROWSE_PAGE_SIZE = max(1, int(os.getenv("BROWSE_PAGE_SIZE", "10")))
 # ── Capture transport ────────────────────────────────────────────────────────
 # The async transport (ADR-0004) POSTs /api/jobs, then polls GET /api/jobs/{id}
 # and reports each stage. The fallback is one blocking POST /api/ingest request.
-INGEST_ASYNC = os.getenv("INGEST_ASYNC", "").strip().lower() in ("1", "true", "on", "yes")
+INGEST_ASYNC = os.getenv("INGEST_ASYNC", "1").strip().lower() in ("1", "true", "on", "yes")
 JOB_POLL_S = float(os.getenv("INGEST_POLL_S", "3"))
 JOB_WAIT_S = float(os.getenv("INGEST_WAIT_S", "900"))
 # A brief admin restart or network wobble should not abandon a running job.
