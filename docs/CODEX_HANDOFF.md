@@ -4,6 +4,9 @@ How to hand SpotBot to Codex so it does useful work instead of confident nonsens
 Setup (accounts, install, sign-in) is in [`CODEX_SETUP.md`](CODEX_SETUP.md). This page is
 the *prompts*. Your own to-do list is in [`tracks/`](tracks/README.md).
 
+Pairing Codex with Claude Code on the same repo? Read
+[`PAIRING.md`](PAIRING.md) first — it holds the live state block and the handoff format.
+
 Two rules before anything else:
 
 1. **You have to be able to explain every line Codex writes.** If you can't, it doesn't go
