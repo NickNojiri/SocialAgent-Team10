@@ -31,12 +31,12 @@ def fake_embedder(texts):
     return [[float(len(t) % 11) for _ in range(8)] for t in texts]
 
 
-def seed_record(venue="Casa Loma"):
+def seed_record(venue="Casa Loma", location_text=None):
     return EventInspiration(
         venue_name=venue,
         core_theme="late-night birria tacos",
         category=EventCategory.FOOD_DRINK,
-        geo=GeoContext(),
+        geo=GeoContext(raw_location_text=location_text),
         provenance=SourceProvenance(
             source_url="https://www.instagram.com/p/X/",
             platform="instagram",
@@ -161,6 +161,19 @@ class TestEdit:
                        json={"venue": " ", "theme": "ok ok", "guild_id": GUILD}, headers=auth()).status_code == 400
         assert tc.post(f"/api/events/does-not-exist/edit",
                        json={"venue": "X", "theme": "vibe here", "guild_id": GUILD}, headers=auth()).status_code == 404
+
+
+class TestBrowseFields:
+    def test_events_carry_the_area_and_date_browse_filters_on(self, client):
+        """/browse (#35) filters by area and by whether a spot has a date."""
+        tc, eid = client
+        other = admin._sinks[GUILD].add(seed_record("Night Market", "Pine Ave, Long Beach, CA"))
+        _lock(tc, eid, end_epoch=NOW)
+        events = {e["id"]: e for e in
+                  tc.get("/api/events", params={"guild_id": GUILD}, headers=auth()).json()["events"]}
+        assert events[other]["area"] == "Pine Ave, Long Beach, CA"
+        assert events[other]["locked_end_epoch"] is None and events[other]["start_epoch"] is None
+        assert events[eid]["locked_end_epoch"] == NOW and events[eid]["area"] == ""
 
 
 class TestDashboard:

@@ -303,6 +303,11 @@ def list_events(guild_id: str = "", x_tenant_token: str | None = TenantToken):
                 "voters": sorted(_voters(m).values()),
                 "schedule": m.get("schedule_status", "unscheduled"),
                 "start_utc": m.get("start_utc", ""),
+                # /browse filters (#35): where the post said it is, and whether
+                # the spot has a date — from the reel, or locked in by the group.
+                "area": m.get("raw_location_text", ""),
+                "start_epoch": m.get("start_epoch"),
+                "locked_end_epoch": m.get("locked_end_epoch"),
             }
         )
     events.sort(key=lambda e: (-e["votes"], e["venue"]))
