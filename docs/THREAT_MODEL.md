@@ -161,8 +161,9 @@ UTF-16 bytes and matched nothing — fixed 2026-09-15.
 
 **Deletion — built 2026-09-24 (#21).** `/privacy` explains what is kept; Manage
 Server can delete a server's data after typing its name (`POST /api/forget`, full
-tenant token, confirm repeats the id). It removes the catalog, settings, capture
-jobs and log lines, capture JSONL, snapshots, activity feed and rate counters, and
+tenant token, confirm repeats the id). It removes the catalog, settings, feedback
+and survey answers, capture jobs and log lines, capture JSONL, snapshots, activity
+feed and rate counters, and
 VACUUMs `chroma.sqlite3` and `jobs.db` — both kept deleted rows' bytes in free
 pages until rebuilt (probed). `test_forget.py` byte-scans every file afterwards.
 Remaining gaps: no *time-based* retention yet; the old shared

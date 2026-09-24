@@ -86,9 +86,14 @@ measures how long a capture takes from the user's side.
 - [ ] **Done when:** you can quote today's median and p95, and watch them move.
 
 **#20 In-Discord feedback + survey ★ (40)**
-- [ ] `/feedback` for bug reports and ideas (stored per server, no message scraping).
-- [ ] The 10-question SUS survey, taken inside Discord, for study participants.
-- [ ] **Done when:** you can collect a SUS score from a participant without leaving Discord.
+- [x] `/feedback` for bug reports and ideas (stored per server, no message scraping).
+      *(`/feedback bug|idea` → a form; `data/feedback/<guild>.jsonl`; no user id stored.)*
+- [x] The 10-question SUS survey, taken inside Discord, for study participants.
+      *(`/survey participant:P3` — one statement per screen, tap 1–5, Back to fix a slip;
+      score by the published formula; the participant isn't shown it.)*
+- [x] **Done when:** you can collect a SUS score from a participant without leaving Discord.
+      *(Results: `GET /api/survey?guild_id=` → responses, mean, SD, every score.
+      Tested offline; not yet tried with a real participant.)*
 
 **#36 Distance + map on spot cards (40)**
 - [ ] Show distance from the group's home city and a map link on each card.

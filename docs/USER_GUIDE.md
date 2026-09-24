@@ -119,6 +119,8 @@ Three things make the picks smarter:
 | `/catalog` | The leaderboard — your server's top-voted spots |
 | `/digest` | One-message summary: spot count, top picks, nights out |
 | `/share` | The link to your server's public catalog web page |
+| `/feedback bug` / `/feedback idea` | Tell the team what broke or what you'd like — a short form, saved without your name |
+| `/survey` | The 2-minute usability survey (10 statements, tap 1–5) for study participants; add the code you were given, e.g. `/survey participant:P3` |
 | `/privacy` | What SpotBot keeps about your server, where it goes, and who can see it — plus a delete-everything button *(Manage Server; in DMs, for your own saved spots)* |
 | `/mute` | Toggle capture off/on in the current channel *(mods)* |
 | `/suggestions on` | Let SpotBot chime in (in a tidy thread) when the chat sounds like "we should go out" *(mods)* |
