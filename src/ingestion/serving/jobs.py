@@ -3,7 +3,7 @@
 The bot enqueues a capture with `POST /api/jobs`, gets a job id back at once, and
 polls `GET /api/jobs/{id}` while the admin app works through the queue. No new
 infrastructure: one asyncio worker task per configured slot, an in-memory store,
-finished jobs swept after a TTL. A restart loses in-flight jobs â€” the bot sees a
+finished jobs swept after a TTL. A restart loses in-flight jobs — the bot sees a
 404 on its next poll and shows the Retry view; accepted for the self-host.
 
 `JobQueue` is deliberately small and behind a plain interface (`submit`, `get`)
@@ -38,7 +38,7 @@ _TRACKING_PARAMS = ("igsh", "igshid", "utm_", "fbclid", "si", "_r", "_t", "is_fr
 def normalize_capture_url(url: str) -> str:
     """Canonical form of a reel link: no tracking params, no trailing slash.
 
-    Conservative on purpose â€” it only lowercases the host and drops known
+    Conservative on purpose — it only lowercases the host and drops known
     tracking parameters, so two links that normalize alike really are the same
     post. Anything it can't parse comes back stripped but otherwise untouched.
     """
@@ -61,7 +61,7 @@ def normalize_capture_url(url: str) -> str:
 
 
 def capture_key(guild_id: str, url: str) -> str:
-    """Identity of "this server capturing this post" â€” the dedup key."""
+    """Identity of "this server capturing this post" — the dedup key."""
     material = f"{str(guild_id or '')}\n{normalize_capture_url(url)}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
@@ -137,7 +137,7 @@ class Job:
         return [capture_key(self.guild_id, u) for u in self.urls]
 
     def log_row(self) -> dict:
-        """One line for the capture log â€” what `scripts/summarize_captures.py` reads.
+        """One line for the capture log — what `scripts/summarize_captures.py` reads.
 
         Carries no token, no user id and no message text: the links are the
         same ones already stored in the catalog, plus their dedup keys.
@@ -160,7 +160,7 @@ class JobStore:
     """Where jobs live between a submit and a poll.
 
     The default keeps them in memory (ADR-0004): a restart loses in-flight
-    work. `SqliteJobStore` is the durable alternative (ADR-0005) â€” same three
+    work. `SqliteJobStore` is the durable alternative (ADR-0005) — same three
     methods, chosen by configuration.
     """
 
@@ -194,7 +194,7 @@ class MemoryJobStore(JobStore):
 class SqliteJobStore(JobStore):
     """One SQLite file, one table. No server, no new dependency (stdlib).
 
-    Writes happen at state changes (queued â†’ running â†’ done/failed), not on
+    Writes happen at state changes (queued → running → done/failed), not on
     every stage tick: the bot polls the live in-memory job, so the database
     only has to be good enough to explain what a restart interrupted.
     """
@@ -316,7 +316,7 @@ class JobQueue:
         # as the workers start.
         self._pending_recovered: list[str] = []
 
-    # â”€â”€ public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── public ────────────────────────────────────────────────────────────
 
     def get(self, job_id: str) -> Optional[Job]:
         """The live job, or the durable copy left by a previous process."""
@@ -438,7 +438,7 @@ class JobQueue:
         self._ensure_workers()
 
     def shutdown(self) -> None:
-        """Stop the workers without waiting â€” what a restart looks like.
+        """Stop the workers without waiting — what a restart looks like.
 
         Whatever was running stays `running` in the store; `recover()` in the
         next process decides what happens to it.
@@ -451,7 +451,7 @@ class JobQueue:
     def pending(self) -> int:
         return sum(1 for j in self._jobs.values() if j.state in ("queued", "running"))
 
-    # â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── internals ─────────────────────────────────────────────────────────
 
     def _ensure_workers(self) -> None:
         loop = asyncio.get_running_loop()
@@ -469,7 +469,7 @@ class JobQueue:
         while True:
             job_id = await self._queue.get()
             job = self._jobs.get(job_id)
-            if job is None:                  # swept while waiting â€” nothing to do
+            if job is None:                  # swept while waiting — nothing to do
                 self._queue.task_done()
                 continue
             job.state = "running"
