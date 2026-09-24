@@ -209,7 +209,13 @@ async def handle_reel_capture(message: discord.Message, urls: list[str]):
     try:
         data = await cards.capture_urls(urls, cards.guild_key(message), progress=progress)
     except (cards.CaptureQueueFull, cards.CaptureLost, cards.CapturePollingFailed) as exc:
-        log.warning(f"[capture] job unavailable: {exc}")
+        if isinstance(exc, cards.CaptureLost):
+            log.warning(
+                "[capture] job missing after restart; enable JOB_STORE=sqlite "
+                "to preserve capture jobs"
+            )
+        else:
+            log.warning(f"[capture] job unavailable: {exc}")
         await _swap_reaction(message, "⏳", "⚠️")
         await status.edit(
             content=f"⚠️ {exc}",

@@ -140,8 +140,7 @@ async def capture_urls(
                 continue
             if resp.status_code == 404:
                 raise CaptureLost(
-                    "The catalog no longer knows this capture — it may have restarted without "
-                    "JOB_STORE=sqlite. Try again."
+                    "The catalog restarted and lost this capture — tap Retry."
                 )
             if resp.status_code >= 500:
                 poll_errors += 1

@@ -212,7 +212,7 @@ async def test_three_consecutive_poll_errors_give_an_honest_failure(monkeypatch)
         await cards.capture_urls(["https://x.test/1"], "g1")
 
 
-async def test_poll_404_explains_volatile_restart_loss(monkeypatch):
+async def test_poll_404_uses_plain_user_message(monkeypatch):
     monkeypatch.setattr(cards, "INGEST_ASYNC", True)
     monkeypatch.setattr(cards, "JOB_POLL_S", 0)
     fake = _FakeClient(
@@ -221,8 +221,39 @@ async def test_poll_404_explains_volatile_restart_loss(monkeypatch):
     )
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
-    with pytest.raises(cards.CaptureLost, match="without JOB_STORE=sqlite"):
+    with pytest.raises(
+        cards.CaptureLost,
+        match="The catalog restarted and lost this capture — tap Retry",
+    ):
         await cards.capture_urls(["https://x.test/1"], "g1")
+
+
+async def test_lost_job_logs_operator_storage_detail(monkeypatch, caplog):
+    class Status:
+        async def edit(self, **kwargs):
+            return None
+
+    async def reply(*args, **kwargs):
+        return Status()
+
+    async def no_reaction(*args, **kwargs):
+        return None
+
+    async def lost(*args, **kwargs):
+        raise cards.CaptureLost("The catalog restarted and lost this capture — tap Retry.")
+
+    message = SimpleNamespace(
+        guild=SimpleNamespace(id=1),
+        author=SimpleNamespace(display_name="nick"),
+        reply=reply,
+    )
+    monkeypatch.setattr(bot, "_add_reaction", no_reaction)
+    monkeypatch.setattr(bot, "_swap_reaction", no_reaction)
+    monkeypatch.setattr(cards, "capture_urls", lost)
+
+    await bot.handle_reel_capture(message, ["https://www.instagram.com/reel/A/"])
+
+    assert "enable JOB_STORE=sqlite" in caplog.text
 
 
 async def test_async_path_gives_up_after_the_wait_budget(monkeypatch):
