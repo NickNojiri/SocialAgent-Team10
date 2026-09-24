@@ -18,6 +18,19 @@ block**, so two pushes never fight over the same lines.
 **The lanes may not share files.** Before touching a file, check it isn't in the other
 lane's `FILES` list. If you need one, stop and say so in your handoff — don't edit it.
 
+**The lanes may not share a working copy either.** Found 2026-09-24: both agents were
+running in the same folder, so Claude's test runs could pick up Codex's half-written
+`admin.py`, and a Claude rebase could have thrown away Codex's unsaved work (it only
+refused because those files were there). Now:
+
+| Lane | Folder | Branch | Push with |
+|---|---|---|---|
+| 1 — Codex | `C:\Users\17143\Projects\SocialAgent-kickoff` | `security/tenant-auth` | `git push origin HEAD:main` |
+| 2 — Claude | `C:\Users\17143\Projects\SocialAgent-lane2` | `lane2/claude` | `git push origin lane2/claude:main` |
+
+Never `cd` into the other lane's folder, and never `git stash` (the stash is shared
+across every worktree of this repo).
+
 `LAST CODE COMMIT` is the newest commit in that lane that changed code or tests. The
 commit that updates a block lands on top of it, so a block never names its own sha.
 
