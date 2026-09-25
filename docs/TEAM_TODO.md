@@ -1,6 +1,6 @@
 # SpotBot — Team Priority TODO
 
-Last updated 2026-09-14. Owner: Nick. One prioritized list for the whole team.
+Last updated 2026-09-24. Owner: Nick. One prioritized list for the whole team.
 
 This is the "what do I pick up next" list. It rolls up `docs/PRODUCT_ROADMAP.md`
 (the why), `docs/MILESTONES.md` (the 100 Nights challenge), `docs/NEXT_SESSION.md`
@@ -19,6 +19,31 @@ that actually counts is **captured spots that become attended outings** (the
 
 Priority tiers: **P0** = nothing above it ships until this is solid · **P1** =
 the retention loop · **P2** = reach · **P3** = growth. Within a tier, top = do first.
+
+---
+
+## Status on 2026-09-24: Phase 1 closes Oct 3
+
+The per-track plan lives in `docs/tracks/`; this list is the product view of the same
+work. Items below marked **✓ built** have shipped on `main` since this list was last
+updated.
+
+| Track | Phase 1 feature | State |
+|---|---|---|
+| A · Capture | #1 live capture harness, #3 SSRF + download limits | Not started. Tracks B and D and the /dash over-time view wait on the harness artifact and the failure taxonomy |
+| B · Accuracy | #4 scorecard with intervals + McNemar, #5 labeler field + kappa | Not started (a Wilson interval exists in `scripts/eval_diagnostics.py` only) |
+| C · Experience | #8 `/setup` | Built. Left: the stopwatch run on a fresh server |
+| D · Security | #12 attack suite | Not started. Seed handed over: `docs/handoffs/TRACK-D-AUTHZ-BENCH.md` |
+| Platform | #9, #23, #24, #25 | Done. Bot changes written up for Track C: `docs/handoffs/TRACK-C-BOT-CHANGES.md` |
+
+Built ahead of plan (Phases 2–4): #10 key rotation, #11 staging stack (needs a host),
+#18 time-to-card, #19 failure messages (app half; final taxonomy is Track A's), #20
+feedback + SUS survey, #21 `/privacy` + delete, #26 retries, #27 async by default, #28
+rate limits (built, all limits 0 = off until Nick sets the numbers), #29 /dash panels +
+load test, #35 `/browse` filters, #36 map + distance, #37 accessibility pass (two
+screen-reader checks left).
+
+Evidence for the phase, as each track reports it: `docs/PHASE1_EVIDENCE.md`.
 
 ---
 
@@ -110,30 +135,40 @@ A flood of pasted links = hundreds of pipeline runs / LLM calls = burned credits
 + a polluted catalog. All in-house, in priority order:
 1. **Dedup before any work** — a reel already in the guild catalog
    (by `content_hash`) returns the existing record; no fetch, no LLM.
+   *Partly built (#25): a reel already queued or running joins that job. A reel
+   captured earlier is still fetched again; the content-hash upsert stops only the
+   duplicate row.*
 2. **Confidence gate on the LLM** — only captures below a confidence threshold
    (which slot filled the venue) ever reach the model.
 3. **Global daily budget cap** — hard counter of N LLM calls/day; on hit →
-   heuristic-only + log.
+   heuristic-only + log. *✓ built as a daily capture cap (#28), off until set.*
 4. **Per-user + per-guild rate limits** — token bucket (e.g. 10/user/10min,
-   60/guild/hour); over → friendly "slow down" reply.
+   60/guild/hour); over → friendly "slow down" reply. *✓ built (#28): sliding
+   windows, a "try again in N minutes" reply; all limits 0 = off until Nick sets them.*
 5. **Lock the admin API** — the always-on box's systemd unit (not in git) binds
    `0.0.0.0:8010`; local runs (`run_local.ps1`, `make`) already get uvicorn's
    `127.0.0.1` default. On the box: bind `127.0.0.1` + reach it from the container
-   over the docker bridge, or add a shared-secret header.
+   over the docker bridge, or add a shared-secret header. *Staging (#11) publishes
+   only `127.0.0.1` ports; the always-on box's own unit is unchanged.*
 6. **Discord-side raid guard** — ignore messages with > K links; optionally
    ignore links from accounts that joined < N minutes ago.
 7. **SSRF guard on `/api/ingest`** — host allowlist (instagram.com, tiktok.com)
    plus private-IP rejection before the video download. `THREAT_MODEL.md` T3.
+   *Open: Track A's #3, Phase 1.*
 8. ~~Mention injection~~ — done 2026-09-15: the client sends with
    `AllowedMentions.none()`, so a venue called "@everyone" can never ping
    (`THREAT_MODEL.md` T1).
 9. ~~Tenant-token authorization~~ — done 2026-09-17: every catalog call is
    signed per guild (and per user for votes), on both :8010 and :8003
    (`THREAT_MODEL.md` T2). Left: set `SPOTBOT_SIGNING_KEY` on the always-on box (T8).
+   *T8 closed on staging (#11); key rotation built (#10).*
 
 The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
 
 ### P0.6 · Multi-tenancy — required for a hosted bot  *(roadmap 0.2)*
+*✓ built differently (#9): one Chroma collection per guild (ADR-0001) and a signed
+per-guild token on every call, rather than a `where` filter and `/api/guilds/{gid}`
+paths.*
 - Scope everything by `guild_id`: one Chroma collection with a `guild_id`
   metadata filter (`where`), channel config moved from `channels.json` into the
   `db` service.
@@ -143,8 +178,9 @@ The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
 ### P0.7 · Hosted architecture basics  *(roadmap 0.3)*
 - **Job queue for ingestion.** Built as a spike (`src/ingestion/serving/jobs.py`,
   ADR-0004, behind `INGEST_ASYNC=1`): enqueue → worker → bot edits its "⏳" message
-  with the stage. Still off by default.
-- **Durable, idempotent capture jobs** — 491A features **#23–#26** (New, Sept 23), Nick,
+  with the stage. *✓ On by default since #27 (ADR-0005).*
+- **Durable, idempotent capture jobs** — *✓ all four built (#23–#26); ADR-0005's
+  Evidence section still waits on real capture numbers.* 491A features **#23–#26** (New, Sept 23), Nick,
   started now; #23–#25 in Phase 1, #26 in Phase 3. Nick owns them, and each is scoped
   small enough that another specialist can take one over if he doesn't finish it.
   The queue is in-process, so a restart loses in-flight work and the same reel pasted
@@ -169,8 +205,8 @@ The full analysis, with what is fixed / built / open: `docs/THREAT_MODEL.md`.
   default unchanged, tenant-token checks preserved on every guild call (fail closed,
   503), all existing tests pass. Platform and `app/` changes ship as separate PRs.
 - Pick the always-on box for the dogfood deploy (spare PC or cheapest VPS,
-  `llama3.2:3b` profile).
-- ToS + privacy-policy pages (capture is user-initiated paste only — never
+  `llama3.2:3b` profile). *Staging stack built (#11, `docs/RUNBOOK.md`); still needs a host.*
+- ToS + privacy-policy pages *(privacy: ✓ `/privacy` in Discord, #21; ToS still open)* (capture is user-initiated paste only — never
   crawling; that's both the ethics line and the ToS defense).
 
 ### P0.8 · Backfill the poisoned catalog rows
@@ -196,6 +232,8 @@ Today `/plan` posts picks and nothing happens after.
   *(Deferred by Nick until real users — but it's the point of the whole product.)*
 
 ### P1.2 · Spot card v2  *(roadmap 1.2)*
+*✓ thumbnail, map link + distance (#36), who's in, and live capture progress (#27) are
+all built.*
 - **Thumbnail from the reel** — `og:image` is already collected by
   `SocialSessionManager._collect_meta`; persist it into Chroma metadata and
   `embed.set_thumbnail(...)`.
@@ -208,16 +246,19 @@ Today `/plan` posts picks and nothing happens after.
   (fetched → transcribed → cataloged) instead of a silent 20–30s wait.
 
 ### P1.3 · Editable cards
+*✓ built: `EditSpotModal` in `app/cards.py`.*
 An ✏️ Edit button on a spot card → modal pre-filled with venue/vibe →
 `POST /api/events/{id}/edit` updates metadata (+ best-effort re-embed); card
 re-renders in place. *(This is also a fast manual path to fix a bad extraction.)*
 
 ### P1.4 · Onboarding that sells itself  *(roadmap 1.1)*
 - `/setup` wizard: pick/create a drop channel, set the group's **home city**
-  (powers distance / "near you"), done in 30s.
-- First-capture magic-moment line on the bot's first card in a server.
+  (powers distance / "near you"), done in 30s. *✓ built (#8); timing on a fresh
+  server still to do.*
+- First-capture magic-moment line on the bot's first card in a server. *✓ built
+  (`_maybe_first_card_tip`).*
 - Capture-failure path: empathetic error + **manual-add modal** (venue, vibe,
-  link) so the user never hits a dead end.
+  link) so the user never hits a dead end. *✓ built: #19 messages + `SpotModal`.*
 
 ### P1.5 · Ambient value  *(roadmap 1.4)*
 - **Weekly digest** to the drop channel ("your crew saved 7 spots this week · top
@@ -225,7 +266,7 @@ re-renders in place. *(This is also a fast manual path to fix a bad extraction.)
   wire it to a scheduler. Ship `/digest` on-demand first.
 - `/browse [category]` pagination (10/page, ◀▶) — **built and deployed**
   (`app/bot.py` + `app/cards.py`). Follow-up: category filter polish, "all" view.
-- `/catalog` v2: filter by category/area/scheduled.
+- `/catalog` v2: filter by category/area/scheduled. *✓ as `/browse` filters (#35).*
 
 ### P1.6 · Card design pass + admin/share UI polish
 Re-imagine the embed layout now that thumbnail/map/who's-in exist (mockups first
@@ -244,7 +285,7 @@ replies and the slash commands.
 ## P2 — Reach: more capture sources + the web surface
 
 ### P2.1 · More capture sources  *(roadmap 2.1, in order)*
-1. **TikTok extractor** — the other half of food-reel culture; same og:-tag +
+1. **TikTok extractor** *(✓ built: `extractors/tiktok.py`)* — the other half of food-reel culture; same og:-tag +
    embedded-JSON patterns as the IG one (`extractors/instagram.py` is the
    template, `extractors/base.select_extractor` routes by domain). Fixture-based.
 2. YouTube Shorts + plain URLs (Eater lists, Google Maps share links —
