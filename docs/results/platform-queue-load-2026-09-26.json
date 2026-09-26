@@ -1,0 +1,68 @@
+{
+  "measured_at": "2026-09-26",
+  "command": "python scripts/load_test_jobs.py --json",
+  "git_commit": "ae95b15dd424d38d12b46c3085ad1d3a04fe6186",
+  "python": "3.13.7",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "cpu": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD; 16 logical processors",
+  "scope": "JobQueue with a sleep-only stub; no pipeline, browser, model, or network",
+  "config": {
+    "workers": 1,
+    "max_queued": 50,
+    "service_s": 0.05,
+    "jitter": 0.2
+  },
+  "capacity": 51,
+  "first_level_with_refusals": 60,
+  "levels": [
+    {
+      "level": 1,
+      "accepted": 1,
+      "refused": 0,
+      "latency_s": {"median": 0.061, "p95": 0.061, "max": 0.061},
+      "throughput_per_s": 16.27
+    },
+    {
+      "level": 5,
+      "accepted": 5,
+      "refused": 0,
+      "latency_s": {"median": 0.166, "p95": 0.27, "max": 0.27},
+      "throughput_per_s": 18.45
+    },
+    {
+      "level": 10,
+      "accepted": 10,
+      "refused": 0,
+      "latency_s": {"median": 0.275, "p95": 0.541, "max": 0.541},
+      "throughput_per_s": 18.45
+    },
+    {
+      "level": 25,
+      "accepted": 25,
+      "refused": 0,
+      "latency_s": {"median": 0.712, "p95": 1.357, "max": 1.408},
+      "throughput_per_s": 17.72
+    },
+    {
+      "level": 50,
+      "accepted": 50,
+      "refused": 0,
+      "latency_s": {"median": 1.444, "p95": 2.731, "max": 2.84},
+      "throughput_per_s": 17.55
+    },
+    {
+      "level": 60,
+      "accepted": 51,
+      "refused": 9,
+      "latency_s": {"median": 1.468, "p95": 2.765, "max": 2.884},
+      "throughput_per_s": 17.6
+    },
+    {
+      "level": 100,
+      "accepted": 51,
+      "refused": 49,
+      "latency_s": {"median": 1.463, "p95": 2.718, "max": 2.838},
+      "throughput_per_s": 17.9
+    }
+  ]
+}

@@ -336,11 +336,11 @@ def test_job_status_only_readable_by_its_tenant(client, monkeypatch):
     assert client.get(f"/api/jobs/{job_id}", headers=hdr(mint_token(THEIRS))).status_code == 403
 
 
-def _submit_capture(client, url: str, user_id: str = ME):
+def _submit_capture(client, url: str, user_id: str = ME, guild_id: str = MINE):
     return client.post(
         "/api/jobs",
-        json={"urls": [url], "guild_id": MINE, "user_id": user_id},
-        headers=hdr(mint_token(MINE, user_id=user_id)),
+        json={"urls": [url], "guild_id": guild_id, "user_id": user_id},
+        headers=hdr(mint_token(guild_id, user_id=user_id)),
     )
 
 
@@ -389,6 +389,32 @@ def test_daily_server_capture_limit_returns_retry_after(client, monkeypatch):
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "86400"
     assert response.json()["detail"] == "capture rate limit exceeded (daily)"
+
+
+def test_one_servers_flood_cannot_spend_another_servers_limit(client, monkeypatch):
+    """The server counter is tenant-scoped: a capped flood leaves room for a
+    different signed guild to enter the same bounded queue."""
+    import asyncio
+
+    gate = asyncio.Event()
+
+    async def stuck(urls, guild_id, on_stage):
+        await gate.wait()
+        return {"added": 0, "events": []}
+
+    queue = JobQueue(stuck, max_queued=3)
+    monkeypatch.setattr(admin, "_jobs", queue)
+    monkeypatch.setattr(admin, "_capture_limits", CaptureRateLimiter(server_limit=2))
+
+    flood = [
+        _submit_capture(client, f"https://x.test/flood/{i}", guild_id=MINE).status_code
+        for i in range(3)
+    ]
+    neighbor = _submit_capture(client, "https://x.test/neighbor", guild_id=THEIRS)
+
+    assert flood == [202, 202, 429]
+    assert neighbor.status_code == 202
+    assert queue.active_for(MINE) == 2 and queue.active_for(THEIRS) == 1
 
 
 def test_a_duplicate_paste_does_not_use_up_a_slot(client, monkeypatch):

@@ -167,7 +167,8 @@ guild call (fail closed, 503), all existing tests pass.
 - [x] Emit a refusal event Track D's monitoring (#32) can count. *(A log line,
       `[capture_rate_limit] refused guild=… user=… limit=…`; #32 decides if it needs more.)*
 - [ ] **Done when:** a scripted flood is refused and the bot stays responsive.
-      *(Tested server-side; waits on real numbers. The queue depth needs one too: 50
+      *(A deterministic endpoint flood test proves one capped server leaves queue room
+      for another signed server. Final evidence still waits on real numbers. The queue depth needs one too: 50
       waiting captures can't finish inside the bot's 900 s wait — ~15 is realistic at
       ~60 s per capture on one worker. NICK DECIDES both.)*
 
@@ -184,7 +185,9 @@ guild call (fail closed, 503), all existing tests pass.
 - [ ] A security panel fed by Track D's events (#32). *(Slot reserved on /dash.)*
 - [ ] Load test: how many concurrent captures before it degrades; record the number.
       *(`scripts/load_test_jobs.py` finds the queue's refusal point with a stub capture;
-      the real-capture number needs a real machine.)*
+      the 2026-09-26 run accepted 51 in flight and first refused at a burst of 60;
+      raw output and machine context are in `docs/results/platform-queue-load-2026-09-26.json`.
+      This is queue-only evidence; the real-capture number still needs a real run.)*
 - [ ] **Done when:** the dashboard is live on staging, the load-test number is written
       down, and v0.1 is tagged with a 3-minute demo video.
 
