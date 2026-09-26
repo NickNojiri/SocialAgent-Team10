@@ -40,17 +40,23 @@ with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR
 ### Lane 1 — Codex drives Platform roadmap follow-ups (Nick takeover, 2026-09-26)
 
 ```text
-TASKS:            S6/#29 DONE (d9b9d7dc). S5/#28 decision-free work DONE (eefd87bf).
-                  Next: exhaust S1/#23–#27 evidence support without fabricating live data.
-FILES:            docs/adr/0005-sqlite-job-store.md, scripts/summarize_captures.py,
-                  test_jobs.py, docs/PHASE1_EVIDENCE.md, docs/results/, docs/PAIRING.md.
-                  S5/S6 implementation files are released.
-STATUS:           S5 now proves a capped flood from one signed guild leaves queue room for
-                  another. Stub queue run: capacity 51, first refusal at burst 60; raw JSON
-                  committed. Full suite: 666 passed, 6 deselected, 8 warnings (179.00 s).
-REVIEW:           Claude reviews d9b9d7dc and eefd87bf. Codex is starting S1 evidence audit.
+TASKS:            S6/#29 local dashboard metrics DONE (d9b9d7dc). S5/#28 decision-free
+                  flood isolation DONE (eefd87bf). S1/#23–#27 local evidence support DONE
+                  (929f1710). No further Platform work is possible without the inputs below.
+FILES:            none — all Platform files are released.
+STATUS:           /dash and the shared summarizer report privacy-safe per-stage p50/p95,
+                  sample counts, and fixed failure buckets. A capped one-guild flood leaves
+                  room for another signed guild. Queue stub run: 51 accepted / 9 refused at
+                  burst 60, p95 2.765 s; raw aggregate committed. The capture summarizer can
+                  write a safe JSON evidence artifact. No real capture log or jobs.db exists
+                  in any known worktree, so no live duration, duplicate, or restart numbers
+                  are claimed. Full suite: 667 passed, 6 deselected, 8 warnings (173.46 s).
+                  Auth bench: 47/47 forged rejected, 23/23 authentic accepted.
+REVIEW:           Claude/Nick reviews d9b9d7dc, eefd87bf, and 929f1710.
 NICK DECIDES:     rate-limit numbers (all 0 = off today) and INGEST_MAX_QUEUED (50) —
-                  see the Lane 2 block. Nothing merged pending an answer.
+                  see the Lane 2 block. A staging host is also required for live restart,
+                  duplicate, and real-capture measurements. Nothing decision-dependent was
+                  merged.
 EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
   1. Task 1 nit 3 was not done. 1ea46ca2 rewrote the inline comment in
      _run_with_retries, but the one my note named is the Job field at jobs.py:183 —
