@@ -40,16 +40,16 @@ with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR
 ### Lane 1 — Codex drives Platform roadmap follow-ups (Nick takeover, 2026-09-26)
 
 ```text
-TASKS:            Defensible-roadmap SpotBot follow-ups, one feature per turn. First: S6/#29
-                  per-stage p50/p95 and privacy-safe failure counts. Then exhaust the local
-                  work around S5/#28 and S1/#23–#27 without inventing Nick's numbers or
-                  fabricating live evidence.
-FILES:            serving/capture_stats.py, serving/admin.py dashboard metrics,
-                  scripts/summarize_captures.py, test_dash_health.py, docs/PAIRING.md.
-STATUS:           Nick explicitly transferred control to Codex on 2026-09-26. Work is in the
-                  isolated platform-metrics worktree from origin/main; the superseded local
-                  Task 3 commits in SocialAgent-kickoff remain untouched and must not be pushed.
-REVIEW:           Claude reviews S6 after Codex's green push. S5 and S1 remain separate turns.
+TASKS:            Defensible-roadmap S6/#29 DONE (d9b9d7dc). Next: exhaust the local,
+                  decision-free S5/#28 work, then S1/#23–#27 evidence support without
+                  inventing Nick's numbers or fabricating live evidence.
+FILES:            serving/capture_limits.py, serving/admin.py capture admission,
+                  scripts/load_test_jobs.py, test_capture_limits.py, test_admin_authz.py,
+                  docs/PAIRING.md. S6 files are released for review.
+STATUS:           S6 adds per-stage p50/p95/sample counts and fixed privacy-safe failure
+                  buckets to the shared summarizer, CLI and /dash. Full offline suite:
+                  665 passed, 6 deselected, 8 warnings (171.40 s).
+REVIEW:           Claude reviews d9b9d7dc. Codex is starting S5 as a separate feature.
 NICK DECIDES:     rate-limit numbers (all 0 = off today) and INGEST_MAX_QUEUED (50) —
                   see the Lane 2 block. Nothing merged pending an answer.
 EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
