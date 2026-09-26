@@ -1373,6 +1373,8 @@ _DASH_PAGE = """<!doctype html>
   <h2>Capture health</h2>
   <div class="tiles" id="health"></div>
   <div class="wrap"><table id="stages"></table></div>
+  <h3>Failures by reason</h3>
+  <div class="wrap"><table id="failures"></table></div>
 
   <h2>Queue &amp; limits</h2>
   <div class="chips" id="queue"></div>
@@ -1487,6 +1489,7 @@ async function load(){
   if(!h){
     document.getElementById('health').innerHTML=`<div class="empty">timing log is off (CAPTURE_LOG=off)</div>`;
     document.getElementById('stages').innerHTML='';
+    document.getElementById('failures').innerHTML='';
   }else{
     const ov=h.over_threshold||{}, du=h.duplicates||{}, st=h.states||{};
     document.getElementById('health').innerHTML=`
@@ -1497,11 +1500,16 @@ async function load(){
       <div class="tile"><b>${ov['300s']??0}</b><span>past 5 min</span></div>
       <div class="tile"><b>${du.wasted_captures??0}</b><span>duplicate captures</span></div>
       <div class="tile"><b>${st.failed??0}</b><span>failed</span></div>`;
-    const stages=Object.entries(h.stage_median_s||{});
+    const stages=Object.entries(h.stage_s||{});
     document.getElementById('stages').innerHTML=
-      `<tr><th scope="col">stage</th><th scope="col" class="num">median time</th></tr>`
-      +(stages.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${secs(v)}</td></tr>`).join('')
-        ||`<tr><td colspan="2" class="empty">no captures logged yet</td></tr>`);
+      `<tr><th scope="col">stage</th><th scope="col" class="num">p50</th><th scope="col" class="num">p95</th><th scope="col" class="num">samples</th></tr>`
+      +(stages.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${secs(v.p50)}</td><td class="num">${secs(v.p95)}</td><td class="num">${v.samples}</td></tr>`).join('')
+        ||`<tr><td colspan="4" class="empty">no captures logged yet</td></tr>`);
+    const failures=Object.entries(h.failure_reasons||{});
+    document.getElementById('failures').innerHTML=
+      `<tr><th scope="col">reason</th><th scope="col" class="num">failed jobs</th></tr>`
+      +(failures.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${v}</td></tr>`).join('')
+        ||`<tr><td colspan="2" class="empty">no failed jobs logged</td></tr>`);
   }
 
   const q=d.queue||{}, L=d.limits||{};

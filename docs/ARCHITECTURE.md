@@ -191,7 +191,7 @@ Job-queue switches (unset values use these code defaults):
 | `CAPTURE_SERVER_LIMIT` / `CAPTURE_SERVER_WINDOW_S` | admin | `0` / `3600` seconds | Per-server accepted capture requests in the rolling window; `0` disables it. |
 | `CAPTURE_DAILY_LIMIT` / `CAPTURE_DAILY_WINDOW_S` | admin | `0` / `86400` seconds | Per-server accepted capture requests in the rolling daily window; `0` disables it. |
 | `INGEST_SLOW_AFTER_S` | bot | `180` seconds | Adds a “still working” status after this elapsed time; it does not cancel or retry the job. |
-| `CAPTURE_LOG` | admin | `data/capture_jobs.jsonl` | Appends one timing/statistics JSON row per finished job; set to `off` to disable it. |
+| `CAPTURE_LOG` | admin | `data/capture_jobs.jsonl` | Appends one timing/statistics JSON row per finished job; set to `off` to disable it. `/api/stats.capture_health` reports duration percentiles, per-stage p50/p95 with sample counts, duplicate counts, and failed jobs in fixed `restart`/`timeout`/`network`/`internal` buckets. Raw errors, URLs and dedup hashes never leave this cross-server operator view. |
 | `TIME_TO_CARD_LOG` | admin | `data/time_to_card.jsonl` | One row per paste as the user saw it (#18): `{ts, seconds, outcome: card\|no_card\|error, links}` — no server, user or link. `/api/stats` → `time_to_card.{last_24h,all}.{pastes,cards,median_s,p95_s}`. `off` disables it. |
 
 ---

@@ -2,8 +2,8 @@
 
 Reads the capture log the job queue appends to (one JSON line per finished
 job, `data/capture_jobs.jsonl` by default) and prints the duration
-distribution, how many captures ran past the budget, per-stage medians, and
-duplicate captures.
+distribution, how many captures ran past the budget, per-stage p50/p95, fixed
+failure-reason counts, and duplicate captures.
 
     python scripts/summarize_captures.py
     python scripts/summarize_captures.py --log data/capture_jobs.jsonl --json
@@ -42,9 +42,13 @@ def render(summary: dict) -> str:
         "over budget         " + "  ".join(
             f"{n} past {t}" for t, n in summary["over_threshold"].items()
         ),
-        "stage medians (s)   " + ("  ".join(
-            f"{k} {v}" for k, v in summary["stage_median_s"].items()
+        "stage p50/p95 (s)   " + ("  ".join(
+            f"{k} {v['p50']}/{v['p95']} (n={v['samples']})"
+            for k, v in summary["stage_s"].items()
         ) or "none recorded"),
+        "failure reasons     " + ("  ".join(
+            f"{k}={v}" for k, v in summary["failure_reasons"].items()
+        ) or "none"),
         f"duplicates          {dup['links_captured_more_than_once']} of {dup['distinct_links']} links "
         f"captured more than once ({dup['wasted_captures']} wasted capture(s))",
     ]

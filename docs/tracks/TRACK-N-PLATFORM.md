@@ -179,7 +179,8 @@ guild call (fail closed, 503), all existing tests pass.
       table, `capture_stats.daily_trend`. Still missing: Track A's harness artifact.)*
 - [x] Chart what `scripts/summarize_captures.py` already computes: duration distribution,
       captures past 3 and 5 minutes, duplicate captures. *(/dash "Capture health" tiles and
-      a per-stage table, from the same `serving/capture_stats.py` the script now uses.)*
+      a per-stage p50/p95 table plus privacy-safe failure-reason counts, from the same
+      `serving/capture_stats.py` the script now uses. Raw errors never reach `/api/stats`.)*
 - [ ] A security panel fed by Track D's events (#32). *(Slot reserved on /dash.)*
 - [ ] Load test: how many concurrent captures before it degrades; record the number.
       *(`scripts/load_test_jobs.py` finds the queue's refusal point with a stub capture;

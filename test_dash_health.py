@@ -92,6 +92,25 @@ def test_capture_health_counts_and_timings(stats):
     assert h["over_threshold"] == {"180s": 2, "300s": 1}
     assert h["duplicates"]["wasted_captures"] == 2          # SECRET_URL in g1: 2 seeded + the live job
     assert h["stage_median_s"]["extracting"] == 10.0
+    assert h["stage_s"]["extracting"] == {"p50": 10.0, "p95": 10.0, "samples": 2}
+    assert h["stage_s"]["fetching"]["p95"] == 400.0
+    assert h["failure_reasons"] == {"internal": 2}
+
+
+def test_failure_reasons_are_fixed_counts_not_error_text():
+    rows = [
+        {"state": "failed", "error": "TimeoutError: https://secret.test took too long"},
+        {"state": "failed", "error": "ConnectionResetError: Hidden Taqueria"},
+        {"state": "failed", "error": "lost when the service restarted, after one retry"},
+        {"state": "failed", "error": "ValueError: caption mentioned Hidden Taqueria"},
+        {"state": "done", "last_error": "ConnectionResetError: healed"},
+    ]
+    summary = capture_stats.summarize(rows)
+    assert summary["failure_reasons"] == {
+        "internal": 1, "network": 1, "restart": 1, "timeout": 1,
+    }
+    rendered = json.dumps(summary)
+    assert "secret.test" not in rendered and SECRET_VENUE not in rendered
 
 
 def test_queue_and_limits_are_reported_as_counts(stats):
@@ -115,8 +134,9 @@ def test_capture_health_is_null_when_the_timing_log_is_off(tmp_path, monkeypatch
 def test_the_dash_page_has_the_new_panels():
     with TestClient(admin.app) as client:
         page = client.get("/dash").text
-    for element in ('id="health"', 'id="stages"', 'id="queue"', 'id="security"'):
+    for element in ('id="health"', 'id="stages"', 'id="failures"', 'id="queue"', 'id="security"'):
         assert element in page
+    assert "p50" in page and "p95" in page
     assert "#32" in page                                    # Track D's reserved slot
 
 

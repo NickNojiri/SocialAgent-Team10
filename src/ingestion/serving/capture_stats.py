@@ -22,6 +22,24 @@ from typing import Iterable, Optional
 THRESHOLDS_S = (180.0, 300.0)
 
 
+def _failure_reason(row: dict) -> str:
+    """A stable, non-sensitive reason for one failed job.
+
+    Job errors can contain URLs, venue text, or exception details.  The operator
+    dashboard is cross-server, so it gets only one of these fixed buckets.
+    """
+    detail = f"{row.get('error') or ''} {row.get('last_error') or ''}".casefold()
+    if "lost when the service restarted" in detail:
+        return "restart"
+    if "timeout" in detail or "timed out" in detail or "capture exceeded" in detail:
+        return "timeout"
+    if any(word in detail for word in (
+        "connection", "connecterror", "network", "net::err_", "name_not_resolved",
+    )):
+        return "network"
+    return "internal"
+
+
 def read_rows(path: Path, max_bytes: Optional[int] = None) -> list[dict]:
     """Every well-formed line; a truncated line is skipped, not fatal.
 
@@ -118,16 +136,29 @@ def summarize(rows: Iterable[dict]) -> dict:
     rows = list(rows)
     durations = [float(r.get("duration_s", 0.0)) for r in rows]
     states: dict[str, int] = {}
+    failure_reasons: dict[str, int] = {}
     stages: dict[str, list[float]] = {}
     seen: dict[str, int] = {}
     for row in rows:
-        states[row.get("state", "unknown")] = states.get(row.get("state", "unknown"), 0) + 1
+        state = row.get("state", "unknown")
+        states[state] = states.get(state, 0) + 1
+        if state == "failed":
+            reason = _failure_reason(row)
+            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
         for stage, secs in (row.get("stages") or {}).items():
             stages.setdefault(stage, []).append(float(secs))
         for key in row.get("url_keys") or []:
             seen[key] = seen.get(key, 0) + 1
 
     repeated = {k: n for k, n in seen.items() if n > 1}
+    stage_s = {
+        stage: {
+            "p50": round(percentile(secs, 50), 1),
+            "p95": round(percentile(secs, 95), 1),
+            "samples": len(secs),
+        }
+        for stage, secs in sorted(stages.items())
+    }
     return {
         "captures": len(rows),
         "states": states,
@@ -140,9 +171,10 @@ def summarize(rows: Iterable[dict]) -> dict:
         "over_threshold": {
             f"{int(t)}s": sum(1 for d in durations if d > t) for t in THRESHOLDS_S
         },
-        "stage_median_s": {
-            stage: round(percentile(secs, 50), 1) for stage, secs in sorted(stages.items())
-        },
+        "stage_s": stage_s,
+        # Kept for callers written before #29 gained the p95 column.
+        "stage_median_s": {stage: values["p50"] for stage, values in stage_s.items()},
+        "failure_reasons": dict(sorted(failure_reasons.items())),
         "duplicates": {
             "distinct_links": len(seen),
             "links_captured_more_than_once": len(repeated),
