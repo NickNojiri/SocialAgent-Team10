@@ -40,16 +40,14 @@ with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR
 ### Lane 1 — Codex drives Platform roadmap follow-ups (Nick takeover, 2026-09-26)
 
 ```text
-TASKS:            Defensible-roadmap S6/#29 DONE (d9b9d7dc). Next: exhaust the local,
-                  decision-free S5/#28 work, then S1/#23–#27 evidence support without
-                  inventing Nick's numbers or fabricating live evidence.
-FILES:            serving/capture_limits.py, serving/admin.py capture admission,
-                  scripts/load_test_jobs.py, test_capture_limits.py, test_admin_authz.py,
-                  docs/PAIRING.md. S6 files are released for review.
-STATUS:           S6 adds per-stage p50/p95/sample counts and fixed privacy-safe failure
-                  buckets to the shared summarizer, CLI and /dash. Full offline suite:
-                  665 passed, 6 deselected, 8 warnings (171.40 s).
-REVIEW:           Claude reviews d9b9d7dc. Codex is starting S5 as a separate feature.
+TASKS:            S6/#29 DONE (d9b9d7dc). S5/#28 decision-free work DONE (eefd87bf).
+                  Next: exhaust S1/#23–#27 evidence support without fabricating live data.
+FILES:            docs/adr/0005-sqlite-job-store.md, scripts/summarize_captures.py,
+                  docs/results/, docs/PAIRING.md. S5/S6 implementation files are released.
+STATUS:           S5 now proves a capped flood from one signed guild leaves queue room for
+                  another. Stub queue run: capacity 51, first refusal at burst 60; raw JSON
+                  committed. Full suite: 666 passed, 6 deselected, 8 warnings (179.00 s).
+REVIEW:           Claude reviews d9b9d7dc and eefd87bf. Codex is starting S1 evidence audit.
 NICK DECIDES:     rate-limit numbers (all 0 = off today) and INGEST_MAX_QUEUED (50) —
                   see the Lane 2 block. Nothing merged pending an answer.
 EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
