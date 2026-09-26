@@ -43,7 +43,8 @@ with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR
 TASKS:            S6/#29 DONE (d9b9d7dc). S5/#28 decision-free work DONE (eefd87bf).
                   Next: exhaust S1/#23–#27 evidence support without fabricating live data.
 FILES:            docs/adr/0005-sqlite-job-store.md, scripts/summarize_captures.py,
-                  docs/results/, docs/PAIRING.md. S5/S6 implementation files are released.
+                  test_jobs.py, docs/PHASE1_EVIDENCE.md, docs/results/, docs/PAIRING.md.
+                  S5/S6 implementation files are released.
 STATUS:           S5 now proves a capped flood from one signed guild leaves queue room for
                   another. Stub queue run: capacity 51, first refusal at burst 60; raw JSON
                   committed. Full suite: 666 passed, 6 deselected, 8 warnings (179.00 s).
