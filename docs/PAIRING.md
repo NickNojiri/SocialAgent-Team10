@@ -25,7 +25,7 @@ refused because those files were there). Now:
 
 | Lane | Folder | Branch | Push with |
 |---|---|---|---|
-| 1 — Codex | `C:\Users\17143\Projects\SocialAgent-kickoff` | `security/tenant-auth` | `git push origin HEAD:main` |
+| 1 — Codex | managed worktree `platform-metrics` | `codex/platform-roadmap` | `git push origin HEAD:main` |
 | 2 — Claude | `C:\Users\17143\Projects\SocialAgent-lane2` | `lane2/claude` | `git push origin lane2/claude:main` |
 
 Never `cd` into the other lane's folder, and never `git stash` (the stash is shared
@@ -37,18 +37,19 @@ commit that updates a block lands on top of it, so a block never names its own s
 **Shared, both lanes:** tests must be green on `main` before either lane pushes (pull
 with `--rebase`, rerun, then push). Nick's decisions: async default KEPT ON (ADR-0005).
 
-### Lane 1 — PAUSED (Nick handed it to Claude, 2026-09-24)
+### Lane 1 — Codex drives Platform roadmap follow-ups (Nick takeover, 2026-09-26)
 
 ```text
-TASKS:            none. Task 3 (#28) finished by Claude on main: 2b9ec39e, 53b27c8c (Codex's
-                  work, carried over), 5325667c, e92c4856 (Claude's fixes).
-FILES:            none held — Lane 2 holds all of them now.
-STATUS:           Codex's folder (SocialAgent-kickoff) still has its local Task 3 commits
-                  84a626a6 + 62408273 and uncommitted docs. Those are superseded: the same
-                  work is already on main under new shas. Do NOT push them. Before Codex
-                  works again: stop, drop them, pull main.
-REVIEW:           #28 has no second-agent review — Codex wrote half, Claude the rest.
-                  Nick reviews it (or Codex does, from main, on its next turn).
+TASKS:            Defensible-roadmap SpotBot follow-ups, one feature per turn. First: S6/#29
+                  per-stage p50/p95 and privacy-safe failure counts. Then exhaust the local
+                  work around S5/#28 and S1/#23–#27 without inventing Nick's numbers or
+                  fabricating live evidence.
+FILES:            serving/capture_stats.py, serving/admin.py dashboard metrics,
+                  scripts/summarize_captures.py, test_dash_health.py, docs/PAIRING.md.
+STATUS:           Nick explicitly transferred control to Codex on 2026-09-26. Work is in the
+                  isolated platform-metrics worktree from origin/main; the superseded local
+                  Task 3 commits in SocialAgent-kickoff remain untouched and must not be pushed.
+REVIEW:           Claude reviews S6 after Codex's green push. S5 and S1 remain separate turns.
 NICK DECIDES:     rate-limit numbers (all 0 = off today) and INGEST_MAX_QUEUED (50) —
                   see the Lane 2 block. Nothing merged pending an answer.
 EARLIER FOLLOW-UPS FOR CODEX (all done — kept for the record):
