@@ -25,7 +25,7 @@ the dates they say.
 | Serving | `src/ingestion/serving/app.py` (:8003), `admin.py` (:8010) | Recommend/plan + admin, share, settings, feedback, delete, `/health`, `/dash` |
 | Staging | `docker-compose.staging.yml`, `deploy/Caddyfile`, `scripts/deploy.py` | Built (#11); not yet running anywhere — needs a host |
 | Docs | `docs/ARCHITECTURE.md`, `docs/adr/0001–0005`, `docs/SRS.md`, `docs/THREAT_MODEL.md`, `docs/RUNBOOK.md` | Current as of Sept 24 |
-| Tests | `pytest -k "not live" -q` | **640+ passing** (Sept 24) |
+| Tests | `pytest -k "not live" -q` | **667 passing, 6 deselected** (Sept 26) |
 
 **Open platform risks:** no always-on host yet (the demo still runs on a laptop);
 Instagram often walls datacenter IPs, so a cloud host may need the authed capture path;
@@ -88,7 +88,8 @@ guild call (fail closed, 503), all existing tests pass.
       reason.
 - [x] Test: simulate a crash mid-job, restart, and the job reaches a deterministic state.
 - [x] `docs/adr/0005-sqlite-job-store.md`, superseding ADR-0004's in-memory choice —
-      Evidence section left as placeholders until the Phase 1 numbers exist.
+      offline-suite evidence recorded; the real restart and duplicate measurements stay
+      explicit placeholders until a staging host and real capture log exist.
 - [x] **Done when:** a capture killed mid-run ends in a state we can explain, every time.
 - *Hand-off note:* depends on #23's job record; whoever takes it needs ADR-0004 read.
 

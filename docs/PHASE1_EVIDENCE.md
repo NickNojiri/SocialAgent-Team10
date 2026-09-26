@@ -47,14 +47,15 @@ against Canvas.
 
 ## Platform (Nick): #9, #23, #24, #25
 
-Measured 2026-09-24 on `main` @ `323e0467` in a Linux cloud container (Python 3.11):
+The offline suite and queue measurement below were rerun on 2026-09-26. Earlier auth
+and secret-scan evidence retains its original environment and date.
 
 | What | Command | Result |
 |---|---|---|
-| Offline suite | `python -m pytest -k "not live" -q` | 664 passed, 6 deselected |
+| Offline suite | `python -m pytest -k "not live" -q` | 667 passed, 6 deselected |
 | Cross-tenant authorization (#9) | `python scripts/bench_admin_authz.py` | 47/47 forged requests rejected, 23/23 authentic accepted |
-| Queue capacity (#29 tool, stub capture) | `python scripts/load_test_jobs.py` | 1 worker, 50 waiting: first 429 at a burst of 60 (capacity 51 in flight); ~19 captures/s with a 0.05 s stub |
-| Capture timings (#23) | `python scripts/summarize_captures.py` | *not yet: needs real captures from Track A's harness run* |
+| Queue capacity (#29 tool, stub capture) | `python scripts/load_test_jobs.py --json` | 1 worker, 50 waiting: 51 accepted and 9 refused at burst 60 (capacity 51 in flight); p95 2.765 s and 17.6 jobs/s with a 0.05 s stub. Raw aggregate: [`docs/results/platform-queue-load-2026-09-26.json`](results/platform-queue-load-2026-09-26.json) |
+| Capture timings (#23) | `python scripts/summarize_captures.py --output docs/results/capture-summary-YYYY-MM-DD.json` | *not yet: no real capture log or job database was present on 2026-09-26; needs real captures from Track A's harness run* |
 | Secrets in the repo | `gitleaks git . --log-opts="--all" --redact` (v8.21.2), then `gitleaks dir .` | No leaks in 232 commits across all branches, or in the working tree. A `.env` was committed on 2026-03-15 (`a9c97245`) but was empty (0 bytes) and was later deleted (`20f8b016`). A `.venv/` committed the same day only bloats the history |
 | Crash recovery (#24), dedup (#25) | `python -m pytest test_jobs.py -q` | Covered by tests; ADR-0005's Evidence section waits on real capture numbers |
 

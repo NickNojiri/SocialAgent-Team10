@@ -1,6 +1,6 @@
 # ADR-0005: Capture jobs are stored in SQLite, so a restart never loses one silently
 
-- **Status:** proposed — implemented behind `JOB_STORE=sqlite` (default stays in-memory)
+- **Status:** accepted — implemented behind `JOB_STORE=sqlite` (default stays in-memory)
 - **Decided:** 2026-09-23 · **Recorded:** 2026-09-23 · **Owner:** Nick
 - **Supersedes:** the in-memory store chosen in [ADR-0004](0004-async-capture-job-queue.md)
   (that ADR's queue, polling and endpoints are unchanged)
@@ -87,10 +87,29 @@ carries `guild_id` on every row.
 - `test_jobs.py` — a job survives the process that wrote it; a crash mid-job is retried
   once and then failed; the memory store stays the default and forgets; sweeping a
   finished job clears the durable copy.
-- Offline suite: _(placeholder — paste the `pytest -k "not live" -q` summary line from
-  the Phase 1 review)_.
+- Offline suite (2026-09-26): `python -m pytest -k "not live" -q` — **667 passed,
+  6 deselected**.
 - Restart measurement on staging: _(placeholder — captures interrupted, recovered,
   failed after one retry, and the time from restart to the first recovered job
   finishing)_.
 - Duplicate captures before vs after, from `scripts/summarize_captures.py`:
   _(placeholder — the `duplicates` line from each run)_.
+
+No `data/capture_jobs.jsonl` or `data/jobs.db` existed in any known SpotBot worktree
+when this evidence was checked on 2026-09-26. The two live measurements above are
+therefore intentionally unclaimed; unit tests are not presented as staging evidence.
+
+To collect the missing evidence, run real captures on the chosen staging host with
+`INGEST_ASYNC=1`, `JOB_STORE=sqlite`, and `CAPTURE_LOG` pointing at the raw JSONL log.
+Interrupt one running capture, restart the admin service, and record how many jobs were
+recovered or failed plus the time until the first recovered job finishes. Then export
+the privacy-safe aggregate:
+
+```bash
+python scripts/summarize_captures.py \
+  --log data/capture_jobs.jsonl \
+  --output docs/results/capture-summary-YYYY-MM-DD.json
+```
+
+Only the aggregate output is suitable for the repository. Never commit the raw capture
+log or `data/jobs.db`; both can contain tenant or operational data.

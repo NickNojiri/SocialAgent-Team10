@@ -206,6 +206,29 @@ def test_summarize_captures_handles_an_empty_log(tmp_path):
     assert "No captures logged yet" in summarize_captures.render(summary)
 
 
+def test_summarizer_writes_a_privacy_safe_evidence_artifact(tmp_path, capsys):
+    secret = "https://secret.test/reel/PRIVATE"
+    log = tmp_path / "capture_jobs.jsonl"
+    log.write_text(
+        json.dumps({
+            "state": "failed", "urls": [secret], "url_keys": ["private-hash"],
+            "duration_s": 12.0, "stages": {"fetching": 12.0},
+            "error": f"ValueError: could not parse {secret}",
+        }) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    output = tmp_path / "evidence" / "capture-summary.json"
+
+    assert summarize_captures.main(["--log", str(log), "--output", str(output)]) == 0
+
+    artifact = output.read_text(encoding="utf-8")
+    assert artifact.endswith("\n")
+    assert json.loads(artifact)["failure_reasons"] == {"internal": 1}
+    assert secret not in artifact and "private-hash" not in artifact
+    assert "captures            1" in capsys.readouterr().out
+
+
 # ── Durable store + crash recovery (feature #24) ────────────────────────────
 
 

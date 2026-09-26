@@ -55,13 +55,23 @@ def render(summary: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--log", type=Path, default=DEFAULT_LOG, help=f"capture log (default {DEFAULT_LOG})")
     ap.add_argument("--json", action="store_true", help="print the summary as JSON")
-    args = ap.parse_args()
+    ap.add_argument(
+        "--output",
+        type=Path,
+        help="also write the privacy-safe aggregate as UTF-8 JSON (never the raw log)",
+    )
+    args = ap.parse_args(argv)
 
     summary = summarize(read_rows(args.log))
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
     print(json.dumps(summary, indent=2) if args.json else render(summary))
     return 0
 
