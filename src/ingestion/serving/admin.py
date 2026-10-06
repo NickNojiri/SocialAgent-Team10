@@ -11,12 +11,16 @@ Votes are stored in each event's Chroma metadata (`votes`), so the recommender
 can later rank by popularity.
 """
 
+import ipaddress
 import json
 import logging
 import os
+import re
+import socket
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
@@ -328,7 +332,54 @@ def _ingest_urls(body: IngestBody) -> list[str]:
     bad = [u for u in urls if not u.lower().startswith(("http://", "https://"))]
     if bad:
         raise HTTPException(400, f"only http(s) URLs are ingestible, got: {bad[0][:80]!r}")
+    for u in urls:
+        reason = _internal_target(u)
+        if reason:
+            raise HTTPException(400, f"refusing to capture {u[:80]!r}: {reason}")
     return urls
+
+
+# SSRF guard at the API edge (feature #12, THREAT_MODEL T3): a capture link
+# must name a public host. This only sees the URL as typed; a public name that
+# resolves or redirects to an internal address is caught at fetch time (Track A).
+_INTERNAL_SUFFIXES = (".localhost", ".local", ".internal", ".lan", ".home.arpa")
+_NUMERIC_HOST = re.compile(r"^[0-9a-fx.]+$", re.IGNORECASE)
+
+
+def _internal_target(url: str) -> str | None:
+    """Why `url` points somewhere a capture must never go, or None if it's fine."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return "malformed URL"
+    host = (parts.hostname or "").rstrip(".").lower()
+    if not host:
+        return "no host"
+    if parts.username is not None or parts.password is not None:
+        return "credentials in URL"
+    if port is not None and port not in (80, 443):
+        return "non-standard port"
+    if host == "localhost" or host.endswith(_INTERNAL_SUFFIXES):
+        return "internal hostname"
+    ip = None
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # inet_aton also reads the short and integer forms browsers accept,
+        # e.g. 127.1, 0x7f.0.0.1 and 2130706433 (all 127.0.0.1).
+        if _NUMERIC_HOST.match(host):
+            try:
+                ip = ipaddress.IPv4Address(socket.inet_aton(host))
+            except OSError:
+                ip = None
+    if ip is None:
+        return None
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if not ip.is_global or ip.is_multicast:
+        return "internal address"
+    return None
 
 
 async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dict:
