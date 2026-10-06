@@ -9,6 +9,7 @@ Add your own real reel URLs to IG_URLS below before running.
 
 import asyncio
 import os
+import time
 from dataclasses import dataclass
 
 import pytest
@@ -39,6 +40,13 @@ IG_URLS: list[str] = [
     "https://www.instagram.com/reel/DKAXPHFSmEr/",
     "https://www.instagram.com/reel/C51pgTAycsF/",
     "https://www.instagram.com/reel/DVIRTIYjvt6/",
+    # Batch 3 (from docs/REEL_TRANSCRIBE_TEST_PLAN.md)
+    "https://www.instagram.com/reel/DU3evm2Ewhn/",
+    "https://www.instagram.com/reel/DZd_edNJKJI/",
+    "https://www.instagram.com/reel/DWCIfM4jYwa/",
+    "https://www.instagram.com/reel/DX0z0HRyRsg/",
+    "https://www.instagram.com/reel/DZtagrnR1vA/",
+    "https://www.instagram.com/reel/DE4ECPeRPbv/",
 ]
 
 PASS_RATE_TARGET = 0.90   # target: 90% of URLs yield a caption (adjust as you test)
@@ -86,11 +94,13 @@ async def _run_all(urls: list[str]) -> list[FetchResult]:
     results: list[FetchResult] = []
     async with SocialSessionManager(_SETTINGS) as session:
         for url in urls:
+            started_at = time.perf_counter()
             result = await _probe_one(session, url)
+            elapsed_s = time.perf_counter() - started_at
             status_tag = "[ok]" if result.caption else f"[{result.fetch_status}]"
             fallback_tag = " (embed fallback)" if result.fallback_used else ""
             preview = (result.caption or "")[:80].replace("\n", " ")
-            print(f"  {status_tag}{fallback_tag} {url}")
+            print(f"  {status_tag}{fallback_tag} {url} ({elapsed_s:.1f}s)")
             if preview:
                 print(f"    caption: {preview!r}")
             results.append(result)
@@ -158,8 +168,6 @@ def test_authed_pass_rate():
     This is THE number that decides the hosted product (target ≥95%). Record
     the result in docs/IG_AUTH_INGESTION_PLAN.md either way.
     """
-    import time
-
     from src.ingestion.sources.ig_authed import AuthedInstagramSource
 
     source = AuthedInstagramSource(IngestionSettings())
