@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import collections
 import math
+import random
 import re
 import sys
 from pathlib import Path
@@ -34,8 +35,8 @@ sys.path.insert(0, str(REPO))
 
 from src.ingestion.config import IngestionSettings  # noqa: E402
 from src.ingestion.eval import (  # noqa: E402
-    LABELS_PATH, _SCOREABLE_VERDICTS, _norm, load_labels, raw_from_input, score,
-    split_of, use_aliases,
+    LABELS_PATH, _SCOREABLE_VERDICTS, _norm, format_rate, load_labels,
+    paired_delta_interval, raw_from_input, score, split_of, use_aliases,
 )
 from src.ingestion.pipeline.normalizer import normalize  # noqa: E402
 
@@ -62,8 +63,7 @@ def ci_line(name: str, k: int, n: int) -> str:
     if not n:
         return f"  {name:<26}   n/a"
     lo, hi = wilson(k, n)
-    return (f"  {name:<26} {k:>3}/{n:<3} = {k / n:5.1%}   95% CI [{lo:5.1%}, {hi:5.1%}]"
-            f"   width {100 * (hi - lo):.0f}pts")
+    return f"  {name:<26} {format_rate(k, n)}   width {100 * (hi - lo):.0f}pts"
 
 
 # ── 1 · alias leakage ─────────────────────────────────────────────────────────
@@ -82,7 +82,17 @@ def alias_leakage(test_rows: list[dict]) -> None:
     den = before.venue_scored
     for label, attr in (("venue exact", "venue_exact"), ("venue fuzzy", "venue_fuzzy")):
         b, a = getattr(before, attr), getattr(after, attr)
-        print(f"  {label:<26} {b / den:>11.1%} {a / den:>12.1%} {(a - b) / den:>+9.1%}")
+        outcome_key = "venue_fuzzy" if attr == "venue_fuzzy" else "venue"
+        paired = [(old[outcome_key], new[outcome_key])
+                  for old, new in zip(before.rows, after.rows)
+                  if old[outcome_key] is not None and new[outcome_key] is not None]
+        paired_before = [old is True for old, _ in paired]
+        paired_after = [new is True for _, new in paired]
+        interval = paired_delta_interval(paired_before, paired_after)
+        delta = (a - b) / den if den else 0.0
+        delta_ci = "n/a" if interval is None else f"[{interval[0]:+.1%}, {interval[1]:+.1%}]"
+        print(f"  {label:<26} {format_rate(b, den)} | {format_rate(a, den)} "
+              f"delta {delta:+.1%} (paired 95% CI {delta_ci})")
     print("\n  ^ the gap is memorised test gold, not extraction skill. `eval.py --split test`\n"
           "    now defaults to the train-only table, so its headline is the right-hand column.")
 
@@ -101,27 +111,39 @@ def breakdown(rows: list[dict]) -> None:
     print("\n  ^ a round-over-round gain smaller than the width is not evidence.")
 
     per_class: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+    category_outcomes: dict[str, list[bool]] = collections.defaultdict(list)
     confusions: collections.Counter = collections.Counter()
     for r in rows:
         gold, verdict = r.get("gold", {}), r.get("verdict", {})
         cand = normalize(raw_from_input(r["url"], r.get("input", {})))
         pred_cat = getattr(cand.get("category"), "value", cand.get("category"))
         if verdict.get("category") in _SCOREABLE_VERDICTS and gold.get("category"):
+            hit = _norm(pred_cat) == _norm(gold["category"])
             per_class[gold["category"]][1] += 1
-            per_class[gold["category"]][0] += int(_norm(pred_cat) == _norm(gold["category"]))
+            per_class[gold["category"]][0] += int(hit)
+            category_outcomes[gold["category"]].append(hit)
             confusions[(gold["category"], pred_cat)] += 1
 
     head(3, "category vs. a trivial baseline")
     total = sum(n for _, n in per_class.values())
     biggest = max((n for _, n in per_class.values()), default=0)
     for cls, (hit, n) in sorted(per_class.items(), key=lambda kv: -kv[1][1]):
-        print(f"  {cls:<16} {hit:>3}/{n:<3} = {hit / n:5.0%}")
+        print(f"  {cls:<16} {format_rate(hit, n)}")
     print(f"  {'-' * 34}")
     hits = sum(h for h, _ in per_class.values())
-    print(f"  {'parser (micro)':<16} {hits:>3}/{total:<3} = {hits / total:5.1%}")
-    print(f"  {'always-majority':<16} {biggest:>3}/{total:<3} = {biggest / total:5.1%}   <- the number to beat")
+    print(f"  {'parser (micro)':<16} {format_rate(hits, total)}")
+    print(f"  {'always-majority':<16} {format_rate(biggest, total)}   <- the number to beat")
     macro = sum(h / n for h, n in per_class.values()) / len(per_class)
-    print(f"  {'macro-average':<16} {'':>3} {'':<3}   {macro:5.1%}   <- what the imbalance hides")
+    rng = random.Random(0)
+    macro_samples = sorted(
+        sum(
+            sum(rng.choices(outcomes, k=len(outcomes))) / len(outcomes)
+            for outcomes in category_outcomes.values()
+        ) / len(category_outcomes)
+        for _ in range(2000)
+    )
+    print(f"  {'macro-average':<16} {macro:5.1%} (95% stratified bootstrap CI "
+          f"[{macro_samples[49]:5.1%}, {macro_samples[1950]:5.1%}])")
     worst = [f"{a} -> {b}: {c}" for (a, b), c in confusions.most_common(6) if a != b]
     print(f"  top confusions   : {', '.join(worst)}")
 
@@ -133,9 +155,9 @@ def breakdown(rows: list[dict]) -> None:
     print(f"  REAL PLACE wrongly rejected (FP): {fp}   <- the cost of pushing recall up")
     print(f"  real place kept             (TN): {tn}")
     if tp + fn:
-        print(f"  recall    : {tp / (tp + fn):.1%}")
+        print(f"  recall    : {format_rate(tp, tp + fn)}")
     if tp + fp:
-        print(f"  precision : {tp / (tp + fp):.1%}")
+        print(f"  precision : {format_rate(tp, tp + fp)}")
 
 
 # ── 5 · group overlap ─────────────────────────────────────────────────────────
@@ -151,7 +173,8 @@ def group_overlap(rows: list[dict]) -> None:
                 seen[k].add(split_of(r["url"]))
         straddling = {k for k, v in seen.items() if len(v) > 1}
         n = sum(1 for r in rows if get(r) in straddling)
-        print(f"  {field:<15}: {len(straddling):>3} values on both sides of the split, {n} rows affected")
+        print(f"  {field:<15}: {len(straddling)} values on both sides; rows affected "
+              f"{format_rate(n, len(rows))}")
     print("  ^ rows sharing a venue or a poster are not independent draws.")
 
 
@@ -198,17 +221,15 @@ def ceiling(rows: list[dict]) -> None:
     n = len(scored)
     print(f"  gold venue present as a literal substring of the stored input  (n={n})\n")
     for f in _FIELDS:
-        print(f"    in {f:<14}: {hits[f]:>3}  ({hits[f] / n:4.0%})")
+        print(f"    in {f:<14}: {format_rate(hits[f], n)}")
     print(f"    {'-' * 30}")
-    print(f"    in ANY of them : {hits['ANY']:>3}  ({hits['ANY'] / n:4.0%})   <- no extractive method can beat this")
-    print(f"    nowhere        : {len(nowhere):>3}  ({len(nowhere) / n:4.0%})   <- canonicalisation, or a source we don't capture")
+    print(f"    in ANY of them : {format_rate(hits['ANY'], n)}   <- no extractive method can beat this")
+    print(f"    nowhere        : {format_rate(len(nowhere), n)}   <- canonicalisation, or a source we don't capture")
 
     t = score(rows, use_llm=False, settings=SETTINGS)
     if t.venue_scored and hits["ANY"]:
-        got = t.venue_exact / t.venue_scored
-        cap = hits["ANY"] / n
-        print(f"\n  venue exact {got:.1%} against a {cap:.0%} ceiling = {got / cap:.0%} of what is reachable;"
-              f"\n  {cap - got:.0%} of the corpus is headroom the current rules leave on the table.")
+        print(f"\n  venue exact {format_rate(t.venue_exact, t.venue_scored)} against "
+              f"a ceiling {format_rate(hits['ANY'], n)}.")
 
     print("\n  a few 'nowhere' rows — check whether each is really missing or just uncanonical:")
     for r in nowhere[:5]:
@@ -217,25 +238,26 @@ def ceiling(rows: list[dict]) -> None:
         print(f"    gold={r['gold']['venue']!r:<32} handle=@{inp.get('handle') or '':<20} {cap_txt!r}")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", choices=["all", "train", "test"], default="test")
-    args = ap.parse_args()
-
-    rows = load_labels()
-    scored = [r for r in rows if args.split == "all" or split_of(r["url"]) == args.split]
-    print(f"corpus: {len(rows)} rows ({LABELS_PATH.name}), scoring split={args.split} ({len(scored)} rows)")
-
+def run_report(rows: list[dict], split: str) -> None:
+    scored = [r for r in rows if split == "all" or split_of(r["url"]) == split]
+    print(f"diagnostics: {len(rows)} corpus rows ({LABELS_PATH.name}), split={split} ({len(scored)} rows)")
     try:
-        if args.split == "test":
+        if split == "test":
             alias_leakage(scored)
-        use_aliases("train" if args.split == "test" else "all")
-        print(f"\n(sections below use the {'train-only' if args.split == 'test' else 'all-corpus'} alias table)")
+        use_aliases("train" if split == "test" else "all")
+        print(f"\n(sections below use the {'train-only' if split == 'test' else 'all-corpus'} alias table)")
         breakdown(scored)
         group_overlap(rows)
         ceiling(scored)
     finally:
         use_aliases("all")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--split", choices=["all", "train", "test"], default="test")
+    args = ap.parse_args()
+    run_report(load_labels(), args.split)
 
 
 if __name__ == "__main__":

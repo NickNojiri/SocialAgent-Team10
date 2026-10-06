@@ -44,6 +44,29 @@ gold label was compiled into the extractor that scored it (20 of 63 overrides ca
 test rows). That is why `--split test` now defaults to the train-only table. Every time
 you add an alias, ask: *could this row's answer be leaking into its own score?*
 
+### Phase 1 evaluation and label agreement
+
+Run the complete offline held-out report from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split test --full-report --compare-stored
+```
+
+The report prints Wilson 95% intervals for rates and paired bootstrap intervals for
+before/after deltas. The stored `predicted` values are the before side; the current
+heuristic output is the after side. McNemar's exact test compares only the same
+scoreable rows for each metric. Use `--split train` while iterating; the test split is
+held out.
+
+Each corpus row has a `labeler` field. Use `unknown` only when provenance is absent;
+existing labels remain unchanged. A second independent annotation, when collected,
+belongs in `second_label`, with a distinct `labeler` and a `gold` mapping of reviewed
+fields, plus `independent: true` to record that the second review was performed without
+seeing or discussing the first label. Cohen's kappa and its bootstrap interval use only
+fields with two known, distinct labelers and that explicit independence marker. The
+current corpus has no independent second labels, so the report correctly says kappa is
+unavailable until that slice is supplied.
+
 **Traps:**
 - `review.py` rewrites the whole labels file on save — never run it alongside another job
   that writes `fixtures/labels.jsonl`.
