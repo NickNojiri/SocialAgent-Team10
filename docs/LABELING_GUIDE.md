@@ -61,6 +61,23 @@ scorer to make a row pass; fix the extractor or the label.
   `food_drink`. Drinks and bars are `nightlife`; pop-ups, markets and festivals are
   `market_popup`. Use `other` only when it is none of the categories.
 
+### Cuisine and dish (`gold.cuisine`, `gold.dish`)
+
+Optional, food posts only; leave both `[]` when the reel doesn't show or say it.
+Both are **lists** (a Korean-Mexican taco spot is `["korean", "mexican"]`), and use
+only these words, so two labelers write the same thing:
+
+- `cuisine`: `american`, `chinese`, `japanese`, `korean`, `vietnamese`, `thai`,
+  `filipino`, `indian`, `mexican`, `latin_american`, `italian`, `french`,
+  `mediterranean`, `middle_eastern`, `other`. Fusion lists each side.
+- `dish`: `noodles`, `rice`, `sushi`, `bbq_grill`, `burger_sandwich`, `pizza`,
+  `tacos`, `fried_chicken`, `seafood`, `bread`, `pastry`, `cake`, `ice_cream`,
+  `coffee`, `tea_boba`, `drinks_bar`, `brunch`, `other`. Name what the reel
+  features, at most three.
+
+A word not on a list is `other` plus a note; add it to the list here only when it
+keeps coming up.
+
 ## §5 Inputs and re-capture
 
 A label is only fair if the input holds what the labeler used. When the venue is
