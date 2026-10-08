@@ -171,3 +171,18 @@ def test_kappa_batch_refuses_self_agreement(tmp_path):
     sheet.write_text(text, encoding="utf-8")
     with pytest.raises(SystemExit):
         merge(rows, sheet, labeler="nick", primary=None)
+
+
+# ── label confidence: measured per-slot confidence, least sure first ────────────
+
+def test_label_confidence_calibrates_on_train_and_ranks():
+    from scripts.label_confidence import rank
+    from src.ingestion.eval import split_of
+    train = next(c for c in (f"T{i}" for i in range(500))
+                 if split_of(f"https://www.instagram.com/reel/{c}/") == "train")
+    rows = [_row(train, "HANA Gelateria", "so good\n\n📍 HANA Gelateria\n\nsave this"),
+            _row("Q2", None, "goon time")]
+    queue = rank(rows, {"pin": 0.9, "none": 0.3})
+    assert [e["slot"] for e in queue] == ["none", "pin"]          # least confident first
+    assert queue[1]["venue"] == "HANA Gelateria" and queue[1]["confidence"] == 0.9
+    assert rank([{"url": "u", "input": {}}], {}) == []            # fetch failed: skipped
