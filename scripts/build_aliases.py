@@ -62,12 +62,25 @@ def _lcs(a: str, b: str) -> int:
     return best
 
 
+def _multi_venue_accounts(rows: list[dict]) -> set[str]:
+    """Accounts whose posts name more than one gold venue — bloggers, not venues.
+    A correction keyed on such an account's name would rename every one of its posts
+    to whichever venue was labeled last (@lacoffeelist -> 'Mizuri Coffee')."""
+    venues: dict[str, set[str]] = {}
+    for r in rows:
+        handle = norm((r.get("input") or {}).get("handle"))
+        gold = norm((r.get("gold") or {}).get("venue"))
+        if handle and gold:
+            venues.setdefault(handle, set()).add(gold)
+    return {h for h, v in venues.items() if len(v) > 1}
+
+
 def build(rows: list[dict], split: str) -> dict[str, str]:
     """`split`: 'all' | 'train' | 'test' — which corpus rows may contribute an override."""
     aliases: dict[str, str] = {}
+    rows = [r for r in rows if split == "all" or split_of(r["url"]) == split]
+    bloggers = _multi_venue_accounts(rows)
     for r in rows:
-        if split != "all" and split_of(r["url"]) != split:
-            continue
         pred = (r.get("predicted") or {}).get("venue")
         gold = (r.get("gold") or {}).get("venue")
         if not pred or not gold:
@@ -75,7 +88,7 @@ def build(rows: list[dict], split: str) -> dict[str, str]:
         if r.get("verdict", {}).get("venue") not in ("wrong",):
             continue
         k, gn = norm(pred), norm(gold)
-        if len(k) < 5 or k == gn or k in _BAD_KEYS:
+        if len(k) < 5 or k == gn or k in _BAD_KEYS or k in bloggers:
             continue
         if _lcs(k, gn) < 4:                    # not a spelling variant — a wrong place
             continue

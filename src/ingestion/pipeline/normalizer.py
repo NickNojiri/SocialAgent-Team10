@@ -19,12 +19,21 @@ from src.ingestion.schemas.extraction import LlmExtraction
 from src.ingestion.schemas.inspiration import EventCategory, GeoContext, GeoSource
 from src.ingestion.schemas.snapshot import RawPostSnapshot
 
-# Checked in order — more specific categories first, FOOD_DRINK as the broad net.
+# Scored, not first-match: every keyword hit is a vote, and the category with the
+# most votes wins (see `_categorize` for ties). First-match let one "cake" turn a
+# pasta restaurant into a dessert spot and one "bar" turn "Sei Pizza Bar" into
+# nightlife. Plurals are matched by `_kw_regex`.
 _CATEGORY_KEYWORDS: list[tuple[EventCategory, tuple[str, ...]]] = [
     (EventCategory.CAFE_DESSERT, (
         "cafe", "café", "coffee", "espresso", "latte", "dessert", "boba", "bubble tea",
-        "bakery", "pastry", "croissant", "ice cream", "gelato", "matcha", "cake",
-        "donut", "doughnut", "churro", "crepe", "s'more", "smore", "fresas con crema",
+        "bakery", "bakeries", "pastry", "pastries", "croissant", "ice cream", "gelato",
+        "matcha", "cake", "cheesecake", "cupcake", "donut", "doughnut", "churro", "crepe",
+        "s'more", "smore", "fresas con crema", "cookie", "brownie", "macaron", "mochi",
+        "tiramisu", "flan", "pudding", "cinnamon roll", "froyo", "frozen yogurt",
+        "soft serve", "shaved ice", "bingsu", "milk tea", "tea house", "teahouse",
+        "patisserie", "panaderia", "creamery", "chocolate", "pie", "tart", "sweets",
+        "pumpkin spice", "pan dulce", "concha", "postre", "postres", "affogato",
+        "cold brew", "chai", "slushy", "smoothie", "acai",
     )),
     (EventCategory.LIVE_MUSIC, (
         "live music", "concert", "band", "dj set", "dj ", "jazz", "open mic",
@@ -47,15 +56,73 @@ _CATEGORY_KEYWORDS: list[tuple[EventCategory, tuple[str, ...]]] = [
     )),
     (EventCategory.COMMUNITY, ("meetup", "community", "volunteer", "workshop", "book club", "class ", "market day")),
     (EventCategory.FOOD_DRINK, (
-        "taco", "birria", "restaurant", "food", "brunch", "breakfast", "lunch", "dinner",
-        "eats", "eatery", "kitchen", "grill", "diner", "bistro", "ramen", "sushi",
-        "omakase", "poke", "bbq", "barbecue", "korean bbq", "kbbq", "pizza", "burger",
-        "burrito", "quesadilla", "nachos", "carne asada", "al pastor", "pho", "noodle",
-        "dumpling", "dim sum", "hot pot", "naan", "curry", "pastrami", "sandwich",
-        "deli", "wings", "fried chicken", "crispy pata", "steak", "seafood", "oyster",
-        "lobster", "crab", "dessert menu", "menu", "erewhon",
+        "taco", "birria", "restaurant", "restaurante", "food", "brunch", "breakfast",
+        "lunch", "dinner", "eats", "eatery", "kitchen", "grill", "diner", "bistro",
+        "ramen", "sushi", "omakase", "poke", "bbq", "barbecue", "korean bbq", "kbbq",
+        "pizza", "pizzeria", "burger", "burrito", "quesadilla", "nachos", "carne asada",
+        "al pastor", "pho", "noodle", "dumpling", "dim sum", "hot pot", "hotpot", "naan",
+        "curry", "pastrami", "sandwich", "deli", "wings", "fried chicken", "crispy pata",
+        "steak", "seafood", "oyster", "lobster", "crab", "dessert menu", "menu", "erewhon",
+        "pasta", "spaghetti", "carbonara", "lasagna", "gnocchi", "trattoria", "osteria",
+        "fries", "rice", "teriyaki", "katsu", "udon", "soba", "shabu", "yakitori",
+        "izakaya", "gyoza", "bao", "banh mi", "tamale", "torta", "enchilada", "empanada",
+        "arepa", "ceviche", "taqueria", "kebab", "shawarma", "falafel", "gyro", "halal",
+        "chicken", "beef", "pork", "wagyu", "brisket", "ribs", "shrimp", "salmon",
+        "fish", "hot dog", "sausage", "salad", "soup", "fritter", "mac and cheese",
+        "buffet", "ayce", "all you can eat", "bento", "chef", "cuisine", "dining",
+        "reservation", "appetizer", "entree", "bowl", "yakiniku", "gyutan", "tonkatsu",
+        "mashed potato", "potato", "bread", "pupusa", "mole", "pozole", "menudo",
     )),
 ]
+
+# Generic words count a quarter vote: they show the post is about food without
+# saying which kind, and dessert accounts use them as much as restaurants do.
+_GENERIC_FOOD = {"food", "eats", "menu", "chef", "dining", "cuisine", "kitchen", "bread"}
+_GENERIC_WEIGHT = 0.25
+
+# The kind of place outranks what was eaten there: a café that serves breakfast is
+# still a café, and a bar with a burger is still a bar. When the caption names a
+# place type, the most-named type wins; dish words only decide when it names none.
+_PLACE_TYPES: list[tuple[EventCategory, tuple[str, ...]]] = [
+    (EventCategory.CAFE_DESSERT, (
+        "cafe", "café", "coffee shop", "coffeehouse", "coffee", "bakery", "bakeries",
+        "patisserie", "panaderia", "creamery", "tea house", "teahouse", "dessert shop",
+        "donut shop", "boba shop", "ice cream shop", "gelateria", "chocolatier",
+    )),
+    (EventCategory.LIVE_MUSIC, ("concert", "live music", "open mic", "dj set", "live set")),
+    (EventCategory.MARKET_POPUP, (
+        "pop-up", "popup", "pop up", "night market", "farmers market", "food fair",
+        "festival", "vendors", "flea market",
+    )),
+    (EventCategory.NIGHTLIFE, (
+        "bar", "brewery", "speakeasy", "lounge", "nightclub", "wine bar", "cocktail bar",
+        "pub", "taproom", "happy hour",
+    )),
+    (EventCategory.OUTDOORS, ("hike", "hiking", "trailhead", "national park", "state park",
+                              "campground")),
+    (EventCategory.COMMUNITY, ("meetup", "volunteer", "workshop", "book club")),
+    (EventCategory.FOOD_DRINK, (
+        "restaurant", "restaurante", "pizzeria", "trattoria", "osteria", "taqueria",
+        "bistro", "diner", "eatery", "izakaya", "steakhouse", "buffet", "food truck",
+        "food hall",
+    )),
+]
+
+# A food word in front of "bar" names a restaurant, not nightlife ("Sei Pizza Bar",
+# "Yuzu Sushi Bar", "@pvdnoodlebar"); a drink word in front of it is a cafe.
+_FOOD_BAR = re.compile(
+    r"\b(pizza|sushi|noodle|ramen|pasta|hand ?roll|oyster|raw|taco|poke|salad|burger|crudo|"
+    r"kitchen|restaurant|espresso|coffee|matcha|dessert|juice|smoothie|acai|boba|tea)"
+    r"(?:[\s-]?|\s+(?:and|&)\s+)bar\b",
+    re.IGNORECASE,
+)
+
+_CATEGORY_EMOJI: dict[EventCategory, str] = {
+    EventCategory.CAFE_DESSERT: "🍦🍨🍧🍰🎂🧁🍩🍪🍫🍬🍭🍮☕🍵🧋🥐🥧🍡",
+    EventCategory.FOOD_DRINK: "🍕🍔🍟🌭🌮🌯🍜🍝🍣🍱🍛🍲🥘🍖🍗🥩🍤🥟🍙🍚🥗🥪🍳🥞🦞🦀🥢🫕🥙🧆🫔",
+    EventCategory.NIGHTLIFE: "🍸🍹🍺🍻🍷🥂🥃🪩",
+    EventCategory.LIVE_MUSIC: "🎵🎶🎤🎸🎧🥁🎷🎺",
+}
 
 _PIN_LINE = re.compile(r"📍\s*(?P<loc>[^\n#@—!|:]+)")
 _PIN_LEAD = re.compile(r"^(?:new!?\s*|find\s+|now open(?:\s+at)?\s+|check out\s+|try\s+)", re.IGNORECASE)
@@ -119,6 +186,11 @@ _FROM_VENUE = re.compile(
     r"\b(?:from|by)\s+(?P<venue>[A-Z][\w'’&\-]*"
     r"(?:\s+(?:de|del|la|le|du|of|the|and|&)\b)*"
     r"(?:\s+[A-Z][\w'’&\-]*){0,4})"
+)
+# "steps from X" / "minutes away from X" names a landmark nearby, not the venue.
+_NEAR_LANDMARK = re.compile(
+    r"\b(?:steps|minutes?|mins?|blocks?|miles?|away|far|across|walking distance|right)\s+(?:from|by)\s*$",
+    re.IGNORECASE,
 )
 # A person, not a venue, when the mention starts with one of these.
 _PERSON_LEAD = re.compile(r"^(chef|owner|founder|my|the|our|host|dj)\b", re.IGNORECASE)
@@ -265,13 +337,20 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
             venue, venue_slot = t_venue, "transcript"
     if venue and (fix := _ALIASES.get(_norm_alias(venue))):   # learned correction
         venue, venue_slot = fix, "alias"
+    elif venue and venue_slot != "jsonld":
+        venue = _trim_venue(venue)
+        if fix := _ALIASES.get(_norm_alias(venue)):
+            venue, venue_slot = fix, "alias"
     geo = _geo_context(raw, caption if not raw.transcript else f"{caption}\n{raw.transcript}")
     if venue is None and geo.raw_location_text:
         guess = geo.raw_location_text.split(",")[0].strip() or None
         if guess and not _ADDRESS_RE.search(guess) and not _is_container(guess):
             venue, venue_slot = guess, "at_venue"  # weak: a bare location string
     candidate_times = _heuristic_times(searchable, raw.start_date_raw)
-    category = _categorize(searchable.lower())
+    category = _categorize(
+        " ".join(filter(None, [raw.caption, raw.frame_text, raw.title, raw.description])),
+        raw.hashtags,
+    )
     core_theme = _core_theme(raw, caption)
 
     # 2. LLM layer — a GAP-FILLER, not an overrider. The slot parser + gazetteer
@@ -297,6 +376,13 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     if venue:
         venue = venue[:110].strip()
 
+    is_vague = looks_vague(raw, venue, geo, category, candidate_times, venue_slot)
+    # A real place whose kind the text never names: food & drink is by far the most
+    # common kind in the labeled corpus, so it is a better guess than "other". Set
+    # after `is_vague`, which reads a bare OTHER as "nothing here points to a place".
+    if category is EventCategory.OTHER and venue and not is_vague:
+        category = EventCategory.FOOD_DRINK
+
     image_url = (raw.image_url or "").strip()
 
     return {
@@ -313,7 +399,7 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         "venue_slot": venue_slot,
         "venue_confidence": VENUE_CONF[venue_slot] if venue else 0.0,
         # Not an EventInspiration field — build_record pops it and rejects if set.
-        "is_vague": looks_vague(raw, venue, geo, category, candidate_times, venue_slot),
+        "is_vague": is_vague,
     }
 
 
@@ -361,6 +447,7 @@ VENUE_CONF = {
     "alias": 0.9, "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
     "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55, "transcript": 0.5,
     "title_fallback": 0.3, "llm_fill": 0.35, "list": 0.0, "none": 0.0,
+    "pin": 0.8, "name_line": 0.75, "sentence": 0.6,
 }
 
 # Learned corrections: normalize(predicted) -> canonical venue. Regenerate with
@@ -420,6 +507,19 @@ def _clean_venue_tag(text: str) -> Optional[str]:
         if head and not _ADDRESS_RE.search(head):
             return head
     return None if _ADDRESS_RE.search(s) else s or None
+
+
+def _fuller_form(name: str, caption: str) -> str:
+    """'1954 Bakery' (from @1954bakery) → '1954 Egashira Bakery' when the caption
+    writes the name out with the same first and last word and more in between."""
+    toks = name.split()
+    if len(toks) < 2:
+        return name
+    first, last = re.escape(toks[0]), re.escape(toks[-1])
+    m = re.search(rf"\b({first}(?:\s+[A-Z0-9][\w'’&.\-]*){{1,3}}\s+{last})\b", caption, re.IGNORECASE)
+    if m and not m.group(1)[:1].islower() and len(m.group(1).split()) > len(toks):
+        return m.group(1)
+    return name
 
 
 def _caption_spelling(name: str, caption: str) -> str:
@@ -482,10 +582,182 @@ def _looks_like_list(raw: RawPostSnapshot, caption: str) -> bool:
     return items >= 4 or len(mentions) >= 5 or pins >= 4
 
 
+_PIN_LABEL = re.compile(
+    r"^\s*(?:location|address|where|find us|located(?:\s+at)?)\s*[:\-–]\s*", re.IGNORECASE)
+_NAME_TAIL = re.compile(r"\s*\([^)]*\)?\s*$")                 # 'Name (Neighbourhood)'
+_NAME_SPLIT = re.compile(r"\s[|•·]\s?|\s[-–—]\s")             # 'Name - City', 'Name | Bakery'
+_IN_PLACE_TAIL = re.compile(r"\s+(?:in|inside)\s+(?!the\b)[A-Z].*$|\s+inside$")
+_NOT_NAME_CHARS = re.compile(r"[^\w\s&'’.\-]")
+_TAIL_KEEP = {"of", "de", "del", "in", "at", "the", "and", "&", "y", "by", "on"}
+_COMPLEX_RE = re.compile(
+    r"^the shops at\b|\b(?:mall|plaza|shopping center|shopping centre|marketplace|outlets?|"
+    r"packing district|food hall|town center|town centre)\b",
+    re.IGNORECASE,
+)
+
+
+def _trim_venue(name: Optional[str]) -> Optional[str]:
+    """Drop a location tail the caption tacked onto a name: 'Miopane in Pasadena',
+    'Concerto • Koreatown', 'En Familia - Mexican Steakhouse', 'Protein Bao inside',
+    'Miopane Pasadena' (a known city as the last word). A name that is only a tail
+    is left alone."""
+    if not name:
+        return name
+    s = _NAME_TAIL.sub("", name)
+    s = _NAME_SPLIT.split(s, maxsplit=1)[0]
+    s = _IN_PLACE_TAIL.sub("", s)
+    words = s.split()
+    for n in (3, 2, 1):                       # a known city/area as the last word(s)
+        if len(words) > n and words[-n - 1].lower() not in _TAIL_KEEP:
+            if " ".join(words[-n:]).lower() in _AREA_CITY_SET:
+                words = words[:-n]
+                break
+    while len(words) > 1 and words[-1].lower() in _TAIL_KEEP:   # 'Wu and', 'Kobashi Ramen of'
+        words = words[:-1]
+    s = " ".join(words).strip(" ,.-–—")
+    return s if len(s) >= 2 else name
+
+
+def _pin_name(text: str) -> Optional[str]:
+    """The venue named on a 📍 line or a bare name line, cleaned — or None when the
+    line is an address, a city, a container or a sentence."""
+    s = _PIN_LEAD.sub("", _PIN_LABEL.sub("", (text or "").strip()))
+    s = re.sub(r"(?<![\w.])[@#][\w.]+|\S*\w\.\w\S*|https?://\S+", " ", s)  # @handles, #tags, domains
+    if len(re.findall(r"\S*\d\S*", s)) >= 2:
+        return None                           # several numbers: an address in any script
+    head, sep, rest = s.partition(":")
+    if sep and rest.strip() and len(head.split()) <= 3:
+        s = rest                              # 'Mountain View: Matcha Mori' — place, then name
+    s = _trim_venue(s.split(",")[0]) or ""
+    s = " ".join(_NOT_NAME_CHARS.sub(" ", s).split()).strip(" .-'’")
+    if len(s) < 3 or re.match(r"\d", s) or _ADDRESS_RE.search(s):
+        return None
+    toks = s.split()
+    if len(toks) > 6 or (s.islower() and len(toks) >= 4):
+        return None
+    low = s.lower()
+    if (_is_container(s) or _is_region(s) or low in _CHROME_LOCATIONS or low in _PIN_COUNTRY
+            or _COMPLEX_RE.search(s)):
+        return None
+    return _titlecase_if_flat(s)
+
+
+def _pinned_venue(caption: str, mentions: list[str]) -> tuple[Optional[str], str]:
+    """A venue the caption pins down: a 📍 line naming a place ('📍 HANA Gelateria',
+    '📍 Location: Mizuri Coffee', '📍NEW! BoBaPoP Tea Bar - San Marcos'), or the
+    name line right above a 📍 address ('Melt Coffee ⏎ 📍17181 Redmond Wy').
+    A one-word pin must match an @mention or end in a venue word; one-word place
+    names are too often a city we don't know ('📍Sydney')."""
+    lines = [ln.strip() for ln in caption.splitlines()]
+    flat_mentions = {re.sub(r"[^a-z0-9]", "", m.lower()) for m in mentions}
+    for i, line in enumerate(lines):
+        if "📍" not in line:
+            continue
+        body = line.split("📍", 1)[1]
+        name = _pin_name(body)
+        if name:
+            flat = re.sub(r"[^a-z0-9]", "", name.lower())
+            if (len(name.split()) >= 2 or flat in flat_mentions
+                    or _PIN_VENUE_KW.search(name)):
+                return name, "pin"
+            continue
+        # an address (or a city) pin: the venue is the name line above it
+        if not (_ADDRESS_RE.search(_PIN_LABEL.sub("", body.strip())) or _is_region(body.strip(" ,."))):
+            continue
+        for j in range(i - 1, max(-1, i - 3), -1):
+            above = lines[j]
+            if not above:
+                continue
+            if "📍" in above:
+                if _is_region(above.split("📍", 1)[1].strip(" ,.")):
+                    continue                  # 'Name ⏎ 📍City ⏎ 📍address'
+                break
+            if (re.search(r"[.!?:]\s*$", above) or len(above) > 48
+                    or re.match(r"^\s*(?:[•*\-–→✅]|\d{1,2}[.)])", above)):
+                break                         # a sentence or a list item, not a name line
+            name = _pin_name(above)
+            words = re.findall(r"[^\W\d_][\w'’]*", above)
+            capped = sum(1 for w in words if w[:1].isupper())
+            if name and (above.isupper() or above.islower() or capped * 2 >= len(words)):
+                return name, "name_line"            # not 'Family owned & operated'
+            break
+    return None, "none"
+
+
+_NAME_RUN = (r"(?P<venue>[A-Z0-9][\w'’&.\-]*"
+             r"(?:\s+(?:(?:&|and|of|de|del|la|the|x)\s+)?[A-Z0-9][\w'’&.\-]*){0,5})")
+# "<Name> is serving…", "<Name> just opened…", "<Name> was so good" at the start of
+# a sentence — the way most reviews introduce the place.
+_SUBJECT_VENUE = re.compile(
+    r"(?:^|[.!?]\s+|\n\s*)" + _NAME_RUN +
+    r"(?:\s+in\s+[A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)?)?"
+    r"\s+(?:is|was|has|had|just|came|serves|is serving|opened|offers|makes|brings|blew)\b"
+)
+# "check out <Name>", "one visit to <Name>", sentence-initial "At <Name>,",
+# "at all <Name> branches".
+_INTRO_VENUE = re.compile(
+    r"\b(?:check out|visit to|head(?:ed)? to|went to)\s+" + _NAME_RUN +
+    r"|(?:^|[.!?]\s+|\n\s*)At\s+" + _NAME_RUN.replace("?P<venue>", "?P<venue2>") + r"\s*,"
+    r"|\bat (?:all|any|every)\s+" + _NAME_RUN.replace("?P<venue>", "?P<venue3>") +
+    r"\s+(?:branches|locations|stores|shops)\b"
+)
+# Capitalized words that open sentences but never name a venue on their own.
+_NOT_A_NAME = {
+    "this", "that", "these", "those", "it", "its", "it's", "we", "i", "you", "they", "he",
+    "she", "my", "our", "your", "their", "the", "a", "an", "pov", "today", "tonight",
+    "yesterday", "everything", "everyone", "nothing", "something", "who", "what", "why",
+    "how", "when", "where", "if", "and", "but", "so", "also", "plus", "not", "just", "best",
+    "new", "here", "there", "one", "each", "every", "all", "some", "most", "she's", "he's",
+    "we're", "they're", "you're", "i'm", "there's", "here's", "that's", "what's", "let's",
+    "dinner", "lunch", "brunch", "breakfast", "dessert", "coffee", "food", "service",
+    "everything", "price", "parking", "it’s", "that’s", "there’s", "here’s", "what’s",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december", "omg", "wow", "yes", "no",
+    # foods and flavours that open sentences ("Mango is the best…")
+    "mango", "strawberry", "strawberries", "banana", "apple", "peach", "cherry", "lemon",
+    "lime", "orange", "grape", "melon", "watermelon", "pineapple", "coconut", "avocado",
+    "vanilla", "caramel", "honey", "butter", "cheese", "ube", "taro", "pistachio",
+    "hazelnut", "cinnamon", "garlic", "truffle", "salmon", "tuna", "egg", "eggs", "toast",
+}
+
+
+_FOOD_WORDS = {k for _, kws in _CATEGORY_KEYWORDS for k in kws}
+
+
+def _plausible_name(name: Optional[str]) -> Optional[str]:
+    """A captured Title-Case run that could be a venue: not a pronoun or sentence
+    opener, not a city or a named complex, and not just a food word."""
+    if not name:
+        return None
+    name = _trim_venue(name.strip(" .,!?:;-")) or ""
+    toks = name.split()
+    if not toks or len(name) < 3 or toks[0].lower() in _NOT_A_NAME:
+        return None
+    if _is_container(name) or _is_region(name) or name.lower() in _CHROME_LOCATIONS:
+        return None
+    if all(t.lower().strip("'’s") in _FOOD_WORDS or t.lower() in _NOT_A_NAME for t in toks):
+        return None
+    return name
+
+
+def _sentence_venue(caption: str) -> Optional[str]:
+    """A venue introduced in prose: '<Name> is serving…', 'check out <Name>', 'At <Name>,'."""
+    for rx in (_INTRO_VENUE, _SUBJECT_VENUE):
+        for m in rx.finditer(caption):
+            raw = next((g for g in m.groups() if g), None)
+            name = _plausible_name(raw)
+            if name:
+                return name
+    return None
+
+
 def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]:
-    """(venue, slot-name). Slot-first: structured > venue-mention (from/by/@handle)
-    > first-person poster > 'at <Venue>' > account title. Named complexes
-    ('Disneyland') never win on their own — they're context, not the venue."""
+    """(venue, slot-name). Slot-first: structured > 'owner of @x' > a 📍 line naming
+    the venue > venue-mention (from/by/@handle, quoted) > a name line matching the
+    @mention > the single @mention > the name line above a 📍 address > first-person
+    poster > prose ('Messina is serving…') > 'at <Venue>' > account title. Named
+    complexes ('Disneyland') and cities never win on their own — they're context."""
     if _looks_like_list(raw, caption):
         return None, "list"
     if raw.venue_candidate:
@@ -501,13 +773,21 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if m and not _is_container(m.group("venue")):
         return m.group("venue").strip(), "at_venue"
 
-    for pattern in (_OWNER_OF, _FROM_HANDLE):
-        m = pattern.search(caption)
-        if m:
-            return _caption_spelling(_handle_to_name(m.group("handle")), caption), "handle_from"
-    m = _FROM_VENUE.search(caption)
+    m = _OWNER_OF.search(caption)
     if m:
-        cand = m.group("venue").strip(" .,!?:;")
+        return _caption_spelling(_handle_to_name(m.group("handle")), caption), "handle_from"
+    author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
+    mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption)) if h.lower() != author]
+    pinned, pin_slot = _pinned_venue(caption, mentions)
+    if pinned and pin_slot == "pin":
+        return pinned, pin_slot                 # an explicit 📍 name beats a "by @chef" credit
+    m = _FROM_HANDLE.search(caption)
+    if m:
+        return _caption_spelling(_handle_to_name(m.group("handle")), caption), "handle_from"
+    for m in _FROM_VENUE.finditer(caption):
+        if _NEAR_LANDMARK.search(caption[max(0, m.start() - 30): m.start() + 5]):
+            continue                           # "just steps from Climate Pledge Arena"
+        cand = _trim_venue(m.group("venue").strip(" .,!?:;"))
         if cand and not _is_container(cand) and not _PERSON_LEAD.match(cand) and not _is_region(cand):
             return cand, "from_titlecase"
 
@@ -522,16 +802,25 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
         if name and not bait and not _COMMENT_BAIT.search(caption[: q.start() + 12]):
             return name, "quoted"
 
-    author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
-    mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption)) if h.lower() != author]
+    flat_mentions = {re.sub(r"[^a-z0-9]", "", m.lower()) for m in mentions}
+    if pinned and re.sub(r"[^a-z0-9]", "", pinned.lower()) in flat_mentions:
+        return pinned, pin_slot                 # a name line that is the @mention, spaced
     if len(mentions) == 1 and not _BLOGGER_HANDLE.search(mentions[0]):
-        return _caption_spelling(_handle_to_name(mentions[0]), caption), "bare_mention"
+        name = _caption_spelling(_handle_to_name(mentions[0]), caption)
+        return _fuller_form(name, caption), "bare_mention"
+    if pinned:
+        return pinned, pin_slot                 # the name line above a 📍 address
 
-    if _FIRST_PERSON.search(caption) and (getattr(raw, "author_handle", None) or getattr(raw, "author_name", None)):
+    if (_FIRST_PERSON.search(caption) and not _BLOGGER_HANDLE.search(author)
+            and (getattr(raw, "author_handle", None) or getattr(raw, "author_name", None))):
         name = _clean_display_name(getattr(raw, "author_name", None))
         if not name:
             name = _caption_spelling(_handle_to_name(raw.author_handle), caption)
         return name, "first_person"
+
+    sentence = _sentence_venue(caption)        # "Messina is serving up…", "check out X"
+    if sentence:
+        return sentence, "sentence"
 
     pm = _PIN_LINE.search(caption)                # "📍 Grounded Coffee House"
     if pm:
@@ -544,9 +833,10 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
                      or flat in {re.sub(r"[^a-z0-9]", "", m) for m in mentions})):
             return _titlecase_if_flat(pin.strip(" .,")), "at_venue"
 
-    at_match = _AT_VENUE.search(caption)
-    if at_match and not _is_container(at_match.group("venue")) and not _is_region(at_match.group("venue")):
-        return at_match.group("venue").strip(), "at_venue"
+    for at_match in _AT_VENUE.finditer(caption):
+        cand = _trim_venue(at_match.group("venue").strip())
+        if cand and not _is_container(cand) and not _is_region(cand) and not _COMPLEX_RE.search(cand):
+            return cand, "at_venue"
 
     if raw.title:
         cleaned = _TITLE_NOISE.sub("", raw.title)
@@ -574,17 +864,87 @@ def _core_theme(raw: RawPostSnapshot, caption: str) -> Optional[str]:
 
 
 # Word-boundary match per category so "#longbeach" no longer trips "beach", etc.
-_CATEGORY_RE = [
-    (cat, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in kws) + r")\b", re.IGNORECASE))
+# An optional plural ending is allowed ("tacos", "fritters", "potatoes").
+def _kw_regex(kws: tuple[str, ...]) -> re.Pattern:
+    alts = "|".join(re.escape(k) for k in sorted(kws, key=len, reverse=True))
+    return re.compile(r"\b(?:" + alts + r")(?:e?s)?\b", re.IGNORECASE)
+
+
+_CATEGORY_RE = [(cat, _kw_regex(kws)) for cat, kws in _CATEGORY_KEYWORDS]
+_PLACE_TYPE_RE = [(cat, _kw_regex(kws)) for cat, kws in _PLACE_TYPES]
+_CATEGORY_ORDER = {cat: i for i, (cat, _) in enumerate(_CATEGORY_KEYWORDS)}
+
+# Hashtags are run together ("#disneyfood", "#bestsushiinguwahati"), so they are
+# searched by substring — but only for keywords long or distinctive enough not to
+# hide inside unrelated words ("deli" in "delicious", "poke" in "pokemon"). Music
+# tags are left out: "#housemusic" on a clip is a song, not a live-music venue.
+_SHORT_TAG_KWS = {"taco", "food", "eats", "cafe", "cake", "boba", "pizza", "ramen", "sushi",
+                  "brew", "hike", "kbbq", "bbq", "pho"}
+_TAG_UNSAFE = {"deli", "poke", "club", "bowl", "chef", "rice", "fish", "pie", "tart",
+               "mole", "chai", "bao", "booth", "dining", "bread", "potato"}
+_CATEGORY_TAG_KWS = [
+    (cat, tuple(k.replace(" ", "").replace("'", "") for k in kws
+                if k not in _TAG_UNSAFE
+                and (len(k.replace(" ", "")) >= 5 or k in _SHORT_TAG_KWS)))
     for cat, kws in _CATEGORY_KEYWORDS
+    if cat is not EventCategory.LIVE_MUSIC
 ]
 
 
-def _categorize(lowered_text: str) -> EventCategory:
-    for category, pattern in _CATEGORY_RE:
-        if pattern.search(lowered_text):
-            return category
-    return EventCategory.OTHER
+def _votes(rx: re.Pattern, text: str) -> float:
+    """Keyword hits, at most 3 per keyword; generic food words count a quarter."""
+    seen: dict[str, int] = {}
+    for m in rx.finditer(text):
+        kw = m.group(0).lower()
+        seen[kw] = seen.get(kw, 0) + 1
+    return sum(
+        min(n, 3) * (_GENERIC_WEIGHT if (kw in _GENERIC_FOOD or kw.rstrip("s") in _GENERIC_FOOD) else 1.0)
+        for kw, n in seen.items()
+    )
+
+
+def _category_scores(text: str, hashtags: Optional[list[str]] = None) -> dict[EventCategory, float]:
+    """Votes per category from keywords in the text, run-together hashtags and emoji."""
+    text = _FOOD_BAR.sub(lambda m: m.group(1), (text or "").replace("’", "'"))
+    scores: dict[EventCategory, float] = {}
+    for cat, rx in _CATEGORY_RE:
+        votes = _votes(rx, text) + sum(1 for e in _CATEGORY_EMOJI.get(cat, "") if e in text)
+        if votes:
+            scores[cat] = votes
+    for tag in hashtags or []:
+        key = re.sub(r"[^a-z0-9]", "", tag.lower())
+        if not key:
+            continue
+        for cat, kws in _CATEGORY_TAG_KWS:
+            hit = next((k for k in kws if k in key), None)
+            if hit:
+                scores[cat] = scores.get(cat, 0.0) + (_GENERIC_WEIGHT if hit in _GENERIC_FOOD else 1.0)
+    return scores
+
+
+def _place_types(text: str) -> dict[EventCategory, float]:
+    clean = _FOOD_BAR.sub(lambda m: m.group(1), _URL.sub(" ", text or "").replace("’", "'"))
+    return {cat: v for cat, rx in _PLACE_TYPE_RE if (v := _votes(rx, clean))}
+
+
+def _categorize(text: str, hashtags: Optional[list[str]] = None) -> EventCategory:
+    """The best-supported category, or OTHER when nothing in the post points anywhere.
+    The kind of place the caption names most (café, bar, pop-up, restaurant) decides
+    first, then dish words, hashtags and emoji. The venue's own name is deliberately
+    not used: a category is what the reel is about, so a S'mores Pizookie at "BJ's
+    Restaurants" is dessert and a full meal at "Cafe Landwer" is food. `hashtags`,
+    when given, are searched by substring — leave them out of `text`."""
+    types = _place_types(text)
+    if types:
+        best = max(types.values())
+        tied = [c for c, v in types.items() if v == best]
+        return min(tied, key=lambda c: _CATEGORY_ORDER[c])
+    scores = _category_scores(_URL.sub(" ", text or ""), hashtags)
+    if not scores:
+        return EventCategory.OTHER
+    # On a tie in dish words, food & drink wins: it is the most common kind of spot,
+    # and a pasta-and-cheesecake reel is a restaurant more often than a dessert shop.
+    return max(scores, key=lambda c: (scores[c], c is EventCategory.FOOD_DRINK, -_CATEGORY_ORDER[c]))
 
 
 def _heuristic_times(searchable: str, start_date_raw: Optional[str]) -> list[str]:
@@ -646,12 +1006,11 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
             and not venue and category is EventCategory.OTHER:
         return True
 
-    if venue or geo.place_names or candidate_times or category is not EventCategory.OTHER:
+    if venue or geo.place_names or candidate_times:
         return False
-    if _AD_MARKERS.search(text):
-        return True
-    # No venue, no location, category=other — a short caption that is pure hype,
-    # an engagement-bait teaser, or a new-special announcement is not a spot.
+    # No venue and no location — a short caption that is pure hype, an
+    # engagement-bait teaser ("Comment LIST"), or a new-special announcement is
+    # not a spot, even when it names a food ("the best no bake desserts").
     if len(caption) < 140 and re.search(
         r"\b(is back|back!|now open|new today|new season|limited time|last chance|"
         r"don'?t miss|lock (?:it |them )?down|you hungry|who'?s hungry|what would you order|"
@@ -659,6 +1018,10 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
         r"link in bio|dm (?:me |us )?for|obviously\??$|new specials?)\b",
         caption, re.IGNORECASE,
     ):
+        return True
+    if category is not EventCategory.OTHER:
+        return False
+    if _AD_MARKERS.search(text):
         return True
     tags = {re.sub(r"[^a-z0-9]", "", t.lower()) for t in (raw.hashtags or [])}
     return len(tags & _MUSIC_GENRE_TAGS) >= 2

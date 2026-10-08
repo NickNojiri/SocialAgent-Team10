@@ -52,6 +52,15 @@ _WORDS: set[str] = set(
     company co bros son sons daughter and social supply provisions goods
     cheesecake cheese factory bagel bamboo bean malatang chop label
     grounded sapo dolce buena onda izakaya tokyo willow whisk
+    always day days hello united snacks box boxes max bad good best china seoul
+    shack shake stew pura vida casa mi su tu el la los las de del amor bonita
+    piccolo bella bello dolci pane pan panaderia fleur fleurs et sel le petit
+    maison chez dimsum dumplings tea teas cha milk bun buns roll rolls bowl bowls
+    garden gardens corner table tables plates kitchen kitchens cantina bistro
+    taste tasty yummy yum love lovely sweet sweets treat treats bite bites
+    world city town village street side station central express fresh
+    golden lucky happy fortune dragon phoenix tiger panda lotus jade pearl
+    soft serve serving creamy sugar spice nice cafe coffee matcha
     """.split()
 )
 
@@ -69,6 +78,8 @@ _GEO_SUFFIXES = (
     "anaheim", "pasadena", "fullerton", "carlsbad", "escondido", "tustin",
     "hayward", "alhambra", "vegas", "miami", "boston", "dallas", "toronto",
     "vancouver", "amsterdam", "melbourne", "perth", "seoul", "tokyo", "co", "com",
+    "houston", "charlotte", "austin", "denver", "atlanta", "phoenix", "portland",
+    "nashville", "philly", "sydney", "london", "brooklyn", "manhattan", "honolulu",
 )
 # Handle tails that are venue category words — peel them to expose the head.
 _TAIL_WORDS = (
@@ -133,6 +144,42 @@ def split_handle(handle: str) -> str:
                 i += length
                 break
         else:
-            peeled = _peel_tail(core)          # greedy failed — try peeling a tail word
+            best = _segment(core)              # greedy failed — allow one name part
+            if best:
+                return _titlecase(best)
+            peeled = _peel_tail(core)          # ...or peel a tail word
             return _titlecase(peeled) if len(peeled) >= 2 else core[:1].upper() + core[1:]
     return _titlecase(parts) if len(parts) >= 2 else core[:1].upper() + core[1:]
+
+
+def _segment(core: str) -> list[str] | None:
+    """Best split of `core` into known words plus at most ONE unknown run — the part
+    that is a proper name ('tuttobelle|gelato', 'chef|fei', 'sushi|payce'). None
+    when no such split covers most of the handle with real words."""
+    n = len(core)
+    # best[i] = (unknown_runs, unknown_chars, pieces, parts) for core[:i]
+    best: list[tuple[int, int, int, list[str]] | None] = [None] * (n + 1)
+    best[0] = (0, 0, 0, [])
+    for i in range(n):
+        if best[i] is None:
+            continue
+        u, uc, k, parts = best[i]
+        for j in range(i + 1, n + 1):
+            piece = core[i:j]
+            known = piece in _WORDS and len(piece) >= 3     # 'tu'/'le' would chop names apart
+            cand = (u, uc, k + 1, parts + [piece]) if known else (
+                (u + 1, uc + len(piece), k + 1, parts + [piece])
+                if len(piece) >= 2 and not (parts and parts[-1] not in _WORDS) else None)
+            if cand is None or cand[0] > 1:
+                continue
+            if best[j] is None or cand[:3] < best[j][:3]:
+                best[j] = cand
+    res = best[n]
+    if not res or len(res[3]) < 2:
+        return None
+    unknown_runs, unknown_chars, _, parts = res
+    if unknown_runs > 1 or unknown_chars * 3 > n * 2:   # real words cover at least a third
+        return None
+    if len(parts[-1]) == 3 and parts[-2] not in _WORDS:  # 'eggb|red' — a cut, not a word
+        return None
+    return parts

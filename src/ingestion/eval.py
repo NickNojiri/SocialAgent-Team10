@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import Optional
 
 from src.ingestion.config import IngestionSettings
-from src.ingestion.pipeline.normalizer import build_llm_payload, normalize
+from src.ingestion.pipeline.normalizer import (
+    _AREA_CITY_SET, _CONTAINERS, _REGION_STOP, build_llm_payload, normalize,
+)
 from src.ingestion.schemas.snapshot import RawPostSnapshot
 
 LABELS_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "labels.jsonl"
@@ -144,6 +146,7 @@ def print_paired_comparison(rows: list[dict], current: "Tally") -> None:
         raise ValueError("paired comparison requires one current result per input row")
     comparisons: dict[str, tuple[list[bool], list[bool]]] = {
         "venue exact": ([], []),
+        "venue same": ([], []),
         "category": ([], []),
     }
     for row, now in zip(rows, current.rows):
@@ -158,6 +161,9 @@ def print_paired_comparison(rows: list[dict], current: "Tally") -> None:
             old_hit, _ = venue_hit(stored.get("venue"), gold.get("venue"))
             comparisons["venue exact"][0].append(old_hit)
             comparisons["venue exact"][1].append(bool(now["venue"]))
+            if now.get("venue_same") is not None:      # absent in hand-built tallies
+                comparisons["venue same"][0].append(venue_same_place(stored.get("venue"), gold.get("venue")))
+                comparisons["venue same"][1].append(bool(now["venue_same"]))
         if verdict.get("category") in _SCOREABLE_VERDICTS and gold.get("category"):
             old_hit = _norm(stored.get("category")) == _norm(gold["category"])
             comparisons["category"][0].append(old_hit)
@@ -165,6 +171,8 @@ def print_paired_comparison(rows: list[dict], current: "Tally") -> None:
 
     print("── paired before/after (stored prediction → current heuristic) ──")
     for name, (before, after) in comparisons.items():
+        if not before:
+            continue
         before_only, after_only, p_value = mcnemar_exact(before, after)
         delta_interval = paired_delta_interval(before, after)
         delta_text = "n/a" if delta_interval is None else (
@@ -292,6 +300,60 @@ def venue_hit(pred: Optional[str], gold: Optional[str]) -> tuple[bool, bool]:
     return (False, jac >= 0.6)
 
 
+# ── "same place" — the venue equivalence in docs/LABELING_GUIDE.md §3 ───────────
+# Venue exact compares normalized strings, so 'Bjs Restaurants' vs "BJ's Restaurants"
+# and 'Phin Coffee' vs 'Phin Coffee Torrance' count as misses even though a user
+# would land at the same door. These rules were written down before re-scoring
+# and apply identically to every run being compared; venue exact is kept as-is.
+_LOCATION_TAIL = {
+    "oc", "la", "sd", "sf", "nyc", "ny", "dtla", "sgv", "usa", "us", "uk", "ca", "tx", "wa",
+    "fl", "nv", "az", "hi", "il", "ma", "dca", "dl", "wdw", "downtown", "uptown",
+}
+_TYPE_TAIL = {
+    "cafe", "café", "coffee", "bakery", "patisserie", "creamery", "company", "co", "inc",
+    "house", "restaurant", "restaurants", "kitchen", "bar", "grill", "shop", "shoppe",
+    "store", "market", "eatery", "bistro", "diner", "pizzeria", "cantina", "tavern",
+    "lounge", "soft", "serve", "tea", "and", "&",
+}
+_PLACE_PHRASES = {p.lower() for p in (_AREA_CITY_SET | _REGION_STOP | _CONTAINERS)}
+
+
+def _name_tokens(s: Optional[str]) -> list[str]:
+    toks = _norm(re.sub(r"['’]", "", s or "")).split()
+    return toks[1:] if len(toks) > 1 and toks[0] == "the" else toks
+
+
+def _only_qualifiers(tail: list[str]) -> bool:
+    """True when the extra words are just a location or a kind of business."""
+    if not tail:
+        return False
+    if " ".join(tail) in _PLACE_PHRASES:
+        return True
+    return all(t in _TYPE_TAIL or t in _LOCATION_TAIL or t in _PLACE_PHRASES for t in tail)
+
+
+def venue_same_place(pred: Optional[str], gold: Optional[str]) -> bool:
+    """Same venue under the labeling guide: identical ignoring case, spacing and
+    punctuation ('Shugarshack' = 'Shugar Shack'), or one name is the other plus only a
+    location or business-type tail ('Phin Coffee' = 'Phin Coffee Torrance',
+    'Tahoe Bagel' = 'Tahoe Bagel Company'). The shared part must hold a real name
+    word, so 'Coffee' never matches 'Coffee Company'."""
+    if not gold:
+        return not pred
+    if not pred:
+        return False
+    a, b = _name_tokens(pred), _name_tokens(gold)
+    if not a or not b:
+        return False
+    if "".join(a) == "".join(b):
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if long_[: len(short)] != short:
+        return False
+    has_name = any(len(t) >= 3 and t not in _TYPE_TAIL and t not in _LOCATION_TAIL for t in short)
+    return has_name and _only_qualifiers(long_[len(short):])
+
+
 def city_hit(candidate_place_text: str, gold_city: Optional[str]) -> Optional[bool]:
     """None → not scored (gold has no city). Else: gold city appears in the record's geo text."""
     if not gold_city:
@@ -304,6 +366,7 @@ class Tally:
     n: int = 0
     venue_exact: int = 0
     venue_fuzzy: int = 0
+    venue_same: int = 0
     venue_scored: int = 0
     cat_hit: int = 0
     cat_scored: int = 0
@@ -332,6 +395,8 @@ class Tally:
             f"  rows scored       : {self.n}",
             f"  venue exact       : {self.pct(self.venue_exact, self.venue_scored)}",
             f"  venue fuzzy (>=.6): {self.pct(self.venue_fuzzy, self.venue_scored)}",
+            f"  venue same place  : {self.pct(self.venue_same, self.venue_scored)}  "
+            f"(LABELING_GUIDE §3: spacing/punctuation, location or business-type tail)",
             f"  category          : {self.pct(self.cat_hit, self.cat_scored)}",
             f"  city in geo text  : {self.pct(self.city_hit, self.city_scored)}",
             f"  promo rejected    : {self.pct(self.vague_hit, self.vague_scored)}  (recall — gold in_catalog=false → is_vague)",
@@ -382,12 +447,14 @@ def score(rows: list[dict], *, use_llm: bool, settings: IngestionSettings) -> Ta
         t.n += 1
         code = row["url"].rstrip("/").split("/")[-1]
 
-        v_exact = v_fuzzy = None
+        v_exact = v_fuzzy = v_same = None
         if verdict.get("venue") in _SCOREABLE_VERDICTS and (gold.get("venue") or gold.get("in_catalog") is False):
             v_exact, v_fuzzy = venue_hit(pred_venue, gold.get("venue"))
             t.venue_scored += 1
             t.venue_exact += int(v_exact)
             t.venue_fuzzy += int(v_fuzzy)
+            v_same = venue_same_place(pred_venue, gold.get("venue"))
+            t.venue_same += int(v_same)
 
         c_hit = None
         if verdict.get("category") in _SCOREABLE_VERDICTS and gold.get("category"):
@@ -419,6 +486,7 @@ def score(rows: list[dict], *, use_llm: bool, settings: IngestionSettings) -> Ta
                 "code": code,
                 "venue": v_exact,
                 "venue_fuzzy": v_fuzzy,
+                "venue_same": v_same,
                 "cat": c_hit,
                 "city": city_ok,
                 "conf": conf,

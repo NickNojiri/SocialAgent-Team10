@@ -118,6 +118,29 @@ Run over a held-out slice of `labels.jsonl`:
 > `python scripts/eval_diagnostics.py`. Round-by-round history below is kept as-is —
 > the *relative* gains within a round are still informative, the absolutes are not.
 
+## Round 5 — 2026-10-08 (held-out, checked once)
+
+Error analysis on the train split showed where the misses were: categories decided by
+the first keyword hit (one "cake" made a pasta restaurant a dessert spot; "Pizza Bar"
+became nightlife; `bakeries`, `S’mores` and `#bestsushi` never matched), cities picked
+as the venue, 📍 lines and the name line above an address ignored, run-together
+handles left unsplit, and a blogger's account name compiled into the alias table.
+The fixes are general rules, tuned on train only; the test split was scored once.
+
+| held-out test (122 reels, train aliases) | main | round 5 | paired 95% CI | McNemar |
+|---|---|---|---|---|
+| venue exact | 37.4% | **47.0%** | +4.3 to +15.7 pts | p = 0.003 |
+| venue same place (new, §3 of `LABELING_GUIDE.md`) | 51.3% | **60.0%** | +3.5 to +14.8 pts | p = 0.006 |
+| category | 63.2% | **82.1%** | +10.3 to +27.4 pts | p = 6e-5 |
+| city · promo recall · real places rejected | 73.1% · 23.5% · 3.8% | unchanged | — | — |
+
+Train rose further (venue 50.0% → 63.7%, category 70.0% → 88.3%), so part of the
+train gain does not carry over; the test numbers above are the ones to report.
+The labeling side of the problem — inconsistent gold spellings, venues that are
+places, venues missing from the stored input, no labeler names — is now written
+down in `docs/LABELING_GUIDE.md` and checked by `scripts/label_audit.py`;
+`scripts/kappa_batch.py` runs the blind second-labeler pass for kappa.
+
 ## Measured results (15-row seed corpus, `python -m src.ingestion.eval`)
 
 | stage | venue exact | category | city in geo |

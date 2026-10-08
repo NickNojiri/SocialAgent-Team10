@@ -59,9 +59,18 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #      it deliberately, and sparingly.
 #   train-split (311 rows, train aliases) : venue 150/300 · fuzzy 158/300 · category 210/300 · city 194/248 · vague 11/34
 #      for reference, honest held-out at the same commit: venue 37.4% · cat 63.2% · city 73.1% · vague 23.5% (precision 50%)
-_FLOOR_VENUE_EXACT = 150
-_FLOOR_VENUE_FUZZY = 158
-_FLOOR_CATEGORY = 210
+#   2026-10-08 round 5 (scored categories with place types first · 📍 pin / name-line /
+#     prose venue slots · location-tail trim · one-name-part handle split · blogger
+#     accounts never the venue · alias table skips multi-venue accounts) + the
+#     "same place" metric (docs/LABELING_GUIDE.md §3), train aliases:
+#   train-split (300 scored)         : venue 191/300 · same place 210 · fuzzy 199 · category 265/300 · city 194/248 · vague 11/34
+#      held-out, checked once, paired vs main: venue 37.4% -> 47.0% (+9.6 pts, CI [+4.3, +15.7],
+#      McNemar p=0.003) · same place 51.3% -> 60.0% · category 63.2% -> 82.1% (+18.8 pts,
+#      CI [+10.3, +27.4], p=6e-5) · city 73.1% and vague 23.5% unchanged
+_FLOOR_VENUE_EXACT = 191
+_FLOOR_VENUE_SAME = 210
+_FLOOR_VENUE_FUZZY = 199
+_FLOOR_CATEGORY = 265
 _FLOOR_CITY = 194
 _FLOOR_VAGUE = 11
 
@@ -103,6 +112,9 @@ def test_heuristic_baseline_does_not_regress(train_rows):
     t = score(train_rows, use_llm=False, settings=IngestionSettings())
     assert t.venue_exact >= _FLOOR_VENUE_EXACT, (
         f"venue exact regressed: {t.venue_exact}/{t.venue_scored} < floor {_FLOOR_VENUE_EXACT}"
+    )
+    assert t.venue_same >= _FLOOR_VENUE_SAME, (
+        f"venue same-place regressed: {t.venue_same}/{t.venue_scored} < floor {_FLOOR_VENUE_SAME}"
     )
     assert t.venue_fuzzy >= _FLOOR_VENUE_FUZZY, (
         f"venue fuzzy regressed: {t.venue_fuzzy}/{t.venue_scored} < floor {_FLOOR_VENUE_FUZZY}"
