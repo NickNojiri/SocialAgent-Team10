@@ -1,0 +1,5 @@
+# Nick's ML study only — not part of the product image.
+torch>=2.2
+transformers>=4.44
+datasets>=2.20
+accelerate>=0.33
