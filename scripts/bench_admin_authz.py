@@ -55,6 +55,20 @@ def hdr(token):
     return {"X-Tenant-Token": token} if token else {}
 
 
+def attack_class(label: str) -> str:
+    """Group the existing attack labels without changing their requests."""
+    lowered = label.lower()
+    if any(marker in lowered for marker in ("garbage token", "empty token", "bit-flipped token", "truncated token")):
+        return "forged/tampered tenant token"
+    if "no token" in lowered or "without a token" in lowered:
+        return "no-token attacks"
+    if "vote" in lowered:
+        return "faked votes"
+    if "another guild" in lowered or "another guild's" in lowered:
+        return "server-X-token-on-server-Y"
+    return "other authorization/scope attacks"
+
+
 MINE_RW = mint_token(MINE)
 MINE_R = mint_token(MINE, scope=SCOPE_READ)
 MINE_ME = mint_token(MINE, user_id=ME)
@@ -118,53 +132,53 @@ def run(client):
     failed_jobs = lambda g, t: client.get(f"/api/jobs?guild_id={g}&state=failed", headers=hdr(t))  # noqa: E731
 
     forged = [
-        ("read another guild with my token", lambda: get(THEIRS, MINE_RW)),
-        ("read another guild with no token", lambda: get(THEIRS, None)),
-        ("read a DM stash with no token", lambda: get("dm-42", None)),
-        ("read with a garbage token", lambda: get(MINE, "f" * 64)),
-        ("read with an empty token", lambda: get(MINE, "")),
-        ("read with a bit-flipped token", lambda: get(MINE, "f" + MINE_RW[1:])),
-        ("read with a truncated token", lambda: get(MINE, MINE_RW[:32])),
-        ("read the nights counter of another guild", lambda: nights(THEIRS, MINE_RW)),
-        ("delete in another guild", lambda: delete(THEIRS, MINE_RW)),
-        ("delete with no token", lambda: delete(MINE, None)),
-        ("delete using a read-only share token", lambda: delete(MINE, MINE_R)),
-        ("vote as another user", lambda: vote(MINE, MINE_ME, YOU)),
-        ("strip another user's vote", lambda: vote(MINE, MINE_ME, YOU, delta=-1)),
-        ("vote with a tenant token that omits the voter", lambda: vote(MINE, MINE_RW, ME)),
-        ("vote in another guild", lambda: vote(THEIRS, MINE_ME, ME)),
-        ("confirm a night out as another user", lambda: went(MINE, MINE_ME, YOU)),
-        ("dismiss a night out as another user", lambda: went(MINE, MINE_ME, YOU, happened=False)),
-        ("ingest into another guild", lambda: ingest(THEIRS, MINE_ME, ME)),
-        ("ingest with no token", lambda: ingest(MINE, None, ME)),
-        ("queue a capture job in another guild", lambda: job(THEIRS, MINE_ME, ME)),
-        ("evade the per-user limit by changing user_id", lambda: job(MINE, MINE_ME, YOU)),
-        ("read another guild's capture job result", lambda: job_status(mint_token(THEIRS))),
-        ("read a capture job result with no token", lambda: job_status(None)),
-        ("list another guild's failed captures", lambda: failed_jobs(THEIRS, MINE_RW)),
-        ("list failed captures with no token", lambda: failed_jobs(MINE, None)),
-        ("add a manual spot to another guild", lambda: manual(THEIRS, MINE_RW)),
-        ("add a manual spot with a read-only token", lambda: manual(MINE, MINE_R)),
-        ("edit a spot in another guild", lambda: edit(THEIRS, MINE_RW)),
-        ("lock in an event in another guild", lambda: lock(THEIRS, MINE_RW)),
-        ("swallow another guild's went-there prompts", lambda: followups(THEIRS, MINE_RW)),
-        ("swallow went-there prompts with a share token", lambda: followups(MINE, MINE_R)),
-        ("open a share link with no token", lambda: share(MINE, None)),
-        ("replay a share token against another guild", lambda: share(THEIRS, MINE_R)),
-        ("query /recommend for another guild", lambda: recommend(THEIRS, MINE_RW)),
-        ("query /plan for another guild with no token", lambda: plan(THEIRS, None)),
-        ("change another guild's /setup settings", lambda: save_settings(THEIRS, MINE_RW)),
-        ("change /setup settings with a share token", lambda: save_settings(MINE, MINE_R)),
-        ("read /setup settings with a share token", lambda: settings(MINE, MINE_R)),
-        ("delete another guild's data", lambda: forget(THEIRS, MINE_RW)),
-        ("delete a guild's data with a share token", lambda: forget(MINE, MINE_R)),
-        ("delete a guild's data with no token", lambda: forget(MINE, None)),
-        ("stuff another guild's SUS survey", lambda: survey(THEIRS, MINE_RW)),
-        ("read another guild's SUS results", lambda: survey_results(THEIRS, MINE_RW)),
-        ("read SUS results with a share token", lambda: survey_results(MINE, MINE_R)),
-        ("post feedback into another guild", lambda: feedback(THEIRS, MINE_RW)),
-        ("pad the time-to-card numbers with no token", lambda: timing(MINE, None)),
-        ("pad time-to-card with a share token", lambda: timing(MINE, MINE_R)),
+        ("GET", "/api/events", "read another guild with my token", lambda: get(THEIRS, MINE_RW)),
+        ("GET", "/api/events", "read another guild with no token", lambda: get(THEIRS, None)),
+        ("GET", "/api/events", "read a DM stash with no token", lambda: get("dm-42", None)),
+        ("GET", "/api/events", "read with a garbage token", lambda: get(MINE, "f" * 64)),
+        ("GET", "/api/events", "read with an empty token", lambda: get(MINE, "")),
+        ("GET", "/api/events", "read with a bit-flipped token", lambda: get(MINE, "f" + MINE_RW[1:])),
+        ("GET", "/api/events", "read with a truncated token", lambda: get(MINE, MINE_RW[:32])),
+        ("GET", "/api/nights", "read the nights counter of another guild", lambda: nights(THEIRS, MINE_RW)),
+        ("DELETE", "/api/events/{event_id}", "delete in another guild", lambda: delete(THEIRS, MINE_RW)),
+        ("DELETE", "/api/events/{event_id}", "delete with no token", lambda: delete(MINE, None)),
+        ("DELETE", "/api/events/{event_id}", "delete using a read-only share token", lambda: delete(MINE, MINE_R)),
+        ("POST", "/api/events/{event_id}/vote", "vote as another user", lambda: vote(MINE, MINE_ME, YOU)),
+        ("POST", "/api/events/{event_id}/vote", "strip another user's vote", lambda: vote(MINE, MINE_ME, YOU, delta=-1)),
+        ("POST", "/api/events/{event_id}/vote", "vote with a tenant token that omits the voter", lambda: vote(MINE, MINE_RW, ME)),
+        ("POST", "/api/events/{event_id}/vote", "vote in another guild", lambda: vote(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/events/{event_id}/went", "confirm a night out as another user", lambda: went(MINE, MINE_ME, YOU)),
+        ("POST", "/api/events/{event_id}/went", "dismiss a night out as another user", lambda: went(MINE, MINE_ME, YOU, happened=False)),
+        ("POST", "/api/ingest", "ingest into another guild", lambda: ingest(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/ingest", "ingest with no token", lambda: ingest(MINE, None, ME)),
+        ("POST", "/api/jobs", "queue a capture job in another guild", lambda: job(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/jobs", "evade the per-user limit by changing user_id", lambda: job(MINE, MINE_ME, YOU)),
+        ("GET", "/api/jobs/{job_id}", "read another guild's capture job result", lambda: job_status(mint_token(THEIRS))),
+        ("GET", "/api/jobs/{job_id}", "read a capture job result with no token", lambda: job_status(None)),
+        ("GET", "/api/jobs", "list another guild's failed captures", lambda: failed_jobs(THEIRS, MINE_RW)),
+        ("GET", "/api/jobs", "list failed captures with no token", lambda: failed_jobs(MINE, None)),
+        ("POST", "/api/manual", "add a manual spot to another guild", lambda: manual(THEIRS, MINE_RW)),
+        ("POST", "/api/manual", "add a manual spot with a read-only token", lambda: manual(MINE, MINE_R)),
+        ("POST", "/api/events/{event_id}/edit", "edit a spot in another guild", lambda: edit(THEIRS, MINE_RW)),
+        ("POST", "/api/events/{event_id}/lock", "lock in an event in another guild", lambda: lock(THEIRS, MINE_RW)),
+        ("GET", "/api/followups", "swallow another guild's went-there prompts", lambda: followups(THEIRS, MINE_RW)),
+        ("GET", "/api/followups", "swallow went-there prompts with a share token", lambda: followups(MINE, MINE_R)),
+        ("GET", "/share", "open a share link with no token", lambda: share(MINE, None)),
+        ("GET", "/share", "replay a share token against another guild", lambda: share(THEIRS, MINE_R)),
+        ("POST", "/recommend", "query /recommend for another guild", lambda: recommend(THEIRS, MINE_RW)),
+        ("POST", "/plan", "query /plan for another guild with no token", lambda: plan(THEIRS, None)),
+        ("PUT", "/api/settings", "change another guild's /setup settings", lambda: save_settings(THEIRS, MINE_RW)),
+        ("PUT", "/api/settings", "change /setup settings with a share token", lambda: save_settings(MINE, MINE_R)),
+        ("GET", "/api/settings", "read /setup settings with a share token", lambda: settings(MINE, MINE_R)),
+        ("POST", "/api/forget", "delete another guild's data", lambda: forget(THEIRS, MINE_RW)),
+        ("POST", "/api/forget", "delete a guild's data with a share token", lambda: forget(MINE, MINE_R)),
+        ("POST", "/api/forget", "delete a guild's data with no token", lambda: forget(MINE, None)),
+        ("POST", "/api/survey", "stuff another guild's SUS survey", lambda: survey(THEIRS, MINE_RW)),
+        ("GET", "/api/survey", "read another guild's SUS results", lambda: survey_results(THEIRS, MINE_RW)),
+        ("GET", "/api/survey", "read SUS results with a share token", lambda: survey_results(MINE, MINE_R)),
+        ("POST", "/api/feedback", "post feedback into another guild", lambda: feedback(THEIRS, MINE_RW)),
+        ("POST", "/api/time-to-card", "pad the time-to-card numbers with no token", lambda: timing(MINE, None)),
+        ("POST", "/api/time-to-card", "pad time-to-card with a share token", lambda: timing(MINE, MINE_R)),
     ]
 
     authentic = [
@@ -202,10 +216,20 @@ def main() -> None:
 
         print("  forged requests (must all be REJECTED):")
         rejected = 0
-        for label, call in forged:
+        got_through = []
+        by_class = {}
+        for _, _, label, call in forged:
             code = call().status_code
             ok = code in (401, 403)
+            category = attack_class(label)
+            counts = by_class.setdefault(category, {"attacks": 0, "refused": 0, "got_through": []})
+            counts["attacks"] += 1
             rejected += ok
+            if not ok:
+                got_through.append(label)
+                counts["got_through"].append(label)
+            else:
+                counts["refused"] += 1
             print(f"    {'REJECTED' if ok else f'ACCEPTED {code} <-- FAIL'}  {label}")
 
         print("\n  authentic requests (must all be ACCEPTED):")
@@ -217,10 +241,21 @@ def main() -> None:
             print(f"    {'ACCEPTED' if ok else f'REJECTED {code} <-- FAIL'}  {label}")
 
     print(
-        f"\n  => rejected {rejected}/{len(forged)} forged requests across "
-        f"{len(forged)} attack classes, accepted {accepted}/{len(authentic)} authentic"
+        f"\n  => {len(forged)} attacks, {rejected} refused, "
+        f"{len(got_through)} got through"
     )
-    if rejected != len(forged) or accepted != len(authentic):
+    if got_through:
+        print("  => got through: " + "; ".join(got_through))
+    print("\n  results by attack class:")
+    for category, counts in sorted(by_class.items()):
+        print(
+            f"    {category}: {counts['attacks']} attacks, "
+            f"{counts['refused']} refused, {len(counts['got_through'])} got through"
+        )
+        if counts["got_through"]:
+            print("      got through: " + "; ".join(counts["got_through"]))
+    print(f"  => accepted {accepted}/{len(authentic)} authentic requests")
+    if "unclassified" in by_class or rejected != len(forged) or accepted != len(authentic):
         print("  => FIX FAILURES BEFORE CLAIMING A NUMBER\n")
         sys.exit(1)
 
