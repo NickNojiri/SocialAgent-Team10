@@ -28,3 +28,12 @@ def test_reads_folder_and_zip(tmp_path):
     with zipfile.ZipFile(zpath, "w") as z:
         z.writestr("messages/inbox/t1/message_1.json", json.dumps(_THREAD))
     assert codes_from_json_texts(_message_files(zpath)) == {"DdeX2SesDSF", "AbC_12-x"}
+
+
+def test_reads_html_export(tmp_path):
+    zpath = tmp_path / "export.zip"
+    html = '<div><a target="_blank" href="https://www.instagram.com/reel/DdeX2SesDSF/?igsh=x">reel</a></div>'
+    with zipfile.ZipFile(zpath, "w") as z:
+        z.writestr("your_instagram_activity/messages/inbox/t1/message_1.html", html)
+        z.writestr("your_instagram_activity/messages/chats.html", '<a href="https://www.instagram.com/p/AbC_12-x/">x</a>')
+    assert codes_from_json_texts(_message_files(zpath)) == {"DdeX2SesDSF", "AbC_12-x"}

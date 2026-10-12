@@ -8,7 +8,7 @@ Instagram at all: it only reads files you downloaded.
 
   1. In the Instagram app (on the account the reels were sent to):
      Settings -> Accounts Center -> Your information and permissions ->
-     Download your information -> Messages -> format JSON.
+     Download your information -> Messages (JSON or HTML both work).
   2. Unzip the file Instagram emails you (or pass the .zip directly).
   3. python scripts/links_from_export.py path/to/export.zip --out reels.txt
 
@@ -39,12 +39,14 @@ def _strings(obj) -> Iterator[str]:
 
 
 def codes_from_json_texts(texts: Iterable[str]) -> set[str]:
+    """Reel/post codes in export files: JSON (walked) or HTML (scanned as text)."""
     codes: set[str] = set()
     for text in texts:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            continue                          # not every file in an export is JSON
+            codes.update(_CODE.findall(text))  # the HTML export format: links are plain hrefs
+            continue
         for s in _strings(data):
             codes.update(_CODE.findall(s))
     return codes
@@ -55,10 +57,10 @@ def _message_files(src: Path) -> Iterator[str]:
     if src.suffix.lower() == ".zip":
         with zipfile.ZipFile(src) as z:
             for name in z.namelist():
-                if "messages/" in name and name.endswith(".json"):
+                if "messages/" in name and name.endswith((".json", ".html")):
                     yield z.read(name).decode("utf-8", errors="replace")
     else:
-        for p in src.rglob("*.json"):
+        for p in [*src.rglob("*.json"), *src.rglob("*.html")]:
             if "messages" in p.parts:
                 yield p.read_text(encoding="utf-8", errors="replace")
 
