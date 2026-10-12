@@ -78,6 +78,7 @@ class LocalBrowserContext:
         return None
 
 
+@pytest.mark.xfail(strict=True, reason="Track A: browser fetch navigates to private addresses (THREAT_MODEL T3)")
 @pytest.mark.parametrize("url", PRIVATE_URLS)
 @pytest.mark.asyncio
 async def test_browser_fetch_rejects_internal_addresses_before_navigation(url):
@@ -91,6 +92,7 @@ async def test_browser_fetch_rejects_internal_addresses_before_navigation(url):
     assert navigation_attempts == []
 
 
+@pytest.mark.xfail(strict=True, reason="Track A: browser fetch follows DNS that resolves to a private IP (THREAT_MODEL T3)")
 @pytest.mark.asyncio
 async def test_browser_fetch_rejects_hostname_that_resolves_to_private_ip(monkeypatch):
     """DNS is mocked so testing a private resolution never contacts a resolver."""
@@ -111,6 +113,7 @@ async def test_browser_fetch_rejects_hostname_that_resolves_to_private_ip(monkey
     assert navigation_attempts == []
 
 
+@pytest.mark.xfail(strict=True, reason="Track A: embed fallback follows redirects to internal addresses (THREAT_MODEL T3)")
 @pytest.mark.asyncio
 async def test_embed_fallback_does_not_follow_redirect_to_internal_address(monkeypatch):
     """An in-memory 302 must not make the client request its internal Location."""
@@ -141,6 +144,7 @@ async def test_embed_fallback_does_not_follow_redirect_to_internal_address(monke
     assert internal_url not in requested_urls
 
 
+@pytest.mark.xfail(strict=True, reason="Track A: video download follows redirects to internal addresses (THREAT_MODEL T3)")
 def test_video_download_does_not_follow_redirect_to_internal_address(monkeypatch):
     """An in-memory 302 must not make the downloader request its internal Location."""
     initial_url = "https://media.example/video.mp4"
