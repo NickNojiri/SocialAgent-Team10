@@ -1,6 +1,6 @@
 # SpotBot — Team Priority TODO
 
-Last updated 2026-09-24. Owner: Nick. One prioritized list for the whole team.
+Last updated 2026-10-12. Owner: Nick. One prioritized list for the whole team.
 
 This is the "what do I pick up next" list. It rolls up `docs/PRODUCT_ROADMAP.md`
 (the why), `docs/MILESTONES.md` (the 100 Nights challenge), `docs/NEXT_SESSION.md`
@@ -60,11 +60,16 @@ first-time pastes retains nobody, so measure it on reels nobody picked.
   boundary — only switched on if the free path drops below 90% measured.
 - Instrument capture success as a first-class metric: log per-stage outcomes in
   `RunReport` (`pipeline/orchestrator.py` is already structured for it).
+  *✓ Per-URL rung (`capture_path`) and per-run counts, 2026-10-12 (ADR-0006);
+  exposing it in `/api/stats` is in P0.7.*
 - Publish the live pass rate from the 19 known reel URLs
   (`test_ig_live.py` + `docs/REEL_TRANSCRIBE_TEST_PLAN.md`). That number is the
   quality bar for every release.
 - Carry-over: authed IG login currently blocked (flagged burner + blacklisted
   IP). Retry needs a fresh burner + warm-up + a different network.
+- **Track A:** decide on Meta's oEmbed API as a capture rung
+  (`docs/handoffs/TRACK-A-COMPLIANT-CAPTURE.md`). If yes, it is one more step in
+  `orchestrator._capture()` with its own `capture_path` value (ADR-0006).
 
 ### P0.2 · Extraction accuracy — the label loop  *(`docs/EXTRACTION_ACCURACY.md`)*
 Capture runs end to end but the *fields it fills are often wrong*. This is the
@@ -204,6 +209,21 @@ paths.*
   Constraints: no new services or dependencies (no Redis/Kafka/Postgres), `INGEST_ASYNC`
   default unchanged, tenant-token checks preserved on every guild call (fail closed,
   503), all existing tests pass. Platform and `app/` changes ship as separate PRs.
+- **Capture-chain follow-ups (ADR-0006) — Nick, next Platform session**, one PR each:
+  1. *Breaker across jobs, with a cool-down.* Today the authed-source breaker resets
+     with every `IngestionPipeline`, and `serving/admin.py::_run_ingest` builds one per
+     job, so a flagged account still gets up to 3 tries per job. Move the miss count
+     onto one shared object next to the module-level `_ig_source` (passed into the
+     pipeline), and after `AUTHED_MAX_MISSES` misses skip the source for
+     `AUTHED_COOLDOWN_S` (e.g. 1800 s) before one probe. Done = tests for trip,
+     cool-down and probe-recovers.
+  2. *Capture paths in `/api/stats`.* Add `report.to_dict()["capture_paths"]` to each
+     `_CAPTURE_LOG` entry and the totals over the recent log to `/api/stats`, so the
+     share of each rung (authed / browser / embed / none) is a number. The `/dash`
+     panel that shows it is Track C's. Done = a test on the stats payload.
+  3. *Results index for `experiments/`.* `experiments/README.md`: every number we
+     report (scorecard, baseline report, error buckets, SSL), with the exact command,
+     split, commit and date, so anyone can rerun it and get the same number.
 - Pick the always-on box for the dogfood deploy (spare PC or cheapest VPS,
   `llama3.2:3b` profile). *Staging stack built (#11, `docs/RUNBOOK.md`); still needs a host.*
 - ToS + privacy-policy pages *(privacy: ✓ `/privacy` in Discord, #21; ToS still open)* (capture is user-initiated paste only — never
