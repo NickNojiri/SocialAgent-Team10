@@ -186,3 +186,13 @@ def test_label_confidence_calibrates_on_train_and_ranks():
     assert [e["slot"] for e in queue] == ["none", "pin"]          # least confident first
     assert queue[1]["venue"] == "HANA Gelateria" and queue[1]["confidence"] == 0.9
     assert rank([{"url": "u", "input": {}}], {}) == []            # fetch failed: skipped
+
+
+# ── post date from the shortcode (deal/event expiry needs the year) ─────────────
+
+def test_posted_at_decodes_the_shortcode():
+    from scripts.ig_dates import posted_at
+    assert posted_at("https://www.instagram.com/reel/Dc161MuvZYC/").date().isoformat() == "2026-09-03"
+    assert posted_at("DcOl-mBs5A1").date().isoformat() == "2026-08-19"
+    assert posted_at("https://www.instagram.com/reel/DdeX2SesDSF/?igsh=x") is not None
+    assert posted_at("not a code!") is None

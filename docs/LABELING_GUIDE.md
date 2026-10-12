@@ -57,13 +57,27 @@ scorer to make a row pass; fix the extractor or the label.
 ## §4 Catalog inclusion and category
 
 - `gold.in_catalog` is **true** when the reel is about real places a group could
-  go to (one, or a list of them), **false** for promos, products, recipes and memes. A chain or product
-  named in a `false` row goes in `gold.brand`, never `gold.venue`.
-- **Recipes** are kept, not discarded: `post_type: "recipe"`, `in_catalog: false` (nowhere
-  to go), the dish's name in `gold.recipe`, plus `gold.dish` and `gold.cuisine` (§4 lists).
-  Sponsored recipes count too; add "sponsored" to the note. A row with
-  `in_catalog: false` has `venue: null`; a row with `in_catalog: true` has a venue
-  or at least a city.
+  go to (one, or a list of them), **false** otherwise. A row with `in_catalog: false`
+  has `venue: null`; a chain or product it names goes in `gold.brand`. A row with
+  `in_catalog: true` has a venue, a `venues` list, or at least a city.
+- **`post_type`** says what kind of post it is, so nothing is thrown away:
+
+  | `post_type` | What it is | `in_catalog` | Extra fields |
+  |---|---|---|---|
+  | `place` | One spot to go (the default; may be left out) | true | |
+  | `list` | Several spots: rankings, crawls, "what I ate in a day" | true | `venues` (§2.4) |
+  | `event` | A dated happening: festival, pop-up, concert, opening night | true | `starts`, `ends` |
+  | `deal` | A limited offer: BOGO, grand-opening gift, happy hour, "through Sept 27" | true at a named place, false for a chain-wide offer | `deal`, `starts`, `ends`, `brand` |
+  | `recipe` | Something to cook | false | `recipe`, `dish`, `cuisine` |
+  | `product` | Something to buy that isn't a place (packaged food, an appliance) | false | `brand` |
+  | `no_info` | Nothing to act on: a meme, a vibe clip, a caption that names nothing | false | |
+
+- **Dates** (`gold.starts`, `gold.ends`) are ISO `YYYY-MM-DD`. A caption usually gives
+  no year: take it from the post date, `python scripts/ig_dates.py <url>` (decoded from
+  the link, offline). An offer with no end date has `ends: null`; a recurring one
+  ("Bang Wednesdays", a weekday happy hour) goes in `deal` as text with no dates.
+  `gold.deal` is one short line: "BOGO cookies", "free tote for the first 200".
+- Sponsored posts keep their real `post_type`; add "sponsored" to the note.
 - `gold.category` is **what the reel is about**, not the venue's name: a S'mores
   Pizookie at BJ's Restaurants is `cafe_dessert`; a full meal at Cafe Landwer is
   `food_drink`. Drinks and bars are `nightlife`; pop-ups, markets and festivals are

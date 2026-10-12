@@ -303,6 +303,13 @@ Evolve the "Add suggestions" button from plain similarity search to a per-guild
 **taste profile**: weight by votes and *attended* events (P1.1 data), decay stale
 spots, diversify categories. "More like the places we actually went" is the moat.
 
+### P2.3b · Plan around a date or event  *(idea, 2026-10-12, Nick; not scheduled)*
+Pick an event or a day ("we're going to Lavender Nights Saturday") and get the rest of the
+outing planned around it: spots **near** that place, **open and valid on that date**
+(events and deals now carry `starts`/`ends`, LABELING_GUIDE §4), ranked by the group's
+taste (P2.3). Needs: dated events/deals in the catalog, geo for every spot, the taste
+profile, and a "nearby on date X" query in the recommender. Large; after P1.1 and P2.3.
+
 ### P2.4 · Web companion — evolve `admin.py`, don't rebuild  *(roadmap 2.3)*
 - **Shareable read-only catalog page per guild** (`spotbot.app/g/<invite-code>`):
   the group's map, filterable list, vote counts — viewable by people who don't
