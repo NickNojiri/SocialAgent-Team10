@@ -12,6 +12,7 @@ several of these decisions were made by measuring, and the numbers are the point
 | [0003](0003-discord-first-thin-adapter.md) | Discord is the only client until the loop is proven; backend stays chat-agnostic | accepted |
 | [0004](0004-async-capture-job-queue.md) | Reel capture becomes an async job the bot polls | proposed — spike behind `INGEST_ASYNC=1`; store superseded by 0005 |
 | [0005](0005-sqlite-job-store.md) | Capture jobs are stored in SQLite, so a restart never loses one silently | proposed — behind `JOB_STORE=sqlite` |
+| [0006](0006-capture-fallback-chain.md) | Capture is an explicit fallback chain that records its rung, with a breaker on the logged-in source | accepted (oEmbed rung proposed) |
 
 Numbering is chronological by *recording* date, not decision date; the decision date
 is in each file. Superseding a decision means a new ADR that links back, never an edit

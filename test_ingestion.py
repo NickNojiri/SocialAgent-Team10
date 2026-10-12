@@ -1395,6 +1395,113 @@ class TestAuthedSourcePipeline:
         assert report.results[0].record.venue_name == "Casa Loma"
 
 
+class TestCaptureChain:
+    """orchestrator._capture: which rung served each URL, and the authed-source
+    circuit breaker (a flagged account is not retried on every URL)."""
+
+    @staticmethod
+    def _browser(monkeypatch, status=FetchStatus.OK):
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        class FakeSession:
+            opened = 0
+
+            def __init__(self, settings):
+                FakeSession.opened += 1
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def fetch(self, url):
+                return PageSnapshot(url=url, status=status, fetched_at=NOW,
+                                    meta={"og:title": "Taco Night",
+                                          "og:description": "Birria tacos at Casa Loma this Friday 8pm"})
+
+        monkeypatch.setattr(orchestrator, "SocialSessionManager", FakeSession)
+        return FakeSession
+
+    @pytest.mark.asyncio
+    async def test_each_result_records_the_rung_that_served_it(self, monkeypatch):
+        self._browser(monkeypatch)
+
+        class HalfSource:                     # serves IG reels, passes on other hosts
+            def fetch_url(self, url):
+                return make_raw(caption=IG_CAPTION) if "instagram.com/" in url else None
+
+        report = await IngestionPipeline(IngestionSettings(), authed_source=HalfSource()).run(
+            ["https://www.instagram.com/reel/AAA/", "https://example.test/post"])
+        assert [r.capture_path for r in report.results] == ["authed", "browser"]
+        assert report.to_dict()["capture_paths"] == {"authed": 1, "browser": 1}
+        assert "Capture paths:" in report.render()
+
+    @pytest.mark.asyncio
+    async def test_breaker_stops_calling_a_failing_authed_source(self, monkeypatch):
+        self._browser(monkeypatch)
+
+        class DeadSource:                     # e.g. the account got flagged mid-run
+            def __init__(self):
+                self.calls = 0
+
+            def fetch_url(self, url):
+                self.calls += 1
+                return None
+
+        source = DeadSource()
+        urls = [f"https://www.instagram.com/reel/R{i}/" for i in range(6)]
+        report = await IngestionPipeline(IngestionSettings(authed_max_misses=3),
+                                         authed_source=source).run(urls)
+        assert source.calls == 3                       # then skipped for the rest of the run
+        assert all(r.capture_path == "browser" for r in report.results)
+
+    @pytest.mark.asyncio
+    async def test_non_instagram_urls_do_not_trip_the_breaker(self, monkeypatch):
+        self._browser(monkeypatch)
+
+        class IgOnly:
+            def __init__(self):
+                self.calls = 0
+
+            def fetch_url(self, url):
+                self.calls += 1
+                return make_raw(caption=IG_CAPTION) if "instagram.com/" in url else None
+
+        source = IgOnly()
+        urls = [f"https://example.test/{i}" for i in range(4)] + ["https://www.instagram.com/reel/OK/"]
+        report = await IngestionPipeline(IngestionSettings(authed_max_misses=2), authed_source=source).run(urls)
+        assert source.calls == 5 and report.results[-1].capture_path == "authed"
+
+    @pytest.mark.asyncio
+    async def test_a_raising_source_falls_back_instead_of_failing_the_url(self, monkeypatch):
+        self._browser(monkeypatch)
+
+        class BuggySource:
+            def fetch_url(self, url):
+                raise RuntimeError("instagrapi schema changed")
+
+        report = await IngestionPipeline(IngestionSettings(), authed_source=BuggySource()).run(
+            ["https://www.instagram.com/reel/BBB/"])
+        result = report.results[0]
+        assert result.capture_path == "browser" and result.record is not None
+
+    @pytest.mark.asyncio
+    async def test_login_wall_recovers_through_the_embed_rung(self, monkeypatch):
+        import src.ingestion.pipeline.orchestrator as orchestrator
+
+        self._browser(monkeypatch, status=FetchStatus.LOGIN_WALL)
+
+        async def fake_embed(url):
+            return PageSnapshot(url=url, status=FetchStatus.OK, fetched_at=NOW,
+                                meta={"og:title": "Taco Night",
+                                      "og:description": "Birria tacos at Casa Loma this Friday 8pm"})
+
+        monkeypatch.setattr(orchestrator, "try_embed_fallback", fake_embed)
+        report = await IngestionPipeline(IngestionSettings()).run(["https://www.instagram.com/reel/CCC/"])
+        assert report.results[0].capture_path == "embed" and report.results[0].record is not None
+
+
 class TestFailFast:
     @pytest.mark.asyncio
     async def test_down_ollama_degrades_run_to_heuristics(self, monkeypatch):

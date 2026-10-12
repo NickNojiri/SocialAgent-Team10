@@ -107,7 +107,7 @@ Stage → module map:
 
 | Stage | Module | Optional? | Degrades to |
 |---|---|---|---|
-| Fetch (authed) | `sources/ig_authed.py` (instagrapi) | yes (`IG_USERNAME`) | Playwright |
+| Fetch (authed) | `sources/ig_authed.py` (instagrapi) | yes (`IG_USERNAME`) | Playwright; skipped for the rest of the run after `AUTHED_MAX_MISSES` empty IG URLs in a row (ADR-0006) |
 | Fetch (browser) | `browser/session_manager.py` (Playwright) | required | login wall → `/embed/` fallback (`browser/ig_embed.py`) |
 | Extract page → `RawPostSnapshot` | `extractors/instagram.py`, `tiktok.py`, `generic.py` | required | — |
 | Transcribe | `pipeline/transcriber.py` (faster-whisper) | yes (`TRANSCRIBE_ENABLED`) | no transcript |
@@ -119,6 +119,10 @@ Stage → module map:
 | Geocode | `pipeline/geo_enricher.py` (Nominatim) | **off in the admin path** | coords from the IG location tag only |
 | Schedule | `pipeline/temporal_resolver.py` | yes | `unscheduled` |
 | Store | `sinks/jsonl_sink.py`, `sinks/chroma_sink.py` | Chroma best-effort | JSONL always written |
+
+The fetch rungs are walked by `orchestrator._capture`; each result records the rung that
+served it in `IngestionResult.capture_path` (`authed` / `browser` / `embed` / `none`), and the
+run report counts them (ADR-0006).
 
 Internals of each stage: [`docs/PIPELINE.md`](PIPELINE.md) §2–3 (still accurate).
 

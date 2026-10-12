@@ -106,6 +106,10 @@ class IngestionSettings(BaseModel):
     # LLM + resolve). A hung backend fails the one URL fast with a clear
     # reason instead of riding the caller's HTTP timeout.
     capture_budget_s: float = Field(180.0, gt=0)
+    # Circuit breaker on the logged-in Instagram source: after this many Instagram URLs
+    # in a row come back empty, skip it for the rest of the run instead of retrying a
+    # flagged or rate-limited account on every URL (orchestrator._capture).
+    authed_max_misses: int = Field(default_factory=lambda: int(os.getenv("AUTHED_MAX_MISSES", "3")), ge=1)
 
     # ── Geographic enrichment (Phase 3) ──────────────────────────────────────
     # Resolves GeoContext location clues to coordinates via the repo's existing

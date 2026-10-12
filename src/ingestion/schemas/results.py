@@ -30,6 +30,10 @@ class IngestionResult(BaseModel):
     # this is what tells them apart for the job queue's retry policy (feature #26).
     fetch_error: Optional[str] = None
     raw_ref: Optional[Path] = None          # saved page snapshot for debugging failures
+    # Which capture rung served this URL: "authed" | "browser" | "embed" | "none"
+    # (pipeline/orchestrator.py::_capture). Lets the capture harness and /dash measure
+    # the fallback chain instead of guessing.
+    capture_path: Optional[str] = None
 
     @property
     def succeeded(self) -> bool:

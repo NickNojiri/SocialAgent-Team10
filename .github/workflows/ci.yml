@@ -4,24 +4,37 @@ on:
   push:
   pull_request:
 
+# A newer push to the same branch makes the older run pointless: cancel it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The offline suite takes ~1 min; anything near this limit is a hang, not slowness.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
-          
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
+
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
-        
+
       - name: Run offline tests (full suite)
         run: python -m pytest -k "not live" -q
+
+      # The held-out accuracy scorecard (AGENTS.md "Checks"), printed so every PR
+      # shows the numbers next to the diff. Informational: the regression floors
+      # that can fail CI live in test_extraction_labels.py.
+      - name: Accuracy scorecard (held-out test split)
+        run: python -m src.ingestion.eval --offline --split test

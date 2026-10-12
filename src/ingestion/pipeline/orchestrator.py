@@ -98,6 +98,7 @@ class IngestionPipeline:
         # URLs it returns a RawPostSnapshot directly (the 95-99% path), and the
         # Playwright browser is only launched for URLs it can't handle.
         self.authed_source = authed_source
+        self._authed_misses = 0                  # reset at the start of every run()
         self.on_result = on_result
         # Progress hook: (url, stage) at fetching / transcribing / extracting /
         # saving / done. Drives the bot's live status line via the job queue
@@ -130,47 +131,23 @@ class IngestionPipeline:
                 )
 
         budget = self.settings.capture_budget_s
-
-        # The browser is opened lazily — a run where every URL is served by the
-        # authed source never launches Chromium at all.
-        session: Optional[SocialSessionManager] = None
+        self._authed_misses = 0                  # circuit breaker, per run (see _capture)
+        browser = _LazyBrowser(self.settings)    # Chromium only if a URL needs it
         try:
             for url in urls:
                 self._stage(url, "fetching")
+                path = "none"
                 try:
-                    raw = None
-                    if self.authed_source is not None:
-                        # Sync instagrapi call — offload so it doesn't block the loop.
-                        raw = await asyncio.to_thread(self.authed_source.fetch_url, url)
-
-                    if raw is not None:
-                        # Post-fetch stages run in a thread under a hard budget:
-                        # a hung backend fails this one URL with a clear reason.
-                        # (The worker thread can outlive the timeout — logged, accepted.)
-                        result = await asyncio.wait_for(
-                            asyncio.to_thread(self._process_raw, raw, url, FetchStatus.OK),
-                            timeout=budget,
-                        )
+                    capture = await self._capture(url, browser)
+                    path = capture.path
+                    # Post-fetch stages run in a thread under a hard budget: a hung
+                    # backend fails this one URL with a clear reason. (The worker
+                    # thread can outlive the timeout — logged, accepted.)
+                    if capture.raw is not None:
+                        work = asyncio.to_thread(self._process_raw, capture.raw, url, FetchStatus.OK)
                     else:
-                        if session is None:
-                            session = await SocialSessionManager(self.settings).__aenter__()
-                        snapshot = await session.fetch(url)
-                        # If IG returned a login wall OR timed-out on the first page load,
-                        # attempt the embed-page fallback before giving up.
-                        # The embed path is a plain HTTP GET (no Playwright), so it succeeds
-                        # even when the browser is slow or blocked — recovers captions ~70% of
-                        # the time for public reels.
-                        if snapshot.status in (FetchStatus.LOGIN_WALL, FetchStatus.TIMEOUT):
-                            log.info("[pipeline] %s → %s; trying embed fallback", url, snapshot.status.value)
-                            recovered = await try_embed_fallback(url)
-                            if recovered is not None:
-                                log.info("[pipeline] embed fallback succeeded for %s", url)
-                                snapshot = recovered
-                            else:
-                                log.info("[pipeline] embed fallback also failed for %s", url)
-                        result = await asyncio.wait_for(
-                            asyncio.to_thread(self._process, snapshot), timeout=budget
-                        )
+                        work = asyncio.to_thread(self._process, capture.snapshot)
+                    result = await asyncio.wait_for(work, timeout=budget)
                 except asyncio.TimeoutError:
                     log.error(f"[fail-fast] {url} exceeded the {budget:.0f}s capture budget")
                     result = IngestionResult(
@@ -185,6 +162,7 @@ class IngestionPipeline:
                         fetch_status=FetchStatus.ERROR,
                         rejection_reason=f"unexpected error: {type(exc).__name__}: {exc}",
                     )
+                result.capture_path = path
 
                 self._stage(url, "saving")
                 if self.jsonl_sink is not None:
@@ -196,8 +174,7 @@ class IngestionPipeline:
                     self.on_result(result)
                 self._stage(url, "done")
         finally:
-            if session is not None:
-                await session.__aexit__(None, None, None)
+            await browser.close()
 
         chroma_count = self.chroma_sink.count() if self.chroma_sink is not None else None
         return RunReport(
@@ -208,6 +185,51 @@ class IngestionPipeline:
             chroma_count=chroma_count,
             chroma_collection=self.settings.chroma_collection if chroma_count is not None else None,
         )
+
+    # ── capture: the fallback chain ──────────────────────────────────────────
+
+    async def _capture(self, url: str, browser: "_LazyBrowser") -> "_Capture":
+        """Fetch one URL down an explicit chain, cheapest and richest first, and
+        record which rung served it (``IngestionResult.capture_path``):
+
+          1. ``authed``  — the logged-in source: caption, location tag, coords.
+          2. ``browser`` — the public page in Chromium.
+          3. ``embed``   — the /embed/ page over plain HTTP, when the browser hits a
+                           login wall or times out (~70% caption recovery).
+
+        A new rung (the official oEmbed API, docs/handoffs/TRACK-A-COMPLIANT-CAPTURE.md)
+        slots in here as one more step. The authed rung has a per-run circuit breaker:
+        after ``authed_max_misses`` Instagram URLs in a row come back empty or raise,
+        it is skipped for the rest of the run, so a flagged account isn't hit on every
+        URL (the 2026-10-09 incident). Its own sticky login guard stays as it is."""
+        if self.authed_source is not None and self._authed_misses < self.settings.authed_max_misses:
+            try:
+                # Sync instagrapi call — offload so it doesn't block the loop.
+                raw = await asyncio.to_thread(self.authed_source.fetch_url, url)
+            except Exception as exc:                # a source bug degrades, never fails the URL
+                log.warning(f"[capture] authed source raised on {url}: {type(exc).__name__}: {exc}")
+                raw = None
+            if raw is not None:
+                self._authed_misses = 0
+                return _Capture(raw=raw, path="authed")
+            if "instagram.com/" in url:             # a non-IG URL is a pass, not a miss
+                self._authed_misses += 1
+                if self._authed_misses == self.settings.authed_max_misses:
+                    log.warning(
+                        f"[capture] authed source returned nothing for {self._authed_misses} Instagram "
+                        "URLs in a row — skipping it for the rest of this run (account flagged or "
+                        "rate-limited?); using the public path"
+                    )
+
+        snapshot = await (await browser.get()).fetch(url)
+        if snapshot.status not in (FetchStatus.LOGIN_WALL, FetchStatus.TIMEOUT):
+            return _Capture(snapshot=snapshot, path="browser")
+        log.info("[capture] %s → %s; trying embed fallback", url, snapshot.status.value)
+        recovered = await try_embed_fallback(url)
+        if recovered is not None:
+            return _Capture(snapshot=recovered, path="embed")
+        log.info("[capture] embed fallback also failed for %s", url)
+        return _Capture(snapshot=snapshot, path="none")
 
     # ── per-URL stages ───────────────────────────────────────────────────────
 
@@ -291,6 +313,37 @@ class IngestionPipeline:
         return path
 
 
+# ── capture helpers ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class _Capture:
+    """What the chain produced for one URL: a RawPostSnapshot from the authed source,
+    or a PageSnapshot from the browser/embed rungs, plus the rung that served it."""
+    raw: Any = None
+    snapshot: Optional[PageSnapshot] = None
+    path: str = "none"
+
+
+class _LazyBrowser:
+    """Opens Chromium on first use only — a run fully served by the authed source
+    never launches it — and closes it once at the end of the run."""
+
+    def __init__(self, settings: IngestionSettings):
+        self._settings = settings
+        self._session: Optional[SocialSessionManager] = None
+
+    async def get(self) -> SocialSessionManager:
+        if self._session is None:
+            self._session = await SocialSessionManager(self._settings).__aenter__()
+        return self._session
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session.__aexit__(None, None, None)
+            self._session = None
+
+
 # ── diagnostics ──────────────────────────────────────────────────────────────
 
 
@@ -338,6 +391,7 @@ class RunReport:
                 "unreadable": len(self.connectivity_failures),
             },
             "fetch_outcomes": dict(fetch_counts),
+            "capture_paths": dict(self._counter(r.capture_path or "none" for r in self.results)),
             "rejections": [
                 {"url": r.url, "reason": r.rejection_reason}
                 for r in self.rejected
@@ -381,6 +435,11 @@ class RunReport:
             lines.append(" Fetch outcomes:")
             for status, n in fetch_counts.most_common():
                 lines.append(f"   {status:<14} {n}")
+
+        # Which capture rung served each URL (authed / browser / embed / none)
+        paths = self._counter(r.capture_path or "none" for r in self.results)
+        if paths:
+            lines.append(" Capture paths:  " + ", ".join(f"{k} {v}" for k, v in paths.most_common()))
 
         # Validation rejections (the "why was data dropped" view)
         if self.rejected:
