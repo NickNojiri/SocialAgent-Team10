@@ -3,6 +3,11 @@
     python experiments/error_buckets.py                # train split (tune here)
     python experiments/error_buckets.py --show 5       # + 5 examples per bucket
     python experiments/error_buckets.py --split test   # read once, to report
+    python experiments/error_buckets.py --part dev     # the tuning loop: look at dev,
+    python experiments/error_buckets.py --part val     # confirm on val (unseen creators)
+
+--part splits the TRAIN split by creator (75% dev / 25% val) so a rule can be tuned on
+dev and checked on creators it never saw, without touching the test split.
 
 Buckets (first rule that matches wins, in this order)
   not_in_input     gold venue appears nowhere in the stored text: capture can't see it
@@ -19,6 +24,7 @@ Buckets (first rule that matches wins, in this order)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import sys
 from collections import Counter, defaultdict
@@ -47,6 +53,12 @@ def _lcs(a: str, b: str) -> int:
                 k += 1
             best = max(best, k)
     return best
+
+
+def train_part(row: dict) -> str:
+    """dev / val inside the train split, by creator: one account never spans both."""
+    h = sq((row.get("input") or {}).get("handle")) or row["url"]
+    return "val" if int(hashlib.md5(h.encode()).hexdigest()[:8], 16) % 100 < 25 else "dev"
 
 
 def bucket(row: dict, pred: str | None) -> str | None:
@@ -79,11 +91,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["train", "test", "all"], default="train")
     ap.add_argument("--show", type=int, default=0, help="examples to print per bucket")
+    ap.add_argument("--part", choices=["dev", "val"], help="within --split train: tune on dev, confirm on val")
     args = ap.parse_args()
 
     use_aliases("train")
     rows = [r for r in load_labels() if r.get("gold") and r.get("verdict", {}).get("venue") != "needs_review"
-            and (args.split == "all" or split_of(r["url"]) == args.split)]
+            and (args.split == "all" or split_of(r["url"]) == args.split)
+            and (not args.part or train_part(r) == args.part)]
     counts, examples = Counter(), defaultdict(list)
     for r in rows:
         c = normalize(raw_from_input(r["url"], r.get("input") or {}))
@@ -93,7 +107,7 @@ def main() -> None:
             examples[b].append((c.get("venue_name"), c.get("venue_slot"), r["gold"].get("venue"),
                                 r.get("post_type", ""), r["url"]))
     wrong = sum(counts.values())
-    print(f"{args.split}: {len(rows)} reels, {len(rows) - wrong} right, {wrong} wrong\n")
+    print(f"{args.split}{'/' + args.part if args.part else ''}: {len(rows)} reels, {len(rows) - wrong} right, {wrong} wrong\n")
     print(f"  {'bucket':<16}{'n':>4}  {'share':>6}   fixable by")
     fix = {"not_in_input": "capture (OCR, comments, tags)", "should_be_empty": "place-or-not gate",
            "missed": "a new rule / the model", "poster_name": "blogger detection",

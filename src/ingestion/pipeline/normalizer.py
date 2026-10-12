@@ -351,7 +351,11 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         # a run-together @handle, "from/by X", or "called X". "at X" / quoted from
         # conversational speech is too noisy.
         t_venue, t_slot = _venue_slot(raw, raw.transcript)
-        if t_venue and t_slot in ("handle_from", "from_titlecase", "quoted", "jsonld"):
+        # Speech is noisy ('LA', 'Plaza', a guest's name): measured 1 right / 6 wrong on
+        # train before this check. Keep it only when the post itself backs it up.
+        if (t_venue and t_slot in ("handle_from", "from_titlecase", "quoted", "jsonld")
+                and not _is_region(t_venue) and not _is_container(t_venue)
+                and _tag_names_a_venue(t_venue, raw, caption)):
             venue, venue_slot = t_venue, "transcript"
     if venue and (fix := _ALIASES.get(_norm_alias(venue))):   # learned correction
         venue, venue_slot = fix, "alias"
@@ -363,7 +367,7 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     if venue is None and geo.raw_location_text:
         guess = geo.raw_location_text.split(",")[0].strip() or None
         if (guess and not _ADDRESS_RE.search(guess) and not _is_container(guess)
-                and not _is_region(guess)):        # 'Los Angeles' is context, not a venue
+                and not _is_region(guess) and _tag_names_a_venue(guess, raw, caption)):
             venue, venue_slot = guess, "at_venue"  # weak: a bare location string
     candidate_times = _heuristic_times(searchable, raw.start_date_raw)
     category = _categorize(
@@ -396,7 +400,7 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         venue = venue[:110].strip()
 
     is_vague = looks_vague(raw, venue, geo, category, candidate_times, venue_slot)
-    if is_vague and venue_slot not in ("jsonld", "handle_from", "first_person", "alias"):
+    if is_vague and venue_slot not in ("jsonld", "first_person", "alias"):
         venue = None                     # not a place (recipe, ad, list): no venue to show
     # A real place whose kind the text never names: food & drink is by far the most
     # common kind in the labeled corpus, so it is a better guess than "other". Set
@@ -505,12 +509,29 @@ def _norm_alias(s: Optional[str]) -> str:
 _VENUE_COLON = re.compile(r"^\s*(?P<venue>[A-Z][\w &'’.\-]{2,45}?):\s*\$")
 
 
+# Words that make a candidate an area, a direction, a nationality, a weekday, a street or
+# an hours line — never a business name, in any slot.
+_NON_NAME_RE = re.compile(
+    r"^(?:la|nyc|sf|oc|dtla|north|south|east|west|location|locations|address|"
+    r"american|mexican|korean|japanese|chinese|thai|vietnamese|italian|french|indian|filipino|"
+    r"brazilian|peruvian|spanish|greek|laos|asian|"
+    r"(?:segunda|ter[cç]a|quarta|quinta|sexta)(?:-feira)?|s[aá]bado|domingo|lunes|martes|mi[eé]rcoles|"
+    r"jueves|viernes|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$"
+    r"|\b(?:district|county|neighbou?rhood|village|centre|center|area|region)$|-dong$|-gu$"
+    r"|^(?:av|ave|avenida|rua|calle|rue|via)\b|\b(?:open daily|hours|recommended)\b|\d{1,2}\s*(?:am|pm)\b"
+    r"|^(?:texas|mexico|korea|japan|china|asia|europe|america|california)\s+and\s+\w+$",
+    re.IGNORECASE,
+)
+
+
 def _is_region(name: Optional[str]) -> bool:
-    """A country / macro-region / bare 'City, ST' — not a specific venue."""
+    """A country / macro-region / bare 'City, ST', or an area/direction/weekday/street/
+    hours phrase (_NON_NAME_RE) — not a specific venue."""
     if not name:
         return False
     low = name.strip().strip(" .,").lower()
-    return low in _REGION_STOP or low in _AREA_CITY_SET or bool(_CITY_COMMA_ST.search(name))
+    return (low in _REGION_STOP or low in _AREA_CITY_SET or bool(_CITY_COMMA_ST.search(name))
+            or bool(_NON_NAME_RE.search(low)))
 
 
 def _titlecase_if_flat(s: str) -> str:
@@ -875,13 +896,17 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if own:
         return own, "own_post"
 
+    # The account's own name, last resort — only when the account is a place.
+    # Measured on train/dev before this gate: right 3, wrong 12 (reviewers' names).
+    if not _is_business_account(caption, author):
+        return None, "none"
     if raw.title:
         cleaned = _TITLE_NOISE.sub("", raw.title)
         cleaned = cleaned.split("•")[0].split("|")[0].strip()
         if cleaned:
             return cleaned, "title_fallback"
     disp = _clean_display_name(getattr(raw, "author_name", None))
-    if disp:                                   # the account's own name, last resort
+    if disp:
         return disp, "title_fallback"
     return None, "none"
 
@@ -890,12 +915,21 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
 # 'Our highlight reel' (@thesmithrestaurant). Needs a business-shaped handle, or the
 # business's own voice ('our'/'us', not a reviewer's bare 'we') plus an offer, hours
 # or address. Measured on train: most remaining venue misses were these posts.
-_BIZ_HANDLE = re.compile(
-    r"(bakery|bakes|bakeshop|cafe|coffee|kitchen|grill|sushi|bistro|deli|cookie|restaurant|"
-    r"eatery|pizz|taco|ramen|bbq|donut|creamery|patisserie|boulangerie|cake|chocolate|diner|"
-    r"oyster|steakhouse|brewery|winery|teahouse|boba|matcha|trattoria|taqueria|bar$|_co$)",
-    re.IGNORECASE,
-)
+# Business words at the START or END of a handle segment (@brownbagcookies_la,
+# @coffeeconfessionals, @sirbraxton_chocolatebar). Anywhere-inside matching read
+# 'la dieta comienza' (@ladietacomienzamanana) as containing 'taco'.
+_BIZ_WORDS = (r"bakery|bakeries|bakes|bakeshop|cafe|coffee|kitchen|grill|sushi|bistro|deli|cookies?|"
+              r"restaurant|eatery|pizza|pizzeria|tacos?|ramen|bbq|donuts?|creamery|patisserie|"
+              r"boulangerie|cakes?|chocolates?|diner|oysters?|steakhouse|brewery|winery|teahouse|boba|"
+              r"matcha|trattoria|taqueria|bar|shoppe|co")
+_BIZ_EDGE = re.compile(                    # + a location/brand tail: @hapabakeryoc, @tacosmasla
+    rf"^(?:{_BIZ_WORDS})|(?:{_BIZ_WORDS})(?:oc|la|sd|sf|nyc|ny|atl|lv|usa|official|hq)?$", re.IGNORECASE)
+
+
+def _biz_handle(author: str) -> bool:
+    return any(len(seg) >= 3 and _BIZ_EDGE.search(seg) for seg in re.split(r"[._\d]+", author.lower()))
+
+
 _OWN_VOICE = re.compile(r"\b(?:our|us|ours)\b", re.IGNORECASE)
 # Hard evidence the poster runs the place: phone, a street address, opening hours,
 # ordering/booking. 'Today' or 'come' alone is how reviewers talk too.
@@ -911,16 +945,49 @@ _NOT_A_VENUE_HANDLE = re.compile(
 )
 
 
-def _own_post_name(raw: RawPostSnapshot, caption: str, author: str) -> Optional[str]:
+def _tag_names_a_venue(tag: str, raw: RawPostSnapshot, caption: str) -> bool:
+    """A location tag is often an area ('Studio City', 'Anguk-dong', 'Lansdowne Centre').
+    Trust it as the venue only when the post itself backs it up: the tag matches the
+    poster or an @mention, appears in the caption, or names a kind of business."""
+    import unicodedata
+
+    def fold(t: str) -> str:                     # 'Dulchè' ~ 'dulche'
+        return "".join(c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c)).lower()
+
+    caption = fold(caption)
+    words = [w for w in re.findall(r"[a-z0-9]+", fold(tag)) if len(w) >= 3]
+    if not words:
+        return False
+    author = re.sub(r"[^a-z0-9]", "", (getattr(raw, "author_handle", "") or "").lower())
+    handles = [re.sub(r"[^a-z0-9]", "", h.lower()) for h in _ANY_HANDLE.findall(caption)] + [author]
+    for h in filter(None, handles):              # 'Seed + Mill' ~ @seedandmill
+        if (sum(w in h for w in words) * 2 >= len(words) and words[0] in h) \
+                or (len(words) >= 2 and "".join(words[:2]) in h):     # @smashbros.co
+            return True
+    low = caption.lower()
+    for pattern in (r"\W*".join(map(re.escape, words)),          # the whole tag
+                    re.escape(words[0]) if len(words) > 1 and len(words[0]) >= 6 else None):
+        m = pattern and re.search(r"(?<![\w])" + pattern + r"(?![\w])", low)
+        if m and not re.search(r"\b(?:in|near|around|across)\s*$", low[:m.start()]):
+            return True                          # named in the caption, not as 'in <area>'
+    return bool(_PIN_VENUE_KW.search(tag))
+
+
+def _is_business_account(caption: str, author: str) -> bool:
+    """The poster runs a place (not a reviewer, media, tourism or personal account)."""
     if (not author or _BLOGGER_HANDLE.search(author) or _NOT_A_VENUE_HANDLE.search(author)
             or _TOURISM_HANDLE.match(author) or _RECIPE_RE.search(caption)):
-        return None
-    if not (_BIZ_HANDLE.search(author) or (_OWN_VOICE.search(caption) and _BIZ_DETAIL.search(caption))):
+        return False
+    return bool(_biz_handle(author) or (_OWN_VOICE.search(caption) and _BIZ_DETAIL.search(caption)))
+
+
+def _own_post_name(raw: RawPostSnapshot, caption: str, author: str) -> Optional[str]:
+    if not _is_business_account(caption, author):
         return None
     name = _clean_display_name(getattr(raw, "author_name", None))
     if name:
         return name
-    core = re.sub(r"^(?:eat(?:at|s)?|try|shop|get)(?=[a-z]{4})", "", author.lower())   # @eatsoulfulcollective
+    core = re.sub(r"^(?:eatat|eat|try|shop|get)(?=[a-z]{4})", "", author.lower())   # @eatsoulfulcollective
     return _caption_spelling(_handle_to_name(core), caption)
 
 
@@ -1062,6 +1129,10 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
     # "Not a place" signals strong enough to fire even if a (likely bogus) venue
     # was pulled: a cooking-instructions post, or a tourism-board account. Not when
     # the venue came from a high-confidence slot (a real venue that mentions a recipe).
+    strong_recipe = bool(_RECIPE_CTA.search(caption) or len(_QUANTITY.findall(caption)) >= 3
+                         or re.search(r"\bingredient(?:e)?s?\s*[:：—-]|ingredients you(?:'|’)?ll need", caption, re.I))
+    if strong_recipe and slot != "jsonld":
+        return True                      # 'sweater from @brand' in a recipe is a credit
     if not raw.venue_candidate and slot not in ("jsonld", "handle_from", "first_person"):
         recipe_hits = len(set(m.group(0).lower() for m in _RECIPE_RE.finditer(caption)))
         bullet_qty = len(re.findall(r"[○●•\-]\s*\d+\s*(?:g|ml|tbsp|tsp|cup|cucharad)", caption, re.I))

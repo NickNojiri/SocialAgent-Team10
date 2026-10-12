@@ -254,3 +254,47 @@ def test_one_clear_recipe_cue_keeps_it_out_of_the_catalog():
 
 def test_accents_do_not_make_a_different_place():
     assert venue_same_place("Wild Strawberry Café", "Wild Strawberry Cafe")
+
+
+# ── tuning loop rounds 1-5 (train/dev, confirmed on train/val) ─────────────────
+
+def test_business_handle_needs_the_word_at_a_segment_edge():
+    from src.ingestion.pipeline.normalizer import _biz_handle
+    for h in ("brownbagcookies_la", "coffeeconfessionals", "sirbraxton_chocolatebar", "hapabakeryoc"):
+        assert _biz_handle(h), h
+    for h in ("ladietacomienzamanana", "internaldandelion", "dylaneatss"):
+        assert not _biz_handle(h), h                # 'taco' / 'deli' inside a word
+
+
+def test_reviewer_display_name_is_not_a_last_resort_venue():
+    from src.ingestion.pipeline.normalizer import normalize
+    c = normalize(_snap("matcha & ocean views?? count me in", handle="bethanylearmont",
+                        author_name="Bethany Learmont"))
+    assert c["venue_name"] != "Bethany Learmont"
+
+
+def test_area_location_tags_are_not_venues_but_named_ones_are():
+    from src.ingestion.eval import raw_from_input
+    from src.ingestion.pipeline.normalizer import normalize
+
+    def venue(caption, tag, handle=""):
+        return normalize(raw_from_input("https://www.instagram.com/reel/X3/",
+                                        {"caption": caption, "location_text": tag, "handle": handle}))["venue_name"]
+    assert venue("tsukemen in Old Pasadena, not Japan", "Old Pasadena") is None
+    assert venue("so cheesy 🧀 which side are you on?", "Smash Bros Burgers and Shakes",
+                 handle="smashbros.co") == "Smash Bros Burgers and Shakes"
+
+
+def test_ingredient_word_alone_is_not_a_recipe():
+    from src.ingestion.pipeline.normalizer import normalize
+    c = normalize(_snap("Made with quality ingredients 🍕 @folkspizzeria is one of the best pizzas in LA"))
+    assert not c["is_vague"] and c["venue_name"]
+
+
+def test_areas_weekdays_streets_and_hours_are_not_names():
+    from src.ingestion.pipeline.normalizer import _is_region
+    for s in ("Flatiron District", "Los Angeles County", "Quarta-feira", "OPEN DAILY 11am-8pm",
+              "Av General Penha Brasil", "American", "West", "Texas and Mexico", "Anguk-dong"):
+        assert _is_region(s), s
+    for s in ("Fika Fika Coffee", "Village Cookie", "Westside Bakery"):
+        assert not _is_region(s), s
