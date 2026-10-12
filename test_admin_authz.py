@@ -10,7 +10,9 @@ The Chroma store is stubbed out — this is about the authorization gate, so a
 test must fail on a 200, not on whether the database happened to be reachable.
 """
 
+import ast
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,6 +32,80 @@ THEIRS = "222222222222222222"
 ME = "user-me"
 YOU = "user-you"
 EVENT = "abc123"
+
+# Explicit inventory for the tenant-auth attack suite. Keep this in sync with
+# scripts/bench_admin_authz.py whenever a protected route is added or removed.
+PROTECTED_ROUTES = {
+    ("GET", "/api/events"),
+    ("POST", "/api/ingest"),
+    ("POST", "/api/jobs"),
+    ("GET", "/api/jobs"),
+    ("GET", "/api/jobs/{job_id}"),
+    ("POST", "/api/manual"),
+    ("POST", "/api/events/{event_id}/edit"),
+    ("POST", "/api/events/{event_id}/lock"),
+    ("GET", "/api/followups"),
+    ("POST", "/api/events/{event_id}/went"),
+    ("GET", "/api/nights"),
+    ("GET", "/api/settings"),
+    ("PUT", "/api/settings"),
+    ("POST", "/api/feedback"),
+    ("POST", "/api/survey"),
+    ("GET", "/api/survey"),
+    ("POST", "/api/time-to-card"),
+    ("POST", "/api/forget"),
+    ("DELETE", "/api/events/{event_id}"),
+    ("POST", "/api/events/{event_id}/vote"),
+    ("POST", "/recommend"),
+    ("POST", "/plan"),
+    ("GET", "/share"),
+}
+INTENTIONALLY_UNSCOPED_ROUTES = {
+    ("GET", "/api/stats"),  # Operator counts; documented local-bind carve-out (T8).
+}
+
+
+def test_protected_route_inventory_matches_apps():
+    """New tenant-scoped routes must be added to the attack inventory."""
+    admin_routes = {
+        (method, route.path)
+        for route in admin.app.routes
+        for method in getattr(route, "methods", set())
+        if method in {"GET", "POST", "PUT", "DELETE"}
+        and route.path.startswith(("/api/", "/share"))
+    }
+    serving_routes = {
+        (method, route.path)
+        for route in serving_app.app.routes
+        for method in getattr(route, "methods", set())
+        if method in {"GET", "POST", "PUT", "DELETE"}
+        and route.path in {"/recommend", "/plan"}
+    }
+    assert admin_routes | serving_routes == PROTECTED_ROUTES | INTENTIONALLY_UNSCOPED_ROUTES
+
+
+def test_every_protected_route_has_a_benchmark_attack_case():
+    benchmark_path = Path(__file__).parent / "scripts" / "bench_admin_authz.py"
+    benchmark = ast.parse(benchmark_path.read_text(encoding="utf-8"))
+    run_function = next(
+        node for node in benchmark.body
+        if isinstance(node, ast.FunctionDef) and node.name == "run"
+    )
+    forged_assignment = next(
+        node for node in run_function.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "forged" for target in node.targets)
+    )
+
+    attack_routes = set()
+    for case in forged_assignment.value.elts:
+        assert isinstance(case, ast.Tuple) and len(case.elts) == 4
+        assert isinstance(case.elts[2], ast.Constant) and isinstance(case.elts[2].value, str)
+        assert isinstance(case.elts[3], ast.Lambda)
+        attack_routes.add((ast.literal_eval(case.elts[0]), ast.literal_eval(case.elts[1])))
+
+    uncovered = PROTECTED_ROUTES - attack_routes
+    assert not uncovered, f"protected routes without benchmark attack cases: {sorted(uncovered)}"
 
 
 class StubCollection:
