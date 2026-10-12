@@ -91,6 +91,9 @@ def test_corpus_is_wellformed(rows):
     for r in rows:
         assert r.get("url"), f"row missing url: {r}"
         assert "input" in r and "gold" in r and "verdict" in r, f"row missing sections: {r['url']}"
+        assert isinstance(r.get("labeler"), str) and r["labeler"], (
+            f"row missing labeler provenance: {r['url']}"
+        )
         for field_ in ("venue", "category"):
             v = r["verdict"].get(field_)
             assert v in _VALID_VERDICTS, f"{r['url']}: bad verdict.{field_} = {v!r}"
