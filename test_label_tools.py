@@ -196,3 +196,61 @@ def test_posted_at_decodes_the_shortcode():
     assert posted_at("DcOl-mBs5A1").date().isoformat() == "2026-08-19"
     assert posted_at("https://www.instagram.com/reel/DdeX2SesDSF/?igsh=x") is not None
     assert posted_at("not a code!") is None
+
+
+# ── error-bucket fixes (experiments/error_buckets.py, train split) ─────────────
+
+def _snap(caption, handle="", author_name=None, hashtags=()):
+    from src.ingestion.eval import raw_from_input
+    return raw_from_input("https://www.instagram.com/reel/X1/",
+                          {"caption": caption, "handle": handle, "author_name": author_name,
+                           "hashtags": list(hashtags)})
+
+
+def test_business_posting_about_itself_is_the_venue():
+    from src.ingestion.pipeline.normalizer import normalize
+    c = normalize(_snap("Our highlight reel 🫶", handle="thesmithrestaurant"))
+    assert venue_same_place(c["venue_name"], "The Smith") and c["venue_slot"] == "own_post"
+    c = normalize(_snap("Give us all the pasta. Open daily 11-9 📍 4 Pine Ave", handle="ellies_lbc"))
+    assert c["venue_slot"] == "own_post"
+
+
+def test_reviewers_and_media_saying_our_are_not_the_venue():
+    from src.ingestion.pipeline.normalizer import normalize
+    for handle in ("socalnation", "visittemecula", "uyi_1993", "dylaneatss"):
+        c = normalize(_snap("our favorite spots this weekend, come try them", handle=handle))
+        assert c["venue_slot"] != "own_post", handle
+
+
+def test_credit_handles_are_not_venues():
+    from src.ingestion.pipeline.normalizer import _venue_slot
+    raw = _snap("My top 5 matcha spots in LA 🍵 who am I missing? 🎥 @baegopadad")
+    assert _venue_slot(raw, raw.caption)[0] != "Baegopadad"
+
+
+def test_a_city_location_tag_is_not_the_venue():
+    from src.ingestion.eval import raw_from_input
+    from src.ingestion.pipeline.normalizer import normalize
+    raw = raw_from_input("https://www.instagram.com/reel/X2/",
+                         {"caption": "so good #foodie", "location_text": "Miami, Florida"})
+    assert normalize(raw)["venue_name"] != "Miami"
+
+
+def test_dish_bullets_and_branch_pins_are_not_a_list():
+    from src.ingestion.pipeline.normalizer import _looks_like_list
+    dishes = "NEW coffee spot @fikafikacoffee\n- Matcha latte\n- Ube cake\n- Hojicha\n- Croissant\n📍 Los Angeles"
+    branches = "French toast!\n📍Miami Beach - 1201 Washington Ave.\n📍Wynwood - 2750 NW 3rd Ave.\n📍Biscayne - 1040 Biscayne Blvd.\n📍Coral Gables - 2300 Ponce"
+    ranking = "My top 3:\n1. Stagger\n2. Kettl\n3. Damo"
+    assert not _looks_like_list(_snap(dishes), dishes)
+    assert not _looks_like_list(_snap(branches), branches)
+    assert _looks_like_list(_snap(ranking), ranking)
+
+
+def test_one_clear_recipe_cue_keeps_it_out_of_the_catalog():
+    from src.ingestion.pipeline.normalizer import normalize
+    c = normalize(_snap('Cheeseburger + crispy taquitos. Comment RECIPE below! @califiafarms'))
+    assert c["is_vague"] and c["venue_name"] is None
+
+
+def test_accents_do_not_make_a_different_place():
+    assert venue_same_place("Wild Strawberry Café", "Wild Strawberry Cafe")

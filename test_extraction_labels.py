@@ -67,12 +67,12 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #      held-out, checked once, paired vs main: venue 37.4% -> 47.0% (+9.6 pts, CI [+4.3, +15.7],
 #      McNemar p=0.003) · same place 51.3% -> 60.0% · category 63.2% -> 82.1% (+18.8 pts,
 #      CI [+10.3, +27.4], p=6e-5) · city 73.1% and vague 23.5% unchanged
-_FLOOR_VENUE_EXACT = 191
-_FLOOR_VENUE_SAME = 210
-_FLOOR_VENUE_FUZZY = 199
-_FLOOR_CATEGORY = 265
-_FLOOR_CITY = 194
-_FLOOR_VAGUE = 11
+_FLOOR_VENUE_EXACT = 269
+_FLOOR_VENUE_SAME = 317
+_FLOOR_VENUE_FUZZY = 282
+_FLOOR_CATEGORY = 381
+_FLOOR_CITY = 266
+_FLOOR_VAGUE = 18
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.

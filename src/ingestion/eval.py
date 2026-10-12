@@ -319,7 +319,10 @@ _PLACE_PHRASES = {p.lower() for p in (_AREA_CITY_SET | _REGION_STOP | _CONTAINER
 
 
 def _name_tokens(s: Optional[str]) -> list[str]:
-    toks = _norm(re.sub(r"['’]", "", s or "")).split()
+    import unicodedata
+
+    folded = "".join(c for c in unicodedata.normalize("NFKD", s or "") if not unicodedata.combining(c))
+    toks = _norm(re.sub(r"['’]", "", folded)).split()
     return toks[1:] if len(toks) > 1 and toks[0] == "the" else toks
 
 

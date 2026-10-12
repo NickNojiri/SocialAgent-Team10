@@ -153,6 +153,16 @@ _RECIPE_RE = re.compile(
     r"amasa|hornea|cucharad(?:a|ita)|modo de preparaci[oó]n|\bmezcla\b)\b",
     re.IGNORECASE,
 )
+# One clear recipe cue is enough: 'Comment "RECIPE"', 'full recipe', '2 tbsp … 1 cup …'.
+_RECIPE_CTA = re.compile(
+    r"comment\s+[\"“'‘]?recipe|full recipe|recipe (?:below|in (?:my )?bio|link|is (?:now )?live)|"
+    r"printable version|follow for more recipes|\breceita\b",
+    re.IGNORECASE,
+)
+_QUANTITY = re.compile(
+    r"\b\d+(?:[.,/]\d+)?\s*(?:g|kg|ml|l|oz|lbs?|tbsp|tsp|cups?|tz|cucharad\w*|cdas?|cdita)\b|[½¼¾⅓]\s*(?:cup|tbsp|tsp|tz)",
+    re.IGNORECASE,
+)
 _TOURISM_HANDLE = re.compile(r"^(visit|discover|explore|experience|see|go)[a-z]", re.IGNORECASE)
 _COMMENT_BAIT = re.compile(r'\bcomment\s+["“]?[A-Z]{2,}', re.IGNORECASE)
 # Countries / macro-regions / big neighborhoods — never a venue on their own.
@@ -200,6 +210,14 @@ _OWNER_OF = re.compile(r"\bowner of\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
 _QUOTED_NAME = re.compile(r"[\"“”]([A-Z][\w&'’.-]*(?:\s+[\w&'’.-]+){0,4})[\"“”]")
 _FROM_HANDLE = re.compile(r"\b(?:from|by|at)\s+@(?P<handle>[a-zA-Z0-9_.]{2,30})")
 _ANY_HANDLE = re.compile(r"(?<![\w.])@(?P<handle>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})")
+# '🎥 @x', 'follow @x for more', 'copyrighted to @x', '@x plz collab': a credit or the
+# blogger's own plug — never the venue being shown.
+_CREDIT_HANDLE = re.compile(
+    r"(?:[🎥📸📷📹]|\b(?:follow|video by|filmed by|shot by|edit(?:ed)? by|photos? by|credits?:?|"
+    r"cc:?|copyrighted to|dm))\s*@(?P<handle>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})"
+    r"|@(?P<collab>[a-zA-Z0-9_][a-zA-Z0-9_.]{1,29})\s+(?:plz|please|pls)\s+collab",
+    re.IGNORECASE,
+)
 # Food-blogger / reviewer handles — a mention of one is not a venue.
 _BLOGGER_HANDLE = re.compile(
     r"(eats|eatz|eater|foodie|foodies|foodiego|noms|munch|dine|dining|plates|"
@@ -344,7 +362,8 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
     geo = _geo_context(raw, caption if not raw.transcript else f"{caption}\n{raw.transcript}")
     if venue is None and geo.raw_location_text:
         guess = geo.raw_location_text.split(",")[0].strip() or None
-        if guess and not _ADDRESS_RE.search(guess) and not _is_container(guess):
+        if (guess and not _ADDRESS_RE.search(guess) and not _is_container(guess)
+                and not _is_region(guess)):        # 'Los Angeles' is context, not a venue
             venue, venue_slot = guess, "at_venue"  # weak: a bare location string
     candidate_times = _heuristic_times(searchable, raw.start_date_raw)
     category = _categorize(
@@ -377,6 +396,8 @@ def normalize(raw: RawPostSnapshot, llm_extraction: Optional[LlmExtraction] = No
         venue = venue[:110].strip()
 
     is_vague = looks_vague(raw, venue, geo, category, candidate_times, venue_slot)
+    if is_vague and venue_slot not in ("jsonld", "handle_from", "first_person", "alias"):
+        venue = None                     # not a place (recipe, ad, list): no venue to show
     # A real place whose kind the text never names: food & drink is by far the most
     # common kind in the labeled corpus, so it is a better guess than "other". Set
     # after `is_vague`, which reads a bare OTHER as "nothing here points to a place".
@@ -447,7 +468,7 @@ VENUE_CONF = {
     "alias": 0.9, "jsonld": 0.95, "handle_from": 0.85, "first_person": 0.8, "quoted": 0.7,
     "from_titlecase": 0.7, "bare_mention": 0.6, "at_venue": 0.55, "transcript": 0.5,
     "title_fallback": 0.3, "llm_fill": 0.35, "list": 0.0, "none": 0.0,
-    "pin": 0.8, "name_line": 0.75, "sentence": 0.6,
+    "pin": 0.8, "name_line": 0.75, "sentence": 0.6, "own_post": 0.6,
 }
 
 # Learned corrections: normalize(predicted) -> canonical venue. Regenerate with
@@ -569,24 +590,34 @@ _LIST_PHRASE = re.compile(
     re.IGNORECASE,
 )
 _LIST_ITEM = re.compile(r"^\s*(?:\d{1,2}[.):]\s|[①-⑳]|[-•*✅]\s*[A-Z]|🥇|🥈|🥉)", re.MULTILINE)
+_NUMBERED_ITEM = re.compile(r"^\s*(?:\d{1,2}[.):]\s|[①-⑳]|🥇|🥈|🥉)", re.MULTILINE)
 
 
 def _looks_like_list(raw: RawPostSnapshot, caption: str) -> bool:
-    """A ranking / roundup of several venues — there's no single answer."""
+    """A ranking / roundup of several venues — there's no single answer.
+
+    Bullets alone are usually the dishes of ONE place ('- matcha latte'), and several
+    📍 lines are often one place's branches or decoration ('📍📍HERE📍📍'), so those
+    only count when the 📍 lines name different places or the bullets come with
+    several @mentions/named pins. Numbered items and ranking phrases count as is."""
     author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
     mentions = {h.lower() for h in _ANY_HANDLE.findall(caption) if h.lower() != author}
     items = len(_LIST_ITEM.findall(caption))
-    pins = caption.count("📍")
-    if _LIST_PHRASE.search(caption) and (items >= 2 or len(mentions) >= 3 or pins >= 3):
+    numbered = len(_NUMBERED_ITEM.findall(caption))
+    named_pins = len({(_pin_name(m.group("loc")) or "").lower()
+                      for m in _PIN_LINE.finditer(caption)} - {""})
+    if _LIST_PHRASE.search(caption) and (items >= 2 or len(mentions) >= 3 or named_pins >= 3):
         return True
-    return items >= 4 or len(mentions) >= 5 or pins >= 4
+    return (numbered >= 3 or len(mentions) >= 5 or named_pins >= 3
+            or (items >= 4 and (len(mentions) >= 2 or named_pins >= 2)))
 
 
 _PIN_LABEL = re.compile(
     r"^\s*(?:location|address|where|find us|located(?:\s+at)?)\s*[:\-–]\s*", re.IGNORECASE)
-_NAME_TAIL = re.compile(r"\s*\([^)]*\)?\s*$")                 # 'Name (Neighbourhood)'
-_NAME_SPLIT = re.compile(r"\s[|•·]\s?|\s[-–—]\s")             # 'Name - City', 'Name | Bakery'
-_IN_PLACE_TAIL = re.compile(r"\s+(?:in|inside)\s+(?!the\b)[A-Z].*$|\s+inside$")
+_NAME_TAIL = re.compile(r"\s*[(\[{][^)\]}]*[)\]}]?\s*$")      # 'Name (Area)', 'Name {Area}'
+_NAME_SPLIT = re.compile(r"\s[|•·]\s?|\s[-–—]\s|\s[x×]\s")    # 'Name - City', 'A x B' collab
+_IN_PLACE_TAIL = re.compile(r"\s+(?:in|inside)\s+(?!the\b)[A-Z].*$|\s+inside$"
+                            r"|\s+\S+\s+neighbou?rhood$")
 _NOT_NAME_CHARS = re.compile(r"[^\w\s&'’.\-]")
 _TAIL_KEEP = {"of", "de", "del", "in", "at", "the", "and", "&", "y", "by", "on"}
 _COMPLEX_RE = re.compile(
@@ -777,7 +808,9 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if m:
         return _caption_spelling(_handle_to_name(m.group("handle")), caption), "handle_from"
     author = (getattr(raw, "author_handle", "") or "").lstrip("@").lower()
-    mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption)) if h.lower() != author]
+    credited = {(m.group("handle") or m.group("collab")).lower() for m in _CREDIT_HANDLE.finditer(caption)}
+    mentions = [h for h in dict.fromkeys(_ANY_HANDLE.findall(caption))
+                if h.lower() != author and h.lower() not in credited]
     pinned, pin_slot = _pinned_venue(caption, mentions)
     if pinned and pin_slot == "pin":
         return pinned, pin_slot                 # an explicit 📍 name beats a "by @chef" credit
@@ -838,6 +871,10 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
         if cand and not _is_container(cand) and not _is_region(cand) and not _COMPLEX_RE.search(cand):
             return cand, "at_venue"
 
+    own = _own_post_name(raw, caption, author)
+    if own:
+        return own, "own_post"
+
     if raw.title:
         cleaned = _TITLE_NOISE.sub("", raw.title)
         cleaned = cleaned.split("•")[0].split("|")[0].strip()
@@ -847,6 +884,44 @@ def _venue_slot(raw: RawPostSnapshot, caption: str) -> tuple[Optional[str], str]
     if disp:                                   # the account's own name, last resort
         return disp, "title_fallback"
     return None, "none"
+
+
+# A business account talking about itself: 'Give us all the pasta' (@ellies_lbc),
+# 'Our highlight reel' (@thesmithrestaurant). Needs a business-shaped handle, or the
+# business's own voice ('our'/'us', not a reviewer's bare 'we') plus an offer, hours
+# or address. Measured on train: most remaining venue misses were these posts.
+_BIZ_HANDLE = re.compile(
+    r"(bakery|bakes|bakeshop|cafe|coffee|kitchen|grill|sushi|bistro|deli|cookie|restaurant|"
+    r"eatery|pizz|taco|ramen|bbq|donut|creamery|patisserie|boulangerie|cake|chocolate|diner|"
+    r"oyster|steakhouse|brewery|winery|teahouse|boba|matcha|trattoria|taqueria|bar$|_co$)",
+    re.IGNORECASE,
+)
+_OWN_VOICE = re.compile(r"\b(?:our|us|ours)\b", re.IGNORECASE)
+# Hard evidence the poster runs the place: phone, a street address, opening hours,
+# ordering/booking. 'Today' or 'come' alone is how reviewers talk too.
+_BIZ_DETAIL = re.compile(
+    r"\(\d{3}\)|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b|📍\s*\d|\b\d{2,5}\s+[A-Z]?[\w.]+\s+(?:st|ave|blvd|rd|dr|way|hwy)\b"
+    r"|\b(?:open|opens|hours)\b[^.\n]{0,20}\d|\b(?:order online|reservations?|book (?:now|a table|online))\b",
+    re.IGNORECASE,
+)
+# Media, tourism and personal accounts that also say "our"/"us".
+_NOT_A_VENUE_HANDLE = re.compile(
+    r"(nation|infatuation|groupie|happenings|travel|hotel|tourism|magazine|media|news|\d{4}$)",
+    re.IGNORECASE,
+)
+
+
+def _own_post_name(raw: RawPostSnapshot, caption: str, author: str) -> Optional[str]:
+    if (not author or _BLOGGER_HANDLE.search(author) or _NOT_A_VENUE_HANDLE.search(author)
+            or _TOURISM_HANDLE.match(author) or _RECIPE_RE.search(caption)):
+        return None
+    if not (_BIZ_HANDLE.search(author) or (_OWN_VOICE.search(caption) and _BIZ_DETAIL.search(caption))):
+        return None
+    name = _clean_display_name(getattr(raw, "author_name", None))
+    if name:
+        return name
+    core = re.sub(r"^(?:eat(?:at|s)?|try|shop|get)(?=[a-z]{4})", "", author.lower())   # @eatsoulfulcollective
+    return _caption_spelling(_handle_to_name(core), caption)
 
 
 def _venue_candidate(raw: RawPostSnapshot, caption: str) -> Optional[str]:
@@ -990,7 +1065,8 @@ def looks_vague(raw: RawPostSnapshot, venue, geo, category, candidate_times, slo
     if not raw.venue_candidate and slot not in ("jsonld", "handle_from", "first_person"):
         recipe_hits = len(set(m.group(0).lower() for m in _RECIPE_RE.finditer(caption)))
         bullet_qty = len(re.findall(r"[○●•\-]\s*\d+\s*(?:g|ml|tbsp|tsp|cup|cucharad)", caption, re.I))
-        if recipe_hits >= 2 or bullet_qty >= 3 or (
+        quantities = len(_QUANTITY.findall(caption))
+        if recipe_hits >= 2 or bullet_qty >= 3 or quantities >= 3 or _RECIPE_CTA.search(caption) or (
             re.search(r"\brecipe\b", caption, re.I)
             and re.search(r"\bingredient|receta|ingrediente\b", caption, re.I)
         ):
