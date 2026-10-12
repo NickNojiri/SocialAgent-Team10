@@ -84,7 +84,7 @@ def audit(rows: list[dict]) -> dict[str, list[str]]:
             found["missing"].append(f"{where} {venue!r} not in stored input (fidelity={fid})")
         if in_cat is False and venue:
             found["conflict"].append(f"{where} in_catalog=false but venue={venue!r}")
-        if in_cat is True and not venue and not gold.get("city"):
+        if in_cat is True and not venue and not gold.get("city") and not gold.get("venues"):
             found["conflict"].append(f"{where} in_catalog=true but no venue and no city")
         if (row.get("labeler") or UNKNOWN_LABELER) == UNKNOWN_LABELER:
             found["provenance"].append(where)

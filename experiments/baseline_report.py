@@ -13,6 +13,8 @@ Sections
   4. Venue confidence — ROC AUC of venue_confidence for "the venue is right"
                 (does the confidence actually rank right answers above wrong ones?)
   5. Category — accuracy, macro-F1, per-class precision / recall / F1, confusion matrix.
+  6. Lists    — reels that name several spots (gold.venues): share of listed spots the
+                extractor names. Kept apart so the single-venue numbers stay comparable.
 
 Rows marked needs_review are left out. Read-only.
 """
@@ -96,6 +98,7 @@ def main() -> None:
     gate = Counter()
     gate_scores, gate_y, conf_scores, conf_y = [], [], [], []
     cat_pairs = []
+    list_spots = list_found = list_reels = 0
     for r in rows:
         g = r["gold"]
         c = normalize(raw_from_input(r["url"], r.get("input") or {}))
@@ -116,6 +119,10 @@ def main() -> None:
             gate[(is_place, said_place)] += 1
             gate_scores.append(conf if said_place else 0.0)
             gate_y.append(is_place)
+        if g.get("venues"):
+            list_reels += 1
+            list_spots += len(g["venues"])
+            list_found += sum(venue_same_place(pv, v["venue"]) for v in g["venues"])
         pc = getattr(c.get("category"), "value", c.get("category"))
         if g.get("category"):
             cat_pairs.append((g["category"], pc))
@@ -154,6 +161,8 @@ def main() -> None:
             f1s.append(kf)
             print(f"   {k:<13}{n:>4}{100*kp:>7.1f}%{100*kr:>7.1f}%{100*kf:>6.1f}%")
     print(f"   macro-F1 {100 * sum(f1s) / len(f1s):.1f}%  (every class counts equally, so rare classes matter)")
+    print(f"\n6. LISTS  {list_reels} list reels, {list_spots} spots; extractor names {ci(list_found, list_spots)}")
+
     seen = [k for k in CATS if any(k in pair for pair in cat_pairs)]
     print("\n   confusion (rows = gold, cols = predicted)")
     print("   " + " " * 13 + "".join(f"{k[:6]:>8}" for k in seen))

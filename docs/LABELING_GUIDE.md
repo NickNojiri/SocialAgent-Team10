@@ -23,8 +23,12 @@ caption — not from the bot's card.
    `gold.city`. A reel touring **several** spots in one complex has no single
    venue: `venue: null`. (Older rows label both cases `Disneyland`; the audit lists
    them under `place` so they can be brought in line.)
-4. **Several venues (rankings, roundups) or no venue (recipes, products, ads,
-   memes) → `venue: null`** and see §4.
+4. **Several venues (rankings, roundups, "what I ate in a day", crawls) →
+   `venue: null`, `post_type: "list"`, and every named spot in `gold.venues`**
+   as `[{"venue": …, "city": …, "state": …}, …]`, in the order the post gives them.
+   A list is a real place (`in_catalog: true`). Spots named only on screen still go
+   in, with `needs_recapture: true` on the row. **No venue** (recipes, products, ads,
+   memes) → `venue: null` and see §4.
 5. **A city, region or complex is never the venue.** `Mountain View: Matcha Mori`
    is the venue `Matcha Mori`. The audit flags gold venues that are places.
 6. **Spell it the same way every time.** The audit flags one place written two ways
@@ -52,8 +56,9 @@ scorer to make a row pass; fix the extractor or the label.
 
 ## §4 Catalog inclusion and category
 
-- `gold.in_catalog` is **true** when the reel is about one real place a group could
-  go to, **false** for promos, products, recipes, rankings and memes. A row with
+- `gold.in_catalog` is **true** when the reel is about real places a group could
+  go to (one, or a list of them), **false** for promos, products, recipes and memes. A chain or product
+  named in a `false` row goes in `gold.brand`, never `gold.venue`. A row with
   `in_catalog: false` has `venue: null`; a row with `in_catalog: true` has a venue
   or at least a city.
 - `gold.category` is **what the reel is about**, not the venue's name: a S'mores
