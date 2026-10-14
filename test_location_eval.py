@@ -37,3 +37,27 @@ def test_stand_in_embedder_is_normalised_and_keyword_sensitive():
     a, b, c = keyword_embedder(["sushi in laguna", "sushi bar", "dessert cafe"])
     assert math.isclose(sum(x * x for x in a), 1.0, rel_tol=1e-9)
     assert sum(x * y for x, y in zip(a, b)) > sum(x * y for x, y in zip(a, c))
+
+
+# ── experiments/compare_commits.py: paired scoring of two extractor versions ──
+
+def test_paired_scores_only_scoreable_rows_and_pairs_them():
+    from experiments.compare_commits import paired
+
+    rows = [
+        {"url": "u1", "gold": {"venue": "Yuzu Sushi", "category": "food_drink", "in_catalog": True},
+         "verdict": {"venue": "wrong", "category": "right"}},
+        {"url": "u2", "gold": {"venue": None, "category": "other", "in_catalog": False},
+         "verdict": {"venue": "wrong", "category": "right"}},
+        {"url": "u3", "gold": {"venue": "X"}, "verdict": {"venue": "needs_review"}},    # not scored
+    ]
+    before = {"u1": {"venue": "Yuzu", "category": "food_drink", "is_vague": False},
+              "u2": {"venue": "Promo Co", "category": "food_drink", "is_vague": False},
+              "u3": {"venue": "X", "category": None, "is_vague": False}}
+    after = {"u1": {"venue": "Yuzu Sushi", "category": "food_drink", "is_vague": False},
+             "u2": {"venue": None, "category": "other", "is_vague": True},
+             "u3": {"venue": "X", "category": None, "is_vague": False}}
+    out = paired(rows, before, after)
+    assert out["venue same place"] == ([False, False], [True, True])
+    assert out["category"] == ([True, False], [True, True])
+    assert out["promo rejected"] == ([False], [True]) and out["real place kept"] == ([True], [True])

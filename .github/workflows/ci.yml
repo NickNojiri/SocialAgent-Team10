@@ -33,6 +33,12 @@ jobs:
       - name: Run offline tests (full suite)
         run: python -m pytest -k "not live" -q
 
+      # Track D's attack report (feature #12): "N attacks, M refused, K got through" per
+      # class. Fails on any new attack that gets through; the 8 open Track A findings are
+      # xfail(strict), so fixing one also fails here until its mark is removed.
+      - name: Security attack report
+        run: python scripts/bench_security_attacks.py
+
       # The held-out accuracy scorecard (AGENTS.md "Checks"), printed so every PR
       # shows the numbers next to the diff. Informational: the regression floors
       # that can fail CI live in test_extraction_labels.py.

@@ -17,6 +17,10 @@ Sections
                 extractor names. Kept apart so the single-venue numbers stay comparable.
   7. Recipes  — post_type=recipe: share the extractor correctly keeps out of the
                 place catalog (is_vague), i.e. how well recipes are recognized today.
+  8. Capture  — what the logged-in source captured from the 200 reels pulled, unpicked,
+                from the burner's DMs on 2026-10-08 (the rows whose input has
+                author_name, which only that source sets): caption, location tag,
+                transcript, and how many are real places. All splits.
 
 Rows marked needs_review are left out. Read-only.
 """
@@ -175,6 +179,19 @@ def main() -> None:
     print("   " + " " * 13 + "".join(f"{k[:6]:>8}" for k in seen))
     for g in seen:
         print(f"   {g:<13}" + "".join(f"{sum(1 for a, b in cat_pairs if a == g and b == p):>8}" for p in seen))
+
+    # ── 8. capture ────────────────────────────────────────────────────────────
+    pulled = [r for r in load_labels() if "author_name" in (r.get("input") or {})]
+    n = len(pulled)
+
+    def has(field: str) -> int:
+        return sum(1 for r in pulled if str(r["input"].get(field) or "").strip())
+
+    print(f"\n8. CAPTURE  {n} reels pulled unpicked from the DMs (logged-in source; failed fetches were not logged)")
+    print(f"   caption       {ci(has('caption'), n)}")
+    print(f"   location tag  {ci(has('location_text'), n)}")
+    print(f"   transcript    {ci(has('transcript'), n)}")
+    print(f"   a real place  {ci(sum(1 for r in pulled if (r.get('gold') or {}).get('in_catalog')), n)}")
 
 
 if __name__ == "__main__":
