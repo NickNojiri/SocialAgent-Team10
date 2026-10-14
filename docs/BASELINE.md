@@ -51,7 +51,7 @@ denominators differ slightly from the scorecard):
 | Venue confidence | ROC AUC 0.538 — barely above chance: confidence doesn't rank right answers above wrong ones |
 | Category | macro-F1 48.2%; always-majority baseline 60.0% accuracy (the number to beat) |
 | Lists / recipes | 1 of 24 listed spots named · 3 of 7 recipes kept out of the catalog |
-| Extractive ceiling | the gold venue appears in the captured text for 80.3% [73.3, 85.7] of reels: no text-only extractor can beat that |
+| Extractive ceiling | the gold venue appears in the captured text for 80.3% [73.3, 85.7] of reels as an exact substring, and 94.9% [90.3, 97.4] (149/157) ignoring spacing and punctuation (`@yuzusushi` = "Yuzu Sushi"). With the 18 promos, that caps venue same-place at 95.4% (167/175): the gap to the ceiling is extraction, not capture |
 
 **Labels.** A labeler is named on 358/633 rows, 56.6% [52.7, 60.4] (claude 199, kimberly 90,
 nick 69; 275 unknown). **Inter-labeler agreement: not measured yet** — no reel has a blind second
