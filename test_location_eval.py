@@ -61,3 +61,22 @@ def test_paired_scores_only_scoreable_rows_and_pairs_them():
     assert out["venue same place"] == ([False, False], [True, True])
     assert out["category"] == ([True, False], [True, True])
     assert out["promo rejected"] == ([False], [True]) and out["real place kept"] == ([True], [True])
+
+
+# ── experiments/learning_curve.py: the small learners and the slope ──────────
+
+def test_naive_bayes_learns_words_per_class_and_macro_f1_weighs_classes_equally():
+    from experiments.learning_curve import NaiveBayes, macro_f1
+
+    model = NaiveBayes().fit([["boba", "tea"], ["matcha", "latte"], ["ramen", "noodles"], ["tacos", "birria"]],
+                             ["cafe_dessert", "cafe_dessert", "food_drink", "food_drink"])
+    assert model.predict(["boba"]) == "cafe_dessert" and model.predict(["birria", "tacos"]) == "food_drink"
+    assert macro_f1(["a", "a", "b"], ["a", "a", "a"]) == (0.8 + 0.0) / 2
+
+
+def test_upper_half_slope_ignores_the_steep_start():
+    from experiments.learning_curve import upper_half_slope
+
+    flat_tail = [(50, 0.40), (100, 0.65), (200, 0.78), (300, 0.78), (400, 0.78)]
+    assert abs(upper_half_slope(flat_tail)) < 1e-9
+    assert upper_half_slope([(100, 0.5), (400, 0.6)]) is None          # too few points to fit
