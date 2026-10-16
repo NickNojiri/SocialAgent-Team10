@@ -409,7 +409,8 @@ Every one of those eats a sprint and adds nothing to the grade.
 
 ## Rituals & definition of done
 
-- **Standup:** async in Discord, 3 lines (did / doing / blocked), Mon/Wed/Fri
+- **Standup:** async in Discord, 3 lines (did / doing / blocked), Mon/Wed/Fri, in the
+  `#sprint-board` forum, which is also the sprint board (`docs/SPRINT_BOARD.md`)
 - **Sprint planning:** 45 min, first meeting of the sprint; each owner commits to 2–4 items
 - **Sprint review:** 45 min, end of the sprint; **each person demos their own work**
 - **Retro:** 15 min after review; one thing to start/stop/continue
