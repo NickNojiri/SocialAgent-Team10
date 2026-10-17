@@ -71,7 +71,7 @@ whose `#number` is already posted.
    - Track: `A · Capture`, `B · Accuracy`, `C · Experience`, `D · Security`, `N · Platform`
    - Other: `Phase 2`, `Standup`
 
-   Use exactly these names so the script recognizes them.
+   Case and separators don't matter (`doing` and `A - Capture` work too).
 2. **Make one post per feature.** Title it `#<number> <title> (<points> pts)`, the same
    title as in the track plan. Add a status tag, a track tag and `Phase 2`. The first message
    names the owner and says what is done and what is left. For Phase 2:

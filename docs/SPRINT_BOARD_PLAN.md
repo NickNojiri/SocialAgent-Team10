@@ -79,7 +79,6 @@ What should happen:
 | `Set DISCORD_BOT_TOKEN…` | The session was opened before you saved: open another one. |
 | `discord: … 403` | The bot is missing a permission: re-invite with the link in Stage 1. |
 | A warning about Message Content Intent | Stage 1 step 2, then run `report` again. |
-| A second `A · Capture` tag | Yours used a different dot: delete yours and re-tag those posts. |
 
 ## Stage 3 — test-run the routine (before Monday, 5 min)
 
