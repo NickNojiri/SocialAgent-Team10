@@ -130,6 +130,29 @@ python scripts/seed_corpus.py reels.txt --skip-existing --out fixtures/labels.ba
 python scripts/smoke_ingest.py
 ```
 
+### Live capture reliability harness
+
+Run the Phase 1 measurement from the repository root on a Mac with home Wi-Fi:
+
+```bash
+.venv/bin/python scripts/capture_harness.py \
+  --source fixtures/labels.jsonl \
+  --sample-size 50 \
+  --seed 20261017 \
+  --output docs/results/capture-harness-2026-10-17.json
+```
+
+The seed selects the same 50 unique `/reel/` URLs from the sorted corpus URL
+pool every time; labels and expected outcomes do not affect selection. The JSON
+also records the corpus SHA-256 and the exact selected URLs.
+
+This is the public, logged-out baseline: browser fetch and the embed fallback,
+then the existing heuristic extractor and validator. Ollama, authenticated
+sessions, transcription/video downloads, OCR, geocoding, temporal resolution,
+raw-page snapshots, JSONL storage, and ChromaDB are disabled. The report in
+`docs/results/` is the run's only persistent output. Review it for 50 result
+rows and no sensitive data, then commit it as the Phase 1 evidence artifact.
+
 ---
 
 ## 5. Handoffs you owe, and receive
