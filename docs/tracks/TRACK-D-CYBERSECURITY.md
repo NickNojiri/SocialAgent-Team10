@@ -67,19 +67,25 @@ no mentions (`AllowedMentions.none()`).
 ### Phase 1 — Sep 15 – Oct 3 (100 pts)
 
 **#12 Security test suite + simulated attack ★ (100)**
-- [ ] Take `scripts/bench_admin_authz.py` as the model and build a full attack runner
+- [x] Take `scripts/bench_admin_authz.py` as the model and build a full attack runner
       against a **local** instance.
-- [ ] Attack classes, one module each:
+- [x] Attack classes, one module each:
       forged/tampered tenant token · a token for server X used against server Y ·
       faked votes on someone else's card · an injected caption ("ignore previous
       instructions…") · a link pointing at an internal address (coordinate with Track A's
       #3) · a request with no token at all.
-- [ ] Enumerate **every** protected endpoint and assert each one is covered — a new
+- [x] Enumerate **every** protected endpoint and assert each one is covered — a new
       endpoint with no attack case should fail the suite.
-- [ ] Report: attacks refused vs let through, per class.
-- [ ] Wire it into CI so reopening a hole fails the build.
+- [x] Report: attacks refused vs let through, per class. Latest local run (2026-10-17,
+      commit `7600f0e5`): **66 attacks, 58 refused, 8 got through**; details in
+      [`TRACK-D-SSRF-FINDINGS.md`](TRACK-D-SSRF-FINDINGS.md) and
+      [`PHASE1_EVIDENCE.md`](../PHASE1_EVIDENCE.md).
+- [ ] Ensure CI directly runs `scripts/bench_security_attacks.py`. The focused tests
+      already run in the offline pytest job; changing the workflow is Platform-owned
+      and is outside Track D's file scope.
 - [ ] **Done when:** one command prints "N attacks, M refused, K got through," the list of
-      K is empty or written down with owners, and CI runs it.
+      K is empty or written down with owners, and CI runs it. The open eight are assigned
+      to Track A; the direct benchmark-in-CI item remains outstanding.
 
 ### Phase 2 — Oct 6 – Oct 24 (100 pts)
 

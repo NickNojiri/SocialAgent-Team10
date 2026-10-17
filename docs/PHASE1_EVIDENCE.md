@@ -39,11 +39,16 @@ against Canvas.
 
 | | |
 |---|---|
-| Command | *one command* |
-| Result | *N attacks, M refused, K got through* |
-| Coverage | *every protected endpoint has a case: yes/no* |
-| In CI | *yes/no* |
-| Got through | *list with owners, or "none"* |
+| Command | `./.venv/bin/python scripts/bench_security_attacks.py` (run 2026-10-17, commit `7600f0e5`) |
+| Result | **66 attacks, 58 refused, 8 got through**; tenant-auth benchmark also accepted 23/23 authentic requests; focused tests: 67 passed, 8 expected failures |
+| Coverage | **Yes.** Route inventory matches the admin/recommend apps, and every protected route has a benchmark attack case (`test_protected_route_inventory_matches_apps`, `test_every_protected_route_has_a_benchmark_attack_case`). |
+| In CI | Focused tests are included in the offline pytest job. The combined reporter command is **not invoked directly** by CI; adding it to `.github/workflows/ci.yml` is a Platform-owned follow-up. |
+| Got through | 8 Track A SSRF probes: five direct browser internal-address URLs, a hostname resolving to a private IP, an embed redirect to loopback, and a video redirect to the metadata IP. Owners/status: [`TRACK-D-SSRF-FINDINGS.md`](tracks/TRACK-D-SSRF-FINDINGS.md) (all Track A, open). |
+
+Verification: `./.venv/bin/python -m pytest -k "not live" -q` → **777 passed,
+6 deselected, 8 xfailed** (2026-10-17). The eight expected failures are the open SSRF
+probes; the suite required running outside the sandbox because Chromium could not start
+under sandbox restrictions.
 
 ## Platform (Nick): #9, #23, #24, #25
 
