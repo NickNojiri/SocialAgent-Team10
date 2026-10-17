@@ -206,6 +206,18 @@ def test_setup_adds_missing_tags_and_keeps_existing_ones(fake, dc):
     assert now["Our own tag"] == kept["Our own tag"] and now["Backlog"] == kept["Backlog"]
 
 
+def test_hand_made_tags_match_whatever_their_case_or_separator(fake, dc):
+    # The board made by hand has "doing", "phase 2" and "A - Capture": setup must not add a
+    # second copy of those, and the report must read them as the script's own tags.
+    forum = fake.add_forum(tags=["doing", "phase 2", "A - Capture", "Standup"])
+    fake.add_post(forum, "#2 Capture chain (100 pts)", ["Doing", "A · Capture", "Phase 2"], NOW)
+    sb.setup(dc, GUILD, "sprint-board")
+    names = [t["name"] for t in fake.channels[forum["id"]]["available_tags"]]
+    assert len(names) == len(all_tags()) and "Doing" not in names and "doing" in names
+    post = sb.collect(dc, GUILD, fake.channels[forum["id"]], None)[0]
+    assert (post.status, post.track, post.phase) == ("Doing", "A · Capture", 2)
+
+
 def test_seed_posts_each_feature_once_with_status_track_and_phase(fake, dc, tmp_path):
     forum = fake.add_forum(tags=all_tags())
     path = tmp_path / "TRACK-A-CAPTURE.md"

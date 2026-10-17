@@ -232,6 +232,16 @@ def wanted_tags() -> list[dict]:
     return [{"name": n, **({"emoji_name": EMOJI[n]} if n in EMOJI else {})} for n in names]
 
 
+def canon(name: str) -> str:
+    """Tag names made by hand vary: "doing", "A - Capture" and "A · Capture" are the same tag."""
+    return re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+
+
+def known(name: str) -> str:
+    """A forum tag's name as the script spells it, or the name itself if it isn't ours."""
+    return {canon(t["name"]): t["name"] for t in wanted_tags()}.get(canon(name), name)
+
+
 def find_forum(dc: Discord, guild: str, name: str) -> dict | None:
     for ch in dc.call("GET", f"/guilds/{guild}/channels"):
         if ch["type"] == FORUM_TYPE and ch["name"] == name:
@@ -253,8 +263,8 @@ def setup(dc: Discord, guild: str, name: str) -> tuple[dict, str]:
         forum = dc.call("POST", f"/guilds/{guild}/channels", {
             "name": name, "type": FORUM_TYPE, "topic": TOPIC, "available_tags": wanted_tags()})
         return forum, f"created #{name}"
-    have = {t["name"] for t in forum.get("available_tags", [])}
-    missing = [t for t in wanted_tags() if t["name"] not in have]
+    have = {canon(t["name"]) for t in forum.get("available_tags", [])}
+    missing = [t for t in wanted_tags() if canon(t["name"]) not in have]
     if not missing:
         return forum, f"#{name} already set up"
     # Existing tags go back with their ids, or Discord would delete them.
@@ -264,11 +274,11 @@ def setup(dc: Discord, guild: str, name: str) -> tuple[dict, str]:
 
 
 def tag_ids(forum: dict) -> dict[str, str]:
-    return {t["name"]: t["id"] for t in forum["available_tags"]}
+    return {known(t["name"]): t["id"] for t in forum["available_tags"]}
 
 
 def tag_names(forum: dict) -> dict[str, str]:
-    return {t["id"]: t["name"] for t in forum["available_tags"]}
+    return {t["id"]: known(t["name"]) for t in forum["available_tags"]}
 
 
 def forum_posts(dc: Discord, guild: str, forum: dict) -> list[dict]:
