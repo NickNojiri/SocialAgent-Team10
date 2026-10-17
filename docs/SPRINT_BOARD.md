@@ -58,6 +58,58 @@ form `**#27 Title (80)**` followed by `- [ ]` checkboxes. A post starts as Backl
 is ticked, Doing if some are ticked, and Done if all are. After that, the tags on the board are the
 truth. The phase dates come from the table in `docs/tracks/README.md`.
 
+## Setting it up by hand (no bot, about 20 minutes)
+
+Use this when the bot isn't set up yet. The board looks the same and the routine takes it
+over later, because `setup` keeps tags that already exist and `seed` skips any feature
+whose `#number` is already posted.
+
+1. **Make the forum.** Forum channels need a Community server (Server Settings → Enable
+   Community). Click **+** → **Forum** → name it `sprint-board`. In its settings → **Tags**,
+   add these tags:
+   - Status: `Backlog`, `Doing`, `Review`, `Blocked`, `Done`
+   - Track: `A · Capture`, `B · Accuracy`, `C · Experience`, `D · Security`, `N · Platform`
+   - Other: `Phase 2`, `Standup`
+
+   Use exactly these names so the script recognizes them.
+2. **Make one post per feature.** Title it `#<number> <title> (<points> pts)`, the same
+   title as in the track plan. Add a status tag, a track tag and `Phase 2`. The first message
+   names the owner and says what is done and what is left. For Phase 2:
+
+   | Title | Tags | Owner |
+   |---|---|---|
+   | #2 Authenticated capture + fallback chain (100 pts) | Doing · A · Capture | Blessie |
+   | #16 Learned category classifier (100 pts) | Backlog · B · Accuracy | Valeria |
+   | #17 Evaluation report generator (30 pts) | Backlog · B · Accuracy | Valeria |
+   | #18 Time-to-card measurement (30 pts) | Doing · C · Experience | Nick |
+   | #27 Non-blocking capture with live progress (80 pts) | Review · N · Platform | Nick |
+   | #10 Secrets management & signing-key rotation (60 pts) | Doing · N · Platform | Nick |
+   | #30 Authentication & session hardening (100 pts) | Backlog · D · Security | Kimberly |
+
+   Course deliverables, such as the Design Document, get their own post with a status tag
+   and `Phase 2`.
+3. **Open a standup.** Make a post titled `Standup — <Day Mon D>`, for example
+   `Standup — Sat Oct 17`, tag it `Standup`, and write: "Reply with three lines: Did / Doing /
+   Blocked (or none)."
+4. **Everyone posts.** Each person replies on their own feature post with one real progress
+   line, and answers the standup. Post only real updates, and never on someone else's
+   behalf.
+
+### Screenshots for the Living Project Guide
+
+| # | Screenshot |
+|---|---|
+| 1 | The #sprint-board list, with posts and their tags visible |
+| 2 | The tag filter at the top set to **Doing** |
+| 3 | One feature post with a teammate's progress reply |
+| 4 | The standup post with at least two replies |
+| 5 | Channel settings → Tags |
+| 6 | The scheduled task **SpotBot sprint check-in** on claude.ai: its schedule and instructions |
+
+Take them with Win+Shift+S. Crop out other servers, DMs and anything private. Put them in
+section 6 of the guide: click a shaded box, delete its text, then Insert → Image → Upload from
+computer, and keep the caption underneath.
+
 ## One-time setup (Nick, about 15 minutes)
 
 1. **Make a separate bot.** In the Discord Developer Portal, create a new application called
