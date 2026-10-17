@@ -398,8 +398,11 @@ def collect(dc: Discord, guild: str, forum: dict, since: datetime | None) -> lis
                 if m["id"] == t["id"] or m["author"].get("bot"):
                     continue  # the post's own opening message, or a bot's
                 author = m["author"].get("global_name") or m["author"]["username"]
+                text = m.get("content", "")
+                if not text and (m.get("attachments") or m.get("sticker_items")):
+                    text = "(an attachment, no text)"
                 post.recent.append({"author": author, "at": snowflake_time(m["id"]).isoformat(),
-                                    "text": clip(m.get("content", ""), 500)})
+                                    "text": clip(text, 500)})
         posts.append(post)
     return posts
 
@@ -441,6 +444,16 @@ def render(posts: list[Post], phase: int, span: tuple[date, date], now: datetime
     return "\n".join(lines)
 
 
+def hidden_warning(posts: list[Post]) -> str | None:
+    """Replies with no text at all mean the bot's Message Content Intent is off."""
+    hidden = sum(not r["text"] for p in posts for r in p.recent)
+    if not hidden:
+        return None
+    return (f"Discord returned {hidden} {'reply' if hidden == 1 else 'replies'} without text: "
+            "turn on Message Content Intent for the bot (docs/SPRINT_BOARD.md, One-time setup "
+            "step 1).")
+
+
 def report_json(posts: list[Post], phase: int, span: tuple[date, date], now: datetime) -> str:
     rows = []
     for p in posts:
@@ -450,7 +463,8 @@ def report_json(posts: list[Post], phase: int, span: tuple[date, date], now: dat
         rows.append(row)
     return json.dumps({"phase": phase, "phase_start": span[0].isoformat(),
                        "phase_end": span[1].isoformat(), "now": now.isoformat(),
-                       "posts": rows}, ensure_ascii=False, indent=2)
+                       "warning": hidden_warning(posts), "posts": rows},
+                      ensure_ascii=False, indent=2)
 
 
 # --- command line --------------------------------------------------------------------------
@@ -507,6 +521,8 @@ def main(argv: list[str] | None = None, dc: Discord | None = None,
             posts = collect(dc, guild, forum, now - timedelta(days=args.since))
             out = report_json if args.json else render
             print(out(posts, phase, cal[phase], now))
+            if warning := hidden_warning(posts):
+                print(f"warning: {warning}", file=sys.stderr)
         elif args.cmd == "standup":
             post = standup(dc, guild, forum, now.date())
             print(json.dumps({"id": post["id"], "name": post["name"]}))

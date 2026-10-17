@@ -3,7 +3,7 @@
 Our agile board is a Discord **forum channel, `#sprint-board`**, in the team server. A
 Claude routine checks it on Monday, Wednesday and Friday mornings. The professor approved this tool for
 CECS 491A. The code is `scripts/sprint_board.py` (standard library only), and its tests are in
-`test_sprint_board.py`.
+`test_sprint_board.py`. What's left to finish it, in order: [`SPRINT_BOARD_PLAN.md`](SPRINT_BOARD_PLAN.md).
 
 ```
  docs/tracks/TRACK-*.md ──seed──▶  #sprint-board (forum)  ◀── you: reply, change tags
@@ -114,11 +114,13 @@ computer, and keep the caption underneath.
 
 1. **Make a separate bot.** In the Discord Developer Portal, create a new application called
    "SprintBot" and add a bot to it. Don't reuse SpotBot's token: this one goes into the
-   cloud environment, so keep it separate from the product.
+   cloud environment, so keep it separate from the product. On the Bot page, turn on
+   **Message Content Intent** and leave the other two intents off. Without it, Discord's API
+   returns people's replies with empty text, and `report` warns about it.
 2. **Invite it to the team server.** Use the OAuth2 URL generator with the `bot` scope and these
    permissions: View Channels, Manage Channels (setup only), Send Messages, Send Messages
    in Threads, Create Public Threads, Manage Threads (to change tags) and Read Message History.
-   It needs no privileged intents.
+   That is permissions integer `326417583120`.
 3. **Copy the server id.** Turn on Developer Mode in Discord, then right-click the server and
    choose Copy Server ID.
 4. **Add the secrets to the Claude Code cloud environment** (claude.ai/code, then environment
@@ -141,7 +143,8 @@ follows the instructions below. If you change them here, update the scheduled ta
    merges). Never commit or push.
 2. If `DISCORD_BOT_TOKEN` or `SPRINT_GUILD_ID` is missing, or discord.com is unreachable,
    stop. Report which setup step above is missing, and post nothing.
-3. `report --json --since 7` on Mondays, `--since 3` on Wednesdays and Fridays.
+3. `report --json --since 7` on Mondays, `--since 3` on Wednesdays and Fridays. If the JSON
+   has a `warning`, put it in the final summary (it names the setup step to fix).
 4. `standup`, which opens today's post and returns its id.
 5. Write a check-in note of at most 1,500 characters and post it with `post --into`
    inside today's standup:

@@ -310,6 +310,23 @@ def test_report_json_is_what_the_routine_reads(fake, dc):
     data = json.loads(out)
     assert data["phase"] == 2 and len(data["posts"]) == 6
     assert {"name", "status", "track", "points", "last", "recent"} <= set(data["posts"][0])
+    assert data["warning"] is None
+
+
+def test_report_warns_when_discord_hides_reply_text(fake, dc, capsys):
+    # Without the Message Content Intent, Discord's REST API returns people's messages with
+    # empty content. The routine must say so rather than report that nobody wrote anything.
+    forum = board(fake)
+    fake.add_post(forum, "#17 Eval report (30 pts)", ["Doing", "B · Accuracy", "Phase 2"],
+                  NOW - timedelta(days=2), replies=[("Valeria", NOW - timedelta(days=1), "")])
+    post = fake.add_post(forum, "#18 Time to card (30 pts)", ["Doing", "C · Experience", "Phase 2"],
+                         NOW - timedelta(days=2), replies=[("Nick", NOW - timedelta(days=1), "")])
+    fake.messages[post["id"]][-1]["attachments"] = [{"id": "9", "filename": "chart.png"}]
+    data = json.loads(io_main(["report", "--json"], dc))
+    assert data["warning"].startswith("Discord returned 1 reply without text")
+    assert "Message Content Intent" in capsys.readouterr().err
+    texts = {p["name"]: [r["text"] for r in p["recent"]] for p in data["posts"]}
+    assert texts["#18 Time to card (30 pts)"] == ["(an attachment, no text)"]
 
 
 def io_main(argv, dc):
