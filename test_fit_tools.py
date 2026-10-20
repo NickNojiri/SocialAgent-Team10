@@ -85,3 +85,25 @@ def test_venue_list_keeps_every_name_once_and_drops_junk():
     assert bv.names(data) == ["Blue Bottle", "Blue Bottle Coffee", "Tacos Manny"]
     q = bv.query()
     assert "restaurant" in q and "33.4,-118.95,34.35,-117.4" in q and "out tags" in q
+
+
+def test_venue_list_moves_to_the_next_server_only_when_busy():
+    import io
+    import urllib.error
+    tried = []
+
+    def fake_open(req, timeout):
+        tried.append(req.full_url)
+        if len(tried) == 1:
+            raise urllib.error.HTTPError(req.full_url, 502, "Bad Gateway", {}, None)
+        return io.BytesIO(b'{"elements": [{"tags": {"name": "Tacos Manny"}}]}')
+
+    data = bv.fetch("q", endpoints=("https://a/api", "https://b/api", "https://c/api"), pause=0, open_url=fake_open)
+    assert bv.names(data) == ["Tacos Manny"] and tried == ["https://a/api", "https://b/api"]
+
+    def not_busy(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 400, "Bad Request", {}, None)
+
+    import pytest
+    with pytest.raises(urllib.error.HTTPError):
+        bv.fetch("q", endpoints=("https://a/api", "https://b/api"), pause=0, open_url=not_busy)
