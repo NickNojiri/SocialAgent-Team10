@@ -36,10 +36,11 @@ works; the capstone is making it *reliable* and *proving that with numbers*.
 3. Prove it works — no Discord account or token needed:
    ```powershell
    .\.venv\Scripts\python.exe -m pytest -k "not live" -q
-   .\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split test
+   .\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split dev
    ```
-   First one: **253 passed**. Second one prints the scorecard; the line to look at is
-   `venue exact : 37.4%`. That number is what this whole project is about.
+   First one: everything passes. Second one prints the scorecard on the dev split; the
+   line to look at is `venue same place`. The held-out test number is read only to
+   report, with `--final "why"` (docs/DATA_PLAN.md).
 
 If a step fails, screenshot the error and bring it — we fix setup together first thing.
 
@@ -91,10 +92,10 @@ don't run `scripts\review.py` while anything else writes the file):
 - `DZzvbTupPND`: note → `name_in_comments`
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split test   # before
+.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split dev    # before
 # edit the two rows
-.\.venv\Scripts\python.exe scripts\build_aliases.py                        # rebuild both alias tables
-.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split test   # after
+.\.venv\Scripts\python.exe scripts\build_aliases.py                        # rebuild all three alias tables
+.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split dev    # after
 .\.venv\Scripts\python.exe -m pytest test_extraction_labels.py -q
 ```
 Both rows are in the *train* split, so the held-out numbers should not move — say in

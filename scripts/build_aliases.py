@@ -5,17 +5,19 @@ becomes a deterministic override: normalize(predicted) -> gold. This is how
 /review.py corrections and every labeling pass compound — run this after any
 change to fixtures/labels.jsonl.
 
-    python scripts/build_aliases.py          # writes BOTH tables (do this)
+    python scripts/build_aliases.py          # writes all THREE tables (do this)
 
-Two tables, because one file cannot serve both jobs:
+Three tables, because one file cannot serve every job:
 
   venue_aliases.json        every labeled row  — what the product ships. A user's
                             correction should stick, whichever split it fell in.
-  venue_aliases.train.json  train rows only    — what `eval.py` scores the test
+  venue_aliases.train.json  train + dev rows   — what `eval.py` scores the test
                             split with. Building from the whole corpus compiles a
                             test row's own gold label into the extractor that
                             scores it; that was worth 12 points of fake venue
                             accuracy (docs/ML_REVIEW_QUESTIONS.md, finding 1).
+  venue_aliases.fit.json    train rows only    — what scores the dev split, for
+                            the same reason one level down.
 
     python scripts/build_aliases.py --split train --out /tmp/t.json   # one table
 """
@@ -39,6 +41,7 @@ from src.ingestion.pipeline.normalizer import (  # noqa: E402
 )
 
 TRAIN_OUT = REPO / "fixtures" / "venue_aliases.train.json"
+FIT_OUT = REPO / "fixtures" / "venue_aliases.fit.json"
 
 # A key that is really a place / chrome word must never become a global override.
 _BAD_KEYS = {re.sub(r"[^a-z0-9]", "", s) for s in
@@ -76,9 +79,11 @@ def _multi_venue_accounts(rows: list[dict]) -> set[str]:
 
 
 def build(rows: list[dict], split: str) -> dict[str, str]:
-    """`split`: 'all' | 'train' | 'test' — which corpus rows may contribute an override."""
+    """`split`: which corpus rows may contribute an override — 'all', 'nontest'
+    (train + dev), or one split ('train' | 'dev' | 'test')."""
     aliases: dict[str, str] = {}
-    rows = [r for r in rows if split == "all" or split_of(r["url"]) == split]
+    keep = {"all": set(), "nontest": {"train", "dev"}}.get(split, {split})
+    rows = [r for r in rows if split == "all" or split_of(r) in keep]
     bloggers = _multi_venue_accounts(rows)
     for r in rows:
         pred = (r.get("predicted") or {}).get("venue")
@@ -103,7 +108,7 @@ def write(aliases: dict[str, str], out: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", choices=["all", "train", "test"],
+    ap.add_argument("--split", choices=["all", "nontest", "train", "dev", "test"],
                     help="build one table from this split (default: build both shipped tables)")
     ap.add_argument("--out", type=Path, help="write to this path instead of the default")
     args = ap.parse_args()
@@ -111,11 +116,15 @@ def main() -> None:
     rows = [json.loads(l) for l in CORPUS.read_text(encoding="utf-8").split("\n") if l.strip()]
 
     if args.split:
-        write(build(rows, args.split), args.out or (OUT if args.split == "all" else TRAIN_OUT))
+        default = {"all": OUT, "nontest": TRAIN_OUT, "train": FIT_OUT}.get(args.split)
+        if not (args.out or default):
+            ap.error(f"--split {args.split} has no shipped table; pass --out")
+        write(build(rows, args.split), args.out or default)
         return
 
     write(build(rows, "all"), OUT)
-    write(build(rows, "train"), TRAIN_OUT)
+    write(build(rows, "nontest"), TRAIN_OUT)
+    write(build(rows, "train"), FIT_OUT)
 
 
 if __name__ == "__main__":

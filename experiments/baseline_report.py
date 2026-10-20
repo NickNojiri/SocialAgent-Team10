@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from src.ingestion.eval import (  # noqa: E402
-    load_labels, raw_from_input, split_of, use_aliases, venue_same_place, wilson_interval,
+    load_labels, raw_from_input, read_test, split_of, use_aliases, venue_same_place, wilson_interval,
 )
 from src.ingestion.pipeline.normalizer import normalize  # noqa: E402
 
@@ -80,26 +80,29 @@ def auc(scores: list[float], labels: list[bool]) -> float | None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", choices=["test", "train", "all"], default="test")
+    ap.add_argument("--split", choices=["test", "dev", "train", "all"], default="test")
+    ap.add_argument("--final", metavar="WHY", help="required with --split test (logged in docs/results/TEST_LEDGER.md)")
     args = ap.parse_args()
+    if args.split == "test":
+        read_test(args.final, "baseline_report")
 
-    use_aliases("train")                                     # never score test with its own labels
+    use_aliases("fit" if args.split == "dev" else "train")   # never score a split with its own labels
     rows = [r for r in load_labels() if r.get("gold") and r.get("verdict", {}).get("venue") != "needs_review"]
 
     # ── 1. split ──────────────────────────────────────────────────────────────
-    now = Counter(split_of(r["url"]) for r in rows)
+    now = Counter(split_of(r) for r in rows)
     sides = defaultdict(set)
     for r in rows:
-        sides[creator(r)].add(split_of(r["url"]))
+        sides[creator(r)].add(split_of(r))
     leaking = sum(1 for s in sides.values() if len(s) > 1)
     grouped = Counter(creator_split(r) for r in rows)
     print(f"1. SPLIT  {len(rows)} labeled reels, {len(sides)} creators")
-    print(f"   current (by URL):     train {now['train']}  test {now['test']}   "
-          f"creators in both: {leaking}")
+    print(f"   current (splits.json): train {now['train']}  dev {now['dev']}  test {now['test']}   "
+          f"creators in more than one: {leaking}")
     print(f"   proposed (by creator): train {grouped['train']}  val {grouped['val']}  test {grouped['test']}   "
           f"creators in both: 0")
 
-    rows = [r for r in rows if args.split == "all" or split_of(r["url"]) == args.split]
+    rows = [r for r in rows if args.split == "all" or split_of(r) == args.split]
     tp = fp = fn = same = 0
     gate = Counter()
     gate_scores, gate_y, conf_scores, conf_y = [], [], [], []

@@ -88,8 +88,8 @@ run it myself on my own machine.
 Task: in src/ingestion/eval.py, print a 95% Wilson confidence interval next to every
 accuracy number. Don't change how anything is scored — only how it's reported. Read
 src/ingestion/eval.py and scripts/eval_diagnostics.py first. Then run
-`python -m src.ingestion.eval --offline --split test` and show me the before and after.
-Remember: tune on --split train, never iterate against --split test.
+`python -m src.ingestion.eval --offline --split dev` and show me the before and after.
+Remember: tune on --split train, compare on --split dev, never read --split test.
 ```
 
 **Track C — the onboarding wizard (feature #8):**

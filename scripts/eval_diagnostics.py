@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO))
 from src.ingestion.config import IngestionSettings  # noqa: E402
 from src.ingestion.eval import (  # noqa: E402
     LABELS_PATH, _SCOREABLE_VERDICTS, _norm, format_rate, load_labels,
-    paired_delta_interval, raw_from_input, score, split_of, use_aliases,
+    paired_delta_interval, raw_from_input, read_test, score, split_of, use_aliases,
 )
 from src.ingestion.pipeline.normalizer import normalize  # noqa: E402
 
@@ -239,13 +239,14 @@ def ceiling(rows: list[dict]) -> None:
 
 
 def run_report(rows: list[dict], split: str) -> None:
-    scored = [r for r in rows if split == "all" or split_of(r["url"]) == split]
+    scored = [r for r in rows if split == "all" or split_of(r) == split]
     print(f"diagnostics: {len(rows)} corpus rows ({LABELS_PATH.name}), split={split} ({len(scored)} rows)")
     try:
         if split == "test":
             alias_leakage(scored)
-        use_aliases("train" if split == "test" else "all")
-        print(f"\n(sections below use the {'train-only' if split == 'test' else 'all-corpus'} alias table)")
+        table = {"test": "train", "dev": "fit"}.get(split, "all")
+        use_aliases(table)
+        print(f"\n(sections below use the '{table}' alias table)")
         breakdown(scored)
         group_overlap(rows)
         ceiling(scored)
@@ -255,8 +256,11 @@ def run_report(rows: list[dict], split: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", choices=["all", "train", "test"], default="test")
+    ap.add_argument("--split", choices=["all", "train", "dev", "test"], default="dev")
+    ap.add_argument("--final", metavar="WHY", help="required with --split test (logged in docs/results/TEST_LEDGER.md)")
     args = ap.parse_args()
+    if args.split == "test":
+        read_test(args.final, "eval_diagnostics")
     run_report(load_labels(), args.split)
 
 

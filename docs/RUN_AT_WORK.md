@@ -28,9 +28,9 @@ downloads the Playwright Chromium browser, pulls the Ollama models
 ## 2b. Check it works — no Discord token needed
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -k "not live" -q
-.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split test
+.\.venv\Scripts\python.exe -m src.ingestion.eval --offline --split dev
 ```
-The first should pass. The second prints the extractor's honest held-out scorecard —
+The first should pass. The second prints the extractor's scorecard on the dev split —
 the numbers the team is working to move.
 
 ## 3. Add your Discord token

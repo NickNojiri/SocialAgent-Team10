@@ -23,7 +23,7 @@ OUT = REPO / "data" / "ssl" / "corpus.txt"
 def texts(rows: list[dict]) -> list[str]:
     out = []
     for r in rows:
-        if split_of(r["url"]) != "train":
+        if split_of(r) != "train":
             continue
         inp = r.get("input") or {}
         for field in ("caption", "transcript", "ocr"):

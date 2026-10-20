@@ -23,7 +23,7 @@ then use `.\.venv\Scripts\python.exe` in place of `python` below.
 
 ```bash
 python -m pytest -k "not live" -q                        # offline suite, must stay green (324+)
-python -m src.ingestion.eval --offline --split test      # accuracy scorecard (Track B work)
+python -m src.ingestion.eval --offline --split dev       # accuracy scorecard (Track B work)
 ```
 Neither needs a Discord token, Ollama, or internet (the suite does need Chromium).
 Add or update tests for any behaviour you change; tests live next to their area
@@ -66,9 +66,13 @@ real Instagram and need internet. They run on a teammate's own machine.
   `splitlines()` (captions contain U+2028).
 - `scripts/review.py` rewrites the whole file — never run it while anything else writes
   the corpus.
-- After any label change: `python scripts/build_aliases.py` (rebuilds both alias tables),
+- After any label change: `python scripts/build_aliases.py` (rebuilds all three alias tables),
   then raise the floors in `test_extraction_labels.py` to the new `--split train`
   numbers. Floors only ever go up.
+- **Three splits, frozen in `fixtures/splits.json`** (`docs/DATA_PLAN.md`): tune on
+  `--split train`, compare versions on `--split dev`, and read `--split test` only to
+  report, with `--final "why"`, which logs the read in `docs/results/TEST_LEDGER.md`.
+  Never regenerate `splits.json`. Machine-made (silver) labels are train-only.
 - **Tune on `--split train`. Do not iterate against `--split test`** — it is the held-out
   number the project reports. Report any claimed gain with its confidence interval
   (`python scripts/eval_diagnostics.py`).

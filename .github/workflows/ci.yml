@@ -39,8 +39,10 @@ jobs:
       - name: Security attack report
         run: python scripts/bench_security_attacks.py
 
-      # The held-out accuracy scorecard (AGENTS.md "Checks"), printed so every PR
-      # shows the numbers next to the diff. Informational: the regression floors
-      # that can fail CI live in test_extraction_labels.py.
-      - name: Accuracy scorecard (held-out test split)
-        run: python -m src.ingestion.eval --offline --split test
+      # The accuracy scorecard (AGENTS.md "Checks"), printed so every PR shows the
+      # numbers next to the diff. It reads DEV, never test: printing test on every
+      # push made each PR's keep-or-drop decision a look at the held-out set
+      # (docs/DATA_PLAN.md). Informational: the floors that can fail CI live in
+      # test_extraction_labels.py.
+      - name: Accuracy scorecard (dev split)
+        run: python -m src.ingestion.eval --offline --split dev

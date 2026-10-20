@@ -33,14 +33,66 @@ LABELS_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "labels.jsonl"
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
-def split_of(url: str) -> str:
-    """Deterministic 70/30 train/test by URL hash — stable as the corpus grows,
-    so rules are tuned on `train` and the honest number is `test`."""
+SPLITS_PATH = LABELS_PATH.parent / "splits.json"
+SPLITS = ("train", "dev", "test")
+_split_manifest: dict | None = None
+
+
+def _hash100(text: str) -> int:
     import hashlib
 
-    code = url.rstrip("/").split("/")[-1]
-    h = int(hashlib.md5(code.encode()).hexdigest()[:8], 16)
-    return "test" if h % 100 < 30 else "train"
+    return int(hashlib.md5(text.encode()).hexdigest()[:8], 16) % 100
+
+
+def _code(url: str) -> str:
+    return url.rstrip("/").split("/")[-1]
+
+
+def creator_of(row: dict) -> str:
+    """The account that posted a reel, so one creator's reels stay in one split (their
+    style and their venues would otherwise leak from train into dev or test). A reel
+    with no handle is its own group."""
+    handle = re.sub(r"[^a-z0-9]", "", ((row.get("input") or {}).get("handle") or "").lower())
+    return handle or _code(row["url"])
+
+
+def _manifest() -> dict:
+    global _split_manifest
+    if _split_manifest is None:
+        try:
+            _split_manifest = json.loads(SPLITS_PATH.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            _split_manifest = {"rows": {}, "creators": {}}
+    return _split_manifest
+
+
+def split_of(row: "dict | str") -> str:
+    """'train' | 'dev' | 'test' — tune on train, choose between versions on dev, and
+    read test once, at the end (docs/DATA_PLAN.md).
+
+    Pass the row when you have it: a new reel then joins its creator's split. A bare URL
+    still works for reels in the manifest.
+
+      1. Silver rows (machine-made labels, `"source": "silver"`) are always train: they
+         are never scored.
+      2. Reels in `fixtures/splits.json` keep the split they were frozen with. Test is
+         the 185-reel held-out set from BASELINE.md, byte for byte.
+      3. A new reel from a known creator joins that creator (test, then dev, then train).
+      4. Anything else: 60/20/20 by a hash of its creator.
+    """
+    row = row if isinstance(row, dict) else {"url": row}
+    if row.get("source") == "silver":
+        return "train"
+    manifest = _manifest()
+    frozen = manifest["rows"].get(_code(row["url"]))
+    if frozen:
+        return frozen
+    creator = creator_of(row)
+    known = manifest["creators"].get(creator)
+    if known:
+        return known
+    h = _hash100(creator)
+    return "test" if h < 20 else "dev" if h < 40 else "train"
 _SCOREABLE_VERDICTS = {"right", "wrong", "missing"}   # 'needs_review' is excluded from pass/fail
 UNKNOWN_LABELER = "unknown"
 
@@ -559,15 +611,71 @@ def score_geocode(rows: list[dict]) -> None:
 
 
 def use_aliases(which: str) -> int:
-    """Point the extractor's learned-correction table at 'all' | 'train' | 'none'."""
+    """Point the extractor's learned-correction table at 'all' | 'train' | 'fit' | 'none'.
+
+    'train' is built from every reel that isn't test (train + dev): what scores test,
+    the usual "refit on train + dev, then test once". 'fit' is built from train alone:
+    what scores dev, so no dev reel's own label is compiled into the extractor."""
     from src.ingestion.pipeline import normalizer
 
     paths = {
         "all": LABELS_PATH.parent / "venue_aliases.json",
         "train": LABELS_PATH.parent / "venue_aliases.train.json",
+        "fit": LABELS_PATH.parent / "venue_aliases.fit.json",
         "none": LABELS_PATH.parent / "does-not-exist.json",
     }
     return normalizer.reload_aliases(paths[which])
+
+
+TEST_LEDGER = LABELS_PATH.parents[1] / "docs" / "results" / "TEST_LEDGER.md"
+
+
+def read_test(final: str | None, tool: str) -> None:
+    """Gate every look at the test split behind a stated reason, and log it.
+
+    Each look at test that changes what you do next turns test into a second dev set,
+    and the reported number stops meaning anything. So reading it takes `--final
+    "why"`, and each read appends a line to docs/results/TEST_LEDGER.md, which is
+    committed: anyone can count how often test was looked at, and why."""
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    if not final:
+        sys.exit(f"refused: {tool} --split test reads the held-out set. Tune on train, compare "
+                 "on dev, and read test once, at the end, with --final \"why\" "
+                 "(it is logged in docs/results/TEST_LEDGER.md). See docs/DATA_PLAN.md.")
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                                text=True, cwd=LABELS_PATH.parents[1]).stdout.strip() or "?"
+    except OSError:
+        commit = "?"
+    when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    reason = " ".join(final.split()).replace("|", "/")
+    if not TEST_LEDGER.exists():
+        TEST_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        TEST_LEDGER.write_text(
+            "# Test-split ledger\n\nEvery read of the held-out test split, appended by "
+            "`--final`. Commit this file with the result it produced.\n\n"
+            "| When | Commit | Tool | Why |\n|---|---|---|---|\n", encoding="utf-8", newline="\n")
+    with TEST_LEDGER.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(f"| {when} | `{commit}` | {tool} | {reason} |\n")
+    print(f"HELD-OUT TEST, read #{ledger_reads()} — logged in docs/results/TEST_LEDGER.md.")
+
+
+def ledger_reads() -> int:
+    if not TEST_LEDGER.exists():
+        return 0
+    return sum(1 for line in TEST_LEDGER.read_text(encoding="utf-8").split("\n")
+               if line.startswith("| 20"))
+
+
+def seen_creators(rows: list[dict], split: str) -> set[str]:
+    """Creators the extractor could have learned from before scoring `split`: train for
+    dev; train and dev for test. 37 test creators also posted a train reel before the
+    split went by creator, and their test reels are easier than a stranger's."""
+    learned_from = {"dev": {"train"}, "test": {"train", "dev"}}.get(split, set())
+    return {creator_of(r) for r in rows if split_of(r) in learned_from}
 
 
 def _ollama_up(settings: IngestionSettings) -> bool:
@@ -591,12 +699,18 @@ def main() -> None:
                     help="paired McNemar comparison: corpus predictions vs current extractor")
     ap.add_argument("--stage", choices=["extract", "geocode"], default="extract",
                     help="which pipeline stage to score (default: extract)")
-    ap.add_argument("--split", choices=["all", "train", "test"], default="all",
-                    help="score only this split (deterministic 70/30 by URL hash)")
-    ap.add_argument("--aliases", choices=["all", "train", "none"],
+    ap.add_argument("--split", choices=["all", "train", "dev", "test"], default="all",
+                    help="score only this split (fixtures/splits.json; docs/DATA_PLAN.md)")
+    ap.add_argument("--aliases", choices=["all", "train", "fit", "none"],
                     help="which learned-correction table the extractor may use. Default: "
-                         "'train' when --split test (so a test row's own gold label is not "
-                         "compiled into the extractor scoring it), 'all' otherwise.")
+                         "'train' (train + dev) for --split test and 'fit' (train only) for "
+                         "--split dev, so no scored row's own gold label is compiled into the "
+                         "extractor scoring it; 'all' otherwise.")
+    ap.add_argument("--final", metavar="WHY",
+                    help="required with --split test: why you are reading the held-out set "
+                         "(logged in docs/results/TEST_LEDGER.md)")
+    ap.add_argument("--unseen-creators", action="store_true",
+                    help="drop reels whose creator also posted in train or dev")
     args = ap.parse_args()
 
     import os
@@ -605,18 +719,23 @@ def main() -> None:
         ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
         ollama_model=args.model or os.getenv("OLLAMA_MODEL", "llama3.2"),
     )
-    which = args.aliases or ("train" if args.split == "test" else "all")
+    if args.split == "test":
+        read_test(args.final, "eval")
+    which = args.aliases or {"test": "train", "dev": "fit"}.get(args.split, "all")
     n_aliases = use_aliases(which)
 
     rows = load_labels()
     if args.split != "all":
-        rows = [r for r in rows if split_of(r["url"]) == args.split]
-    if args.split == "test":
-        print("HELD-OUT TEST: inspect deliberately; use --split train for iteration.")
-    print(f"corpus: {len(rows)} evaluation rows  ({LABELS_PATH}, split={args.split})")
+        rows = [r for r in rows if split_of(r) == args.split]
+    if args.unseen_creators:
+        seen = seen_creators(load_labels(), args.split)
+        rows = [r for r in rows if creator_of(r) not in seen]
+    print(f"corpus: {len(rows)} evaluation rows  ({LABELS_PATH}, split={args.split}"
+          + (", unseen creators only" if args.unseen_creators else "") + ")")
+    held_out = {"test": "train", "dev": "fit"}.get(args.split)
     print(f"aliases: {which} ({n_aliases} overrides)"
-          + ("   <- held-out: no test row contributes an override" if which == "train" else "")
-          + ("   <- includes test rows; NOT a held-out number" if which == "all" and args.split == "test" else "")
+          + (f"   <- held-out: no {args.split} row contributes an override" if which == held_out else "")
+          + ("   <- includes scored rows; NOT a held-out number" if held_out and which == "all" else "")
           + "\n")
 
     if args.stage == "geocode":

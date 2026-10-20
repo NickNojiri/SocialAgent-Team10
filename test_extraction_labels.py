@@ -67,12 +67,18 @@ _VALID_VERDICTS = {"right", "wrong", "missing", "needs_review"}
 #      held-out, checked once, paired vs main: venue 37.4% -> 47.0% (+9.6 pts, CI [+4.3, +15.7],
 #      McNemar p=0.003) · same place 51.3% -> 60.0% · category 63.2% -> 82.1% (+18.8 pts,
 #      CI [+10.3, +27.4], p=6e-5) · city 73.1% and vague 23.5% unchanged
-_FLOOR_VENUE_EXACT = 274
-_FLOOR_VENUE_SAME = 323
-_FLOOR_VENUE_FUZZY = 288
-_FLOOR_CATEGORY = 384
-_FLOOR_CITY = 266
-_FLOOR_VAGUE = 20
+#   2026-10-20 the split went three-way (fixtures/splits.json, docs/DATA_PLAN.md): a
+#     quarter of the old train creators became dev, so the ratchet now counts TRAIN ONLY,
+#     scored with the train-only ('fit') alias table, and dev stays untouched by it. Same
+#     extractor, same labels: the old train+dev counts are unchanged (274 · 323 · 288 ·
+#     384/437 · 266 · 20). New floors, train only (319 venue rows):
+#   train-split (319 scored)         : venue 217 · same place 246 · fuzzy 224 · category 285/326 · city 193/266 · vague 16/37
+_FLOOR_VENUE_EXACT = 217
+_FLOOR_VENUE_SAME = 246
+_FLOOR_VENUE_FUZZY = 224
+_FLOOR_CATEGORY = 285
+_FLOOR_CITY = 193
+_FLOOR_VAGUE = 16
 
 # Regression guards: venue name is a run-together @handle in the caption and the
 # in-house word-split (handle_split.py) must keep recovering it.
@@ -89,9 +95,9 @@ def rows():
 @pytest.fixture          # function-scoped: the alias swap must not leak into other tests
 def train_rows(rows):
     """The ratchet's rows: train split, scored with the train-only alias table so no
-    test row's gold label reaches the extractor. See the floors block above."""
-    use_aliases("train")
-    yield [r for r in rows if split_of(r["url"]) == "train"]
+    dev or test row's gold label reaches the extractor. See the floors block above."""
+    use_aliases("fit")
+    yield [r for r in rows if split_of(r) == "train"]
     use_aliases("all")          # restore the shipped table for any later test
 
 

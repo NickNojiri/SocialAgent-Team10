@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO))
 
 from src.ingestion.eval import (  # noqa: E402
     _SCOREABLE_VERDICTS, _norm, format_rate, load_labels, mcnemar_exact,
-    paired_delta_interval, split_of, venue_hit, venue_same_place,
+    paired_delta_interval, read_test, split_of, venue_hit, venue_same_place,
 )
 
 # Runs inside a checkout (cwd = that checkout): that checkout's extractor, on whatever
@@ -99,10 +99,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--before", required=True, help="commit for the 'before' extractor")
     ap.add_argument("--after", help="commit for the 'after' extractor (default: working tree)")
-    ap.add_argument("--split", choices=["train", "test", "all"], default="test")
+    ap.add_argument("--split", choices=["train", "dev", "test", "all"], default="dev")
+    ap.add_argument("--final", metavar="WHY", help="required with --split test (logged in docs/results/TEST_LEDGER.md)")
     args = ap.parse_args()
+    if args.split == "test":
+        read_test(args.final, "compare_commits")
 
-    rows = [r for r in load_labels() if args.split == "all" or split_of(r["url"]) == args.split]
+    rows = [r for r in load_labels() if args.split == "all" or split_of(r) == args.split]
     before, after = predictions(args.before), predictions(args.after)
     label_commit = subprocess.run(["git", "-C", str(REPO), "log", "-1", "--format=%h", "--", "fixtures/labels.jsonl"],
                                   capture_output=True, text=True).stdout.strip()

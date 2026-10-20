@@ -76,7 +76,7 @@ def audit(rows: list[dict]) -> dict[str, list[str]]:
     for row in rows:
         code, gold, inp = _code(row), row.get("gold") or {}, row.get("input") or {}
         venue, in_cat = gold.get("venue"), gold.get("in_catalog")
-        where = f"{code} [{split_of(row['url'])}]"
+        where = f"{code} [{split_of(row)}]"
         if venue and _squash(venue) in _PLACES:
             found["place"].append(f"{where} gold venue {venue!r} is a city/region/complex")
         if venue and not _in_input(venue, inp):

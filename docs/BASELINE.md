@@ -28,8 +28,11 @@ it on the new labels with `python experiments/compare_commits.py --before bbb742
 | Promo rejected (recall, n=18) | — | 16.7% [5.8, 39.2] | 33.3% [16.3, 56.3] |
 | Real place kept (n=167) | — | 96.4% [92.4, 98.3] | 96.4% [92.4, 98.3] |
 
-Commands: `python -m src.ingestion.eval --offline --split test --compare-stored` (first and last
-columns) · `python experiments/compare_commits.py --before bbb74211` (middle column, paired).
+Commands: `python -m src.ingestion.eval --offline --split test --compare-stored --final "why"`
+(first and last columns) · `python experiments/compare_commits.py --before bbb74211 --split test
+--final "why"` (middle column, paired). Since 2026-10-20 every test read needs `--final` and is
+logged in `docs/results/TEST_LEDGER.md`; the test reels themselves did not change
+(`fixtures/splits.json`, `docs/DATA_PLAN.md`).
 
 **Is the change real?** Paired on the same rows:
 

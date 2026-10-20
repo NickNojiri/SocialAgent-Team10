@@ -36,7 +36,7 @@ def calibrate(rows: list[dict]) -> dict[str, float]:
     """Slot -> smoothed share of train rows whose venue matched gold."""
     hits: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for r in rows:
-        if not r.get("gold") or split_of(r["url"]) != "train":
+        if not r.get("gold") or split_of(r) != "train":
             continue
         cand = normalize(raw_from_input(r["url"], r.get("input") or {}))
         h = hits[cand.get("venue_slot") or "none"]

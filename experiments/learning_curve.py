@@ -1,9 +1,10 @@
-"""What do more labels buy? Accuracy on the fixed test split as the training labels grow.
+"""What do more labels buy? Accuracy on a fixed held-out split as the training labels grow.
 
     python experiments/learning_curve.py               # sizes 50..all, 10 random draws each
     python experiments/learning_curve.py --repeats 3   # quicker
 
-The test split never changes; only how many *train* labels each learner may see. Each size
+The scored split (dev by default; test with --on test --final "why") never changes; only
+how many *train* labels each learner may see. Each size
 is drawn 10 times at random, so every point is a mean ± spread, not one lucky draw.
 
 Learners (everything that learns from labels today, plus two small trained models):
@@ -37,7 +38,7 @@ sys.path.insert(0, str(REPO))
 
 from scripts.build_aliases import build as build_aliases  # noqa: E402
 from src.ingestion.config import IngestionSettings  # noqa: E402
-from src.ingestion.eval import load_labels, score, split_of, use_aliases  # noqa: E402
+from src.ingestion.eval import load_labels, read_test, score, split_of, use_aliases  # noqa: E402
 from src.ingestion.pipeline import normalizer  # noqa: E402
 
 _STOP = set("the a an and or of to in on at for with is it this that my our your i you we be are was "
@@ -113,14 +114,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repeats", type=int, default=10)
     ap.add_argument("--seed", type=int, default=491)
+    ap.add_argument("--on", choices=["dev", "test"], default="dev", help="the fixed split each size is scored on")
+    ap.add_argument("--final", metavar="WHY", help="required with --on test (logged in docs/results/TEST_LEDGER.md)")
     args = ap.parse_args()
+    if args.on == "test":
+        read_test(args.final, "learning_curve")
 
     rows = [r for r in load_labels() if r.get("gold") and (r.get("verdict") or {}).get("venue") != "needs_review"]
-    train = [r for r in rows if split_of(r["url"]) == "train"]
-    test = [r for r in rows if split_of(r["url"]) == "test"]
+    train = [r for r in rows if split_of(r) == "train"]
+    test = [r for r in rows if split_of(r) == args.on]          # "test" below: the scored split
     sizes = [n for n in (50, 100, 150, 200, 250, 300, 350, 400) if n < len(train)] + [len(train)]
     rng = random.Random(args.seed)
-    print(f"train pool {len(train)} labelled reels · fixed test split {len(test)} reels · "
+    print(f"train pool {len(train)} labelled reels · fixed {args.on} split {len(test)} reels · "
           f"{args.repeats} random draws per size\n")
 
     results: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
