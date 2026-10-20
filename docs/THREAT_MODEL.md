@@ -93,7 +93,8 @@ accepted. With `authorize` replaced by a no-op — the pre-fix code path — the
 
 **Residual (accepted).** Tokens are stable bearer capabilities, not nonces — whoever
 captures one keeps that tenant's access until the key is rotated, and rotating revokes
-every share link. The empty tenant `""` (legacy single-tenant catalog, the local web
+every share link. (A planned rotation with `--grace` keeps old links working until an
+announced date, #10; after a leak, rotate without it.) The empty tenant `""` (legacy single-tenant catalog, the local web
 UI at `/`) stays open by design, and `/api/stats` + `/dash` show per-guild *counts*
 across tenants; both rely on the `127.0.0.1` bind (T8).
 

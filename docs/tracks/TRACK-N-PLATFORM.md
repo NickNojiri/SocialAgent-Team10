@@ -128,9 +128,16 @@ guild call (fail closed, 503), all existing tests pass.
 - [x] A written rotation procedure for `SPOTBOT_SIGNING_KEY`, including what must be
       re-issued afterwards (share links) and how users are told.
       *(`scripts/rotate_signing_key.py` + RUNBOOK; dry run by default, backs the old key up.)*
+- [x] Rotation without downtime or unannounced breakage. *(`--grace` keeps the old key
+      as `SPOTBOT_SIGNING_KEY_PREVIOUS`, which the API still verifies while the bot only
+      signs with the new one; `--end-grace` retires it on the announced date.
+      `test_rotate_signing_key.py`.)*
 - [ ] Build it **with** Track D's #30 — same key, adjacent features; don't duplicate.
+      *(#10 owns the key; #30 adds per-token expiry and revocation on top. Kimberly to
+      review the grace change.)*
 - [ ] **Done when:** you can rotate the key on staging without downtime and without
-      breaking a live share link unannounced. Threat-model **T6**.
+      breaking a live share link unannounced. Threat-model **T6**. *(Code done; needs a
+      staging host to run it on.)*
 
 ### Phase 3 — Oct 27 – Nov 14 (140 pts)
 

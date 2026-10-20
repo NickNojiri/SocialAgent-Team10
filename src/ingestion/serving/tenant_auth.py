@@ -23,6 +23,11 @@ Scope and residual risk, stated plainly:
   * Tokens are stable bearer capabilities, not nonces. Whoever captures one
     keeps access to that tenant until SPOTBOT_SIGNING_KEY is rotated.
   * Missing key fails closed (503), never open.
+  * During a planned rotation (feature #10), SPOTBOT_SIGNING_KEY_PREVIOUS holds
+    the old key and still verifies, so the bot can restart after this app and
+    share links keep working until the operator ends the grace period. Tokens are
+    only ever minted with the current key. After a leak, rotate without a grace
+    period: the old key must stop working at once.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from hashlib import sha256
 from fastapi import HTTPException
 
 ENV_VAR = "SPOTBOT_SIGNING_KEY"
+PREVIOUS_ENV_VAR = "SPOTBOT_SIGNING_KEY_PREVIOUS"
 
 SCOPE_READ = "r"
 SCOPE_WRITE = "rw"
@@ -51,14 +57,27 @@ def _key() -> bytes:
     return raw.encode()
 
 
+def _verify_keys() -> list[bytes]:
+    """The current key, then the previous one while a rotation's grace period runs."""
+    keys = [_key()]
+    previous = os.environ.get(PREVIOUS_ENV_VAR, "").encode()
+    if previous and previous != keys[0]:
+        keys.append(previous)
+    return keys
+
+
 def _payload(guild_id: str, scope: str, user_id: str) -> bytes:
     # Newline-separated and version-prefixed so no field can be smuggled into
     # another by choosing a value containing the separator.
     return f"v1\n{scope}\n{guild_id}\n{user_id}".encode()
 
 
+def _sign(key: bytes, guild_id: str, scope: str, user_id: str) -> str:
+    return hmac.new(key, _payload(str(guild_id), scope, str(user_id)), sha256).hexdigest()
+
+
 def mint_token(guild_id: str, *, scope: str = SCOPE_WRITE, user_id: str = "") -> str:
-    return hmac.new(_key(), _payload(str(guild_id), scope, str(user_id)), sha256).hexdigest()
+    return _sign(_key(), guild_id, scope, user_id)
 
 
 def verify_token(
@@ -66,9 +85,12 @@ def verify_token(
 ) -> bool:
     if not token:
         return False
-    return hmac.compare_digest(
-        token, mint_token(guild_id, scope=scope, user_id=user_id)
-    )
+    # Compare against every key rather than stopping at the first match, so the time
+    # taken doesn't reveal which key a token was signed with.
+    matched = False
+    for key in _verify_keys():
+        matched |= hmac.compare_digest(token, _sign(key, guild_id, scope, user_id))
+    return matched
 
 
 def authorize(

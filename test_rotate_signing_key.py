@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from src.ingestion.serving import tenant_auth
 
@@ -141,3 +142,147 @@ def test_backups_land_somewhere_git_ignores():
     ignore = (Path(__file__).parent / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "data/" in ignore
     assert ".env.*" in ignore and "!.env.example" in ignore
+
+
+# --- planned rotation with a grace period (#10: no downtime, no unannounced breakage) ---
+
+PREV_LINE = re.compile(r"^SPOTBOT_SIGNING_KEY_PREVIOUS=([0-9a-f]{64})\r?$", re.MULTILINE)
+
+
+def _restart(env, monkeypatch):
+    """What a restarted service reads from .env: the key, and the previous key if any."""
+    text = env.read_bytes().decode("utf-8")
+    monkeypatch.setenv(rsk.ENV_VAR, KEY_LINE.search(text).group(1))
+    prev = PREV_LINE.search(text)
+    if prev:
+        monkeypatch.setenv(rsk.PREVIOUS_VAR, prev.group(1))
+    else:
+        monkeypatch.delenv(rsk.PREVIOUS_VAR, raising=False)
+
+
+def test_a_grace_rotation_keeps_old_tokens_and_share_links_working(tmp_path, monkeypatch):
+    env = _env(tmp_path)
+    monkeypatch.setenv(rsk.ENV_VAR, OLD)
+    monkeypatch.delenv(rsk.PREVIOUS_VAR, raising=False)
+    old_write = tenant_auth.mint_token("g1")
+    old_share = tenant_auth.mint_token("g1", scope=tenant_auth.SCOPE_READ)
+
+    result = rsk.rotate(env, tmp_path / "backups", grace=True)
+    assert result.grace
+    _restart(env, monkeypatch)
+
+    # The bot hasn't restarted yet and still signs with the old key: nothing is refused.
+    tenant_auth.authorize("g1", old_write)
+    tenant_auth.authorize("g1", old_share, need=tenant_auth.SCOPE_READ)
+    # Once it restarts it signs with the new key, which works too.
+    new_write = tenant_auth.mint_token("g1")
+    assert new_write != old_write
+    tenant_auth.authorize("g1", new_write)
+    # A read-only share link still can't write, whichever key signed it.
+    with pytest.raises(HTTPException):
+        tenant_auth.authorize("g1", old_share)
+
+
+def test_a_grace_rotation_adds_one_previous_line_and_changes_nothing_else(tmp_path):
+    env = _env(tmp_path)
+    before = env.read_bytes().decode("utf-8")
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    after = env.read_bytes().decode("utf-8")
+
+    new = _key(env)
+    expected = before.replace(f"SPOTBOT_SIGNING_KEY={OLD}\r\n",
+                              f"SPOTBOT_SIGNING_KEY={new}\r\nSPOTBOT_SIGNING_KEY_PREVIOUS={OLD}\r\n")
+    assert after == expected                          # CRLF kept, one new line, right after the key
+    assert PREV_LINE.findall(after) == [OLD]
+
+
+def test_a_second_grace_rotation_keeps_only_the_key_it_retires(tmp_path):
+    env = _env(tmp_path)
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    middle = _key(env)
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    text = env.read_bytes().decode("utf-8")
+    assert PREV_LINE.findall(text) == [middle]        # the first key is gone for good
+    assert OLD not in text
+
+
+def test_a_rotation_without_grace_removes_any_previous_key(tmp_path, monkeypatch):
+    env = _env(tmp_path)
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    middle = _key(env)
+    rsk.rotate(env, tmp_path / "backups")             # e.g. the key leaked mid-grace
+    text = env.read_bytes().decode("utf-8")
+    assert "SPOTBOT_SIGNING_KEY_PREVIOUS" not in text
+    assert OLD not in text and middle not in text
+
+    monkeypatch.setenv(rsk.ENV_VAR, middle)
+    leaked = tenant_auth.mint_token("g1")
+    _restart(env, monkeypatch)
+    assert not tenant_auth.verify_token(leaked, "g1")
+
+
+def test_grace_works_when_the_key_is_the_last_line(tmp_path):
+    env = _env(tmp_path, f"DISCORD_TOKEN=x\nSPOTBOT_SIGNING_KEY={OLD}")
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    text = env.read_text(encoding="utf-8")
+    assert text == f"DISCORD_TOKEN=x\nSPOTBOT_SIGNING_KEY={_key(env)}\nSPOTBOT_SIGNING_KEY_PREVIOUS={OLD}"
+
+
+def test_ending_the_grace_period_kills_the_old_key(tmp_path, monkeypatch):
+    env = _env(tmp_path)
+    monkeypatch.setenv(rsk.ENV_VAR, OLD)
+    old_share = tenant_auth.mint_token("g1", scope=tenant_auth.SCOPE_READ)
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    graced = env.read_bytes()
+
+    result = rsk.end_grace(env, tmp_path / "backups")
+    assert result.backup.read_bytes() == graced       # the grace-period .env is recoverable
+    text = env.read_bytes().decode("utf-8")
+    assert "SPOTBOT_SIGNING_KEY_PREVIOUS" not in text
+    assert text == graced.decode("utf-8").replace(f"SPOTBOT_SIGNING_KEY_PREVIOUS={OLD}\r\n", "")
+
+    _restart(env, monkeypatch)
+    assert not tenant_auth.verify_token(old_share, "g1", scope=tenant_auth.SCOPE_READ)
+
+
+def test_ending_a_grace_period_that_isnt_running_is_refused(tmp_path):
+    env = _env(tmp_path)
+    before = env.read_bytes()
+    with pytest.raises(rsk.RotationRefused):
+        rsk.end_grace(env, tmp_path / "backups")
+    assert env.read_bytes() == before
+    assert not (tmp_path / "backups").exists()
+
+
+def test_end_grace_without_confirm_changes_nothing(tmp_path, monkeypatch, capsys):
+    env = _env(tmp_path)
+    rsk.rotate(env, tmp_path / "backups", grace=True)
+    before = env.read_bytes()
+    monkeypatch.setattr(rsk, "REPO", tmp_path)
+    assert rsk.main(["--end-grace"]) == 2
+    assert env.read_bytes() == before
+    assert "--end-grace --confirm" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("argv", [["--grace", "--confirm"], ["--end-grace", "--confirm"]])
+def test_grace_modes_never_print_key_material(tmp_path, monkeypatch, capsys, argv):
+    env = _env(tmp_path)
+    monkeypatch.setattr(rsk, "REPO", tmp_path)
+    if "--end-grace" in argv:
+        rsk.rotate(env, tmp_path / "data" / "key-backups", grace=True)
+    keys = {OLD, _key(env)}
+    assert rsk.main(argv) == 0
+    keys.add(_key(env))
+    printed = "".join(capsys.readouterr())
+    for key in keys:
+        assert not any(key[i:i + 8] in printed for i in range(0, 57))
+    assert "restart" in printed and "share" in printed
+
+
+def test_the_previous_key_alone_is_not_enough(monkeypatch):
+    """Fail closed: a previous key without a current one is still a 503, not an open door."""
+    monkeypatch.delenv(rsk.ENV_VAR, raising=False)
+    monkeypatch.setenv(rsk.PREVIOUS_VAR, OLD)
+    with pytest.raises(HTTPException) as err:
+        tenant_auth.authorize("g1", "0" * 64)
+    assert err.value.status_code == 503

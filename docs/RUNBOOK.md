@@ -114,6 +114,29 @@ staging for the first time with a key that's lived on laptops.
 **Undo** (only before the new key is in use anywhere): copy the backup back over `.env`
 and restart all three.
 
+**Planned rotation, with nothing broken yet (`--grace`).** Use this for the routine
+cases, such as a teammate leaving or the first staging deploy. Never use it after a leak:
+a leaked key has to stop working at once.
+
+1. ```bash
+   python scripts/rotate_signing_key.py --grace --confirm
+   ```
+   This writes the new key and keeps the old one as `SPOTBOT_SIGNING_KEY_PREVIOUS`. The
+   admin app and the recommend service accept both; the bot signs with the new one only.
+2. Restart the admin app and recommend service first, then the bot. Nothing is refused
+   in between, because the old key still verifies.
+3. Tell your servers the date their share links stop working, and that `/share` makes a
+   new one.
+4. On that date:
+   ```bash
+   python scripts/rotate_signing_key.py --end-grace --confirm
+   ```
+   then restart the admin app and recommend service. Old share links now show an error.
+5. Delete the backups in `data/key-backups/`. They hold the old key.
+
+A rotation without `--grace` also removes any `SPOTBOT_SIGNING_KEY_PREVIOUS` still in
+`.env`, so a leak found during a grace period is handled by the plain `--confirm` steps.
+
 **What rotation does not do:** it can't kill one leaked token while keeping the rest —
 it kills all of them. Per-token expiry and revocation is Track D's #30 (Authentication &
 session hardening), built on this same key.
@@ -200,6 +223,10 @@ Use a phone off the home Wi-Fi:
   recommend and the bot with the new key. Captures pause for the ~30 seconds those
   three take to come back, and every old `/share` link stops working. Announce it, and
   have people run `/share` again.
+  For a planned rotation, use `--grace --confirm` instead and recreate admin and
+  recommend before the bot (`up -d admin recommend`, then `up -d bot`). Nothing is
+  refused and old links keep working; end it later with `--end-grace --confirm` and
+  `up -d admin recommend`.
 - **Moving laptop data to staging:** stop the stack, copy the laptop's `data/` into the
   host's `data/`, and deploy again. `data-init` fixes the file ownership.
 
