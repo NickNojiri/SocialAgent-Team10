@@ -1,0 +1,41 @@
+# Builds fixtures/venues_socal.json (scripts/build_venue_list.py) on GitHub's runners,
+# because Overpass cuts off the Claude cloud sessions. One Overpass query per run; it
+# runs when the script or this file changes, or by hand from the Actions tab.
+name: Venue list
+
+on:
+  push:
+    paths:
+      - scripts/build_venue_list.py
+      - .github/workflows/venue-list.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: venue-list-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Query OpenStreetMap once
+        run: python scripts/build_venue_list.py
+      - name: Commit the list if it changed
+        run: |
+          if git diff --quiet -- fixtures/venues_socal.json && git ls-files --error-unmatch fixtures/venues_socal.json >/dev/null 2>&1; then
+            echo "no change"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fixtures/venues_socal.json
+          git commit -m "data(fixtures): SoCal venue names from OpenStreetMap (ODbL)" \
+                     -m "Names (c) OpenStreetMap contributors, Open Database License 1.0. Built by scripts/build_venue_list.py in the Venue list workflow; one Overpass query."
+          git push
