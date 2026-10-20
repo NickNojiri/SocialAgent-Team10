@@ -14,12 +14,14 @@ How:
                    name, hashtags, Title Case phrases. Same name from two places = one
                    candidate with both sources.
   2. features()    simple yes/no facts about each candidate (where it came from, is it the
-                   poster, a city, a business word, how often it appears...).
-  3. train()       logistic regression, plain Python, L2-regularized. A candidate is
-                   positive when it is the same place as the gold venue.
-  4. pick()        the top-scoring candidate, or no venue when even the best score is below
-                   a threshold (promos, recipes). The threshold and the L2 strength are
-                   chosen by 5-fold cross-validation on train, grouped by creator.
+                   poster, a city, a business word, how often it appears...), plus whether
+                   the poster sounds like the place itself (our/us, hours, ordering, menu).
+                   none_features() describes the extra "no venue" option (a list, a recipe,
+                   an ad, the rules found nothing).
+  3. train()       a softmax over each reel's options, plain Python, L2-regularized: the
+                   candidates and "no venue" compete, and the right one should win.
+  4. pick()        the option with the highest probability. The L2 strength is chosen by
+                   5-fold cross-validation on train, grouped by creator.
 
 Rules of the road (docs/DATA_PLAN.md): it learns from train only, is compared on dev,
 and never reads test unless --split test --final "why".
@@ -30,8 +32,13 @@ Results so far (dev, paired with the rules on the same 106 reels):
   + venue list     no change. Only 16% of gold venues are on the LA/OC OpenStreetMap list
                    (24% with a loose match): much of the corpus is New York, San Diego,
                    Seoul... The list helps a SoCal-only product, not this corpus.
-  Next: features for "the poster's own account is the venue" (most reachable misses), and
-  scoring candidates against each other per reel instead of one at a time.
+  v2, 2026-10-20   softmax per reel + a "no venue" option + poster-is-the-place features:
+                   dev 65.1% vs rules 65.1% (+0.0 pts, CI [-2.8, +2.8], 1 win each, p=1):
+                   still a tie. Train 79.3% vs 77.1% (+2.2, CI [+0.3, +4.1], p=0.07), and
+                   5-fold CV on train 77.7%: the gain doesn't carry to new creators. Other
+                   epochs / learning rates / L2 all land at 77.4-78.1% CV (noise).
+  Next: the reachable misses need signals the caption text doesn't carry (the account's
+  bio and category, which capture doesn't record), or more train reels of that kind.
 """
 from __future__ import annotations
 
@@ -41,7 +48,6 @@ import math
 import random
 import re
 import sys
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -137,6 +143,29 @@ def _venue_names() -> set[str]:
 _VENUES = _venue_names()
 
 
+# A business talking about itself: ordering, booking, menu and price talk. Hours, phone
+# numbers and addresses are already in normalizer._BIZ_DETAIL; "our/us" in _OWN_VOICE.
+_ORDER_CUE = re.compile(r"\b(?:order (?:now|online|ahead)|dm (?:us )?to order|pre-?order|reserve|"
+                        r"reservations?|book (?:now|a table|online)|link in (?:our )?bio|we(?:'| a)re open)\b", re.I)
+_MENU_CUE = re.compile(r"\$\s?\d|\bnew (?:on|to) (?:the|our) menu\b|\bmenu\b|\bspecials?\b", re.I)
+
+
+def poster_signals(row: dict) -> dict[str, float]:
+    """Is the poster the place (a business posting about itself) or a reviewer?"""
+    inp = row.get("input") or {}
+    caption = inp.get("caption") or ""
+    handle = (inp.get("handle") or "").lstrip("@").lower()
+    return {
+        "biz_account": float(nz._is_business_account(caption, handle)),
+        "biz_handle": float(nz._biz_handle(handle)),
+        "biz_detail": float(bool(nz._BIZ_DETAIL.search(caption))),
+        "own_voice": float(bool(nz._OWN_VOICE.search(caption))),
+        "order_cue": float(bool(_ORDER_CUE.search(caption))),
+        "menu_cue": float(bool(_MENU_CUE.search(caption))),
+        "blogger": float(bool(nz._BLOGGER_HANDLE.search(handle))),
+    }
+
+
 def features(c: Candidate, row: dict, rules_none: bool = False) -> dict[str, float]:
     inp = row.get("input") or {}
     caption = inp.get("caption") or ""
@@ -144,14 +173,14 @@ def features(c: Candidate, row: dict, rules_none: bool = False) -> dict[str, flo
     author = sq(inp.get("handle"))
     words = c.name.split()
     first = caption.lower().find(c.name.lower())
+    is_poster = bool(author) and (key == author or (len(key) > 4 and (key in author or author in key)))
     f = {f"src_{s}": float(s in c.sources) for s in SOURCES}
     f.update({
         "n_sources": min(len(c.sources), 4) / 4,
         "rules_strong_slot": float(c.rules_slot in STRONG_SLOTS),
         "rules_weak_slot": float(bool(c.rules_slot) and c.rules_slot not in STRONG_SLOTS),
-        "is_poster": float(bool(author) and (key == author or (len(key) > 4 and (key in author or author in key)))),
-        "poster_is_business": float(nz._is_business_account(caption, (inp.get("handle") or "").lstrip("@").lower())),
-        "poster_is_blogger": float(bool(nz._BLOGGER_HANDLE.search(inp.get("handle") or ""))),
+        "is_poster": float(is_poster),
+        "is_display_name": float(bool(key) and key == sq(inp.get("author_name"))),
         "blogger_name": float(bool(nz._BLOGGER_HANDLE.search(key))),
         "is_region": float(nz._is_region(c.name)),
         "is_container": float(nz._is_container(c.name)),
@@ -163,53 +192,77 @@ def features(c: Candidate, row: dict, rules_none: bool = False) -> dict[str, flo
         "early": float(0 <= first < 120),
         "in_first_line": float(c.name.lower() in caption.split("\n")[0].lower()),
         "on_venue_list": float(key in _VENUES),
-        "post_is_list": float(nz._looks_like_list(raw_from_input(row["url"], inp), caption)),
     })
-    # When the rules found nothing, every candidate starts with no "rules" vote, so the
-    # model needs to know that's the situation, and which sources to trust in it.
+    # Softmax compares candidates within one reel, so a fact about the whole post (the
+    # poster sounds like a business) only matters crossed with a candidate: it should lift
+    # the poster's own name, and nothing else.
+    own = float(is_poster or f["is_display_name"] or "author" in c.sources)
+    for k, v in poster_signals(row).items():
+        f[f"poster_{k}"] = own * v
     none = float(rules_none)
-    f["rules_none"] = none
     for k in ("src_mention", "src_pin", "src_location_tag", "src_author", "src_at", "src_titlecase",
-              "is_poster", "poster_is_business", "business_word", "early"):
+              "is_poster", "business_word", "early"):
         f[f"{k}_when_rules_none"] = f[k] * none
     return f
 
 
-FEATURES = sorted(features(Candidate("Sample Cafe", {"rules"}), {"url": "u", "input": {}}))
+def none_features(row: dict, out: dict) -> dict[str, float]:
+    """The "no venue" option: why this post might name no place at all."""
+    inp = row.get("input") or {}
+    caption = inp.get("caption") or ""
+    return {
+        "none": 1.0,
+        "none_rules_none": float(not out.get("venue_name")),
+        "none_rules_vague": float(bool(out.get("is_vague"))),
+        "none_post_is_list": float(nz._looks_like_list(raw_from_input(row["url"], inp), caption)),
+        "none_recipe": float(bool(nz._RECIPE_RE.search(caption) or nz._RECIPE_CTA.search(caption))),
+        "none_ad": float(bool(nz._AD_MARKERS.search(caption))),
+    }
 
 
-# ── 3. logistic regression, plain Python ───────────────────────────────────────
-
-def _sigmoid(z: float) -> float:
-    return 1 / (1 + math.exp(-z)) if z >= 0 else math.exp(z) / (1 + math.exp(z))
+FEATURES = (sorted(features(Candidate("Sample Cafe", {"rules"}), {"url": "u", "input": {}}))
+            + sorted(none_features({"url": "u", "input": {}}, {})))
 
 
-def train(examples: list[tuple[list[float], int]], l2: float = 0.1, epochs: int = 300,
-          lr: float = 0.5) -> list[float]:
-    """Weights (bias first) minimizing log loss + l2·|w|². Positives are rare (one per
-    reel at most), so each class gets equal total weight."""
-    n_feat = len(examples[0][0])
-    w = [0.0] * (n_feat + 1)
-    pos = sum(y for _, y in examples) or 1
-    neg = (len(examples) - pos) or 1
-    cw = {1: len(examples) / (2 * pos), 0: len(examples) / (2 * neg)}
+def vector(f: dict[str, float]) -> list[tuple[int, float]]:
+    """Sparse: (feature index, value) for the non-zero features only."""
+    return [(i, f[k]) for i, k in enumerate(FEATURES) if f.get(k)]
+
+
+# ── 3. softmax over each reel's options, plain Python ──────────────────────────
+#
+# Each reel offers its candidates plus one "no venue" option. The model gives each a score
+# (weights · features) and turns the scores into probabilities that sum to 1 within the
+# reel, so candidates compete with each other instead of each being judged alone.
+
+def _score(w: list[float], x: list[tuple[int, float]]) -> float:
+    return sum(w[i] * v for i, v in x)
+
+
+def probs(w: list[float], options: list[list[tuple[int, float]]]) -> list[float]:
+    scores = [_score(w, x) for x in options]
+    top = max(scores)
+    exps = [math.exp(s - top) for s in scores]
+    total = sum(exps)
+    return [e / total for e in exps]
+
+
+def train(reels: list["Reel"], l2: float = 0.01, epochs: int = 200, lr: float = 0.5) -> list[float]:
+    """Weights minimizing the average −log P(right option) + l2·|w|². Reels whose answer
+    is not among the candidates teach nothing and are skipped."""
+    w = [0.0] * len(FEATURES)
+    usable = [r for r in reels if r.target >= 0]
     for _ in range(epochs):
         grad = [0.0] * len(w)
-        for x, y in examples:
-            err = (_sigmoid(w[0] + sum(wi * xi for wi, xi in zip(w[1:], x))) - y) * cw[y]
-            grad[0] += err
-            for i, xi in enumerate(x):
-                if xi:
-                    grad[i + 1] += err * xi
-        n = len(examples)
-        w[0] -= lr * grad[0] / n
-        for i in range(1, len(w)):
-            w[i] -= lr * (grad[i] / n + 2 * l2 * w[i])
+        for r in usable:
+            options = r.options()
+            for j, (x, p) in enumerate(zip(options, probs(w, options))):
+                err = p - (j == r.target)
+                for i, v in x:
+                    grad[i] += err * v
+        for i in range(len(w)):
+            w[i] -= lr * (grad[i] / max(len(usable), 1) + 2 * l2 * w[i])
     return w
-
-
-def prob(w: list[float], x: list[float]) -> float:
-    return _sigmoid(w[0] + sum(wi * xi for wi, xi in zip(w[1:], x)))
 
 
 # ── 4. the reel-level pipeline ─────────────────────────────────────────────────
@@ -220,7 +273,12 @@ class Reel:
     gold: str | None
     rules_pred: str | None
     cands: list[Candidate]
-    xs: list[list[float]]
+    xs: list[list[tuple[int, float]]]
+    none_x: list[tuple[int, float]]
+    target: int = -1          # index of the right option (len(cands) = no venue); -1: not reachable
+
+    def options(self) -> list[list[tuple[int, float]]]:
+        return self.xs + [self.none_x]
 
 
 def scoreable(row: dict) -> bool:
@@ -236,54 +294,53 @@ def prepare(rows: list[dict]) -> list[Reel]:
         out = nz.normalize(raw_from_input(r["url"], r.get("input") or {}))
         cands = candidates(r, (out.get("venue_name"), out.get("venue_slot") or ""))
         none = not out.get("venue_name")
-        xs = [[features(c, r, none)[k] for k in FEATURES] for c in cands]
-        reels.append(Reel(r, (r.get("gold") or {}).get("venue"), out.get("venue_name"), cands, xs))
+        gold = (r.get("gold") or {}).get("venue")
+        reel = Reel(r, gold, out.get("venue_name"), cands,
+                    [vector(features(c, r, none)) for c in cands], vector(none_features(r, out)))
+        if not gold:
+            reel.target = len(cands)
+        else:
+            reel.target = next((j for j, c in enumerate(cands) if venue_same_place(c.name, gold)), -1)
+        reels.append(reel)
     return reels
 
 
-def examples(reels: list[Reel]) -> list[tuple[list[float], int]]:
-    return [(x, int(venue_same_place(c.name, r.gold))) for r in reels for c, x in zip(r.cands, r.xs)]
-
-
-def pick(w: list[float], reel: Reel, threshold: float) -> str | None:
-    if not reel.cands:
-        return None
-    best, x = max(zip(reel.cands, reel.xs), key=lambda cx: prob(w, cx[1]))
-    return best.name if prob(w, x) >= threshold else None
+def pick(w: list[float], reel: Reel) -> str | None:
+    """The most likely option; None when "no venue" wins."""
+    p = probs(w, reel.options())
+    best = max(range(len(p)), key=p.__getitem__)
+    return reel.cands[best].name if best < len(reel.cands) else None
 
 
 def hits(preds: list[str | None], reels: list[Reel]) -> list[bool]:
     return [venue_same_place(p, r.gold) for p, r in zip(preds, reels)]
 
 
-THRESHOLDS = [i / 20 for i in range(1, 19)]
 L2S = (0.001, 0.01, 0.1)
 
 
-def choose(reels: list[Reel], folds: int = 5, seed: int = 491) -> tuple[float, float, float]:
-    """(l2, threshold, CV accuracy) by k-fold cross-validation over train, grouped by
-    creator so a fold never sees a creator it is scored on."""
+def choose(reels: list[Reel], folds: int = 5, seed: int = 491) -> tuple[float, float]:
+    """(l2, CV accuracy) by k-fold cross-validation over train, grouped by creator so a
+    fold never sees a creator it is scored on."""
     groups = sorted({creator_of(r.row) for r in reels})
     random.Random(seed).shuffle(groups)
     fold_of = {g: i % folds for i, g in enumerate(groups)}
-    best = (L2S[0], 0.5, -1.0)
+    best = (L2S[0], -1.0)
     for l2 in L2S:
-        right = Counter()
+        right = 0
         for k in range(folds):
             fit = [r for r in reels if fold_of[creator_of(r.row)] != k]
             held = [r for r in reels if fold_of[creator_of(r.row)] == k]
-            w = train(examples(fit), l2=l2)
-            for t in THRESHOLDS:
-                right[t] += sum(hits([pick(w, r, t) for r in held], held))
-        t, n = max(right.items(), key=lambda kv: (kv[1], -abs(kv[0] - 0.5)))
-        if n / len(reels) > best[2]:
-            best = (l2, t, n / len(reels))
+            w = train(fit, l2=l2)
+            right += sum(hits([pick(w, r) for r in held], held))
+        if right / len(reels) > best[1]:
+            best = (l2, right / len(reels))
     return best
 
 
 def oracle(reels: list[Reel]) -> int:
-    """Reels where some candidate is right (or there is no venue): the ranker's ceiling."""
-    return sum(1 for r in reels if not r.gold or any(venue_same_place(c.name, r.gold) for c in r.cands))
+    """Reels where some option is right (a candidate, or "no venue"): the ranker's ceiling."""
+    return sum(1 for r in reels if r.target >= 0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -304,18 +361,18 @@ def main(argv: list[str] | None = None) -> int:
         train_reels += prepare([r for r in rows if split_of(r) == "dev"])
     held = prepare([r for r in rows if split_of(r) == args.split])
 
-    l2, threshold, cv = choose(train_reels)
-    w = train(examples(train_reels), l2=l2)
-    print(f"ranker: {len(FEATURES)} features · l2={l2} · threshold={threshold} "
+    l2, cv = choose(train_reels)
+    w = train(train_reels, l2=l2)
+    print(f"ranker v2 (softmax per reel): {len(FEATURES)} features · l2={l2} "
           f"(5-fold CV on train, by creator: {cv:.1%})"
           + ("" if _VENUES else " · no venue list yet (scripts/build_venue_list.py)") + "\n")
 
     for name, reels in (("train", train_reels), (args.split, held)):
         rules = hits([r.rules_pred for r in reels], reels)
-        ranker = hits([pick(w, r, threshold) for r in reels], reels)
+        ranker = hits([pick(w, r) for r in reels], reels)
         b_only, a_only, p = mcnemar_exact(rules, ranker)
         ci = paired_delta_interval(rules, ranker)
-        print(f"{name:>5}  {len(reels)} reels · candidates hold the answer for "
+        print(f"{name:>5}  {len(reels)} reels · an option holds the answer for "
               f"{format_rate(oracle(reels), len(reels))}")
         print(f"       rules  : {format_rate(sum(rules), len(rules))}")
         print(f"       ranker : {format_rate(sum(ranker), len(ranker))}")
@@ -325,15 +382,15 @@ def main(argv: list[str] | None = None) -> int:
               + f" · rules only {b_only}, ranker only {a_only}, McNemar p={p:.3g}\n")
 
     if args.weights:
-        print("learned weights (positive = makes a candidate more likely the venue):")
-        for k, v in sorted(zip(FEATURES, w[1:]), key=lambda kv: -abs(kv[1])):
+        print("learned weights (positive = makes that option more likely to win):")
+        for k, v in sorted(zip(FEATURES, w), key=lambda kv: -abs(kv[1])):
             print(f"  {v:+7.2f}  {k}")
-        print(f"  {w[0]:+7.2f}  (bias)\n")
+        print()
 
     if args.show:
         shown = 0
         for r in held:
-            ours = pick(w, r, threshold)
+            ours = pick(w, r)
             if bool(venue_same_place(ours, r.gold)) == bool(venue_same_place(r.rules_pred, r.gold)):
                 continue
             print(f"  gold={r.gold!r}  rules={r.rules_pred!r}  ranker={ours!r}  {r.row['url']}")
