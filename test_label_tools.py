@@ -27,6 +27,8 @@ from src.ingestion.schemas.inspiration import EventCategory
     ("Aunt Cass Cafe", "Aunt Cass Cafe, DCA"),
     ("Tahoe Bagel", "Tahoe Bagel Company"),        # business-type tail
     ("Jolly Holiday", "Jolly Holiday Bakery Cafe"),
+    ("Bamboo and Bean", "Bamboo &amp; Bean"),      # "&amp;" left in a capture; "and" = "&"
+    ("夜葉食堂", "夜葉食堂"),                        # non-Latin names are names too
     (None, None),                                  # promo: nothing expected, nothing given
 ])
 def test_same_place_accepts_the_guides_equivalences(pred, gold):
@@ -41,9 +43,16 @@ def test_same_place_accepts_the_guides_equivalences(pred, gold):
     ("Blue Ribbon Corn Dogs", "Disneyland"),
     ("Some Venue", None),               # a promo must stay empty
     (None, "Some Venue"),
+    ("夜葉食堂", "壽司飯丸專門店"),               # two different Chinese names used to both become ""
 ])
 def test_same_place_rejects_different_places(pred, gold):
     assert not venue_same_place(pred, gold)
+
+
+def test_exact_match_no_longer_equates_different_non_latin_names():
+    from src.ingestion.eval import venue_hit
+    assert venue_hit("夜葉食堂", "壽司飯丸專門店") == (False, False)
+    assert venue_hit("夜葉食堂", "夜葉食堂") == (True, True)
 
 
 # ── category: kind of place first, then dishes (normalizer) ─────────────────────

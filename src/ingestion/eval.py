@@ -30,7 +30,9 @@ from src.ingestion.schemas.snapshot import RawPostSnapshot
 
 LABELS_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "labels.jsonl"
 
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+# Unicode-aware: a Chinese or Korean name is letters too. The old [^a-z0-9] turned
+# every non-Latin name into "", so two different ones compared equal.
+_NON_ALNUM = re.compile(r"[\W_]+")
 
 
 SPLITS_PATH = LABELS_PATH.parent / "splits.json"
@@ -332,7 +334,10 @@ def raw_from_input(url: str, inp: dict) -> RawPostSnapshot:
 
 
 def _norm(s: Optional[str]) -> str:
-    return _NON_ALNUM.sub(" ", (s or "").lower()).strip()
+    import html
+
+    # html.unescape: some captures carry "&amp;" for "&" ("Bamboo &amp; Bean").
+    return _NON_ALNUM.sub(" ", html.unescape(s or "").lower()).strip()
 
 
 def _tokens(s: Optional[str]) -> set[str]:
@@ -374,7 +379,8 @@ def _name_tokens(s: Optional[str]) -> list[str]:
     import unicodedata
 
     folded = "".join(c for c in unicodedata.normalize("NFKD", s or "") if not unicodedata.combining(c))
-    toks = _norm(re.sub(r"['’]", "", folded)).split()
+    # "and" and "&" spell the same name: 'Bamboo and Bean' = 'Bamboo & Bean'.
+    toks = [t for t in _norm(re.sub(r"['’]", "", folded)).split() if t != "and"]
     return toks[1:] if len(toks) > 1 and toks[0] == "the" else toks
 
 
