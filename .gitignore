@@ -217,7 +217,8 @@ cython_debug/
 /.devcontainer/
 /.data/
 .env
-.claude/
+.claude/*
+!.claude/settings.json
 
 # Authenticated IG source — session cookie, never commit
 data/ig_session.json

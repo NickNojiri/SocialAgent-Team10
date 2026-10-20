@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/sprint_board.py report)",
+      "Bash(python3 scripts/sprint_board.py report *)",
+      "Bash(python3 scripts/sprint_board.py seed --phase 2)"
+    ]
+  }
+}
