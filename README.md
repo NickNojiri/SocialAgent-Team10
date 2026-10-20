@@ -182,6 +182,7 @@ All settings come from `.env` (see `.env.example`):
 |---|---|---|
 | `DISCORD_TOKEN` | — | **Required.** Your Discord bot token. |
 | `SPOTBOT_SIGNING_KEY` | — | **Required.** Secret that signs every catalog request, so no one can read or change another server's spots. Created by `setup.ps1` / `python scripts/ensure_signing_key.py`. |
+| `SPOTBOT_SIGNING_KEY_PREVIOUS` | unset | Set only by `scripts/rotate_signing_key.py --grace` during a planned rotation: the old key, still accepted until `--end-grace`. See RUNBOOK "Secrets". |
 | `OLLAMA_URL` | `http://host.docker.internal:11434` | Where Ollama is reachable. |
 | `OLLAMA_MODEL` | `llama3.2` | Local model for extraction. |
 | `BOT_CHANNEL_ID` | `0` | Limit the bot to one channel, or `0` for anywhere. |

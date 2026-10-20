@@ -8,6 +8,9 @@ bot ships as its own Docker image (`build: ./app`, `COPY . .`), so it cannot see
 The bot is the only minter: it derives the tenant key from the real Discord
 context (guild_key) and signs it, so the catalog API can tell a genuine call
 from anything else that can reach the port.
+
+The bot signs with the current key only. SPOTBOT_SIGNING_KEY_PREVIOUS (a planned
+rotation's grace period) is read by the API side alone, which verifies both.
 """
 
 from __future__ import annotations
