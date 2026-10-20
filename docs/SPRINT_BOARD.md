@@ -19,6 +19,8 @@ CECS 491A. The code is `scripts/sprint_board.py` (standard library only), and it
 
 ## How the team uses it
 
+- **Start with the pinned post**, `Setup — how to use the sprint board`. It holds this section
+  in short, how to run the script (below), and a step-by-step "How it works".
 - **One post = one feature** from the track plans, e.g. `#27 Non-blocking capture with live
   progress ★ (80 pts)`. The opening message lists the plan's checklist and links the plan file.
 - **Tags carry the state.** Every post has three tags:
@@ -58,6 +60,10 @@ form `**#27 Title (80)**` followed by `- [ ]` checkboxes. A post starts as Backl
 is ticked, Doing if some are ticked, and Done if all are. After that, the tags on the board are the
 truth. The phase dates come from the table in `docs/tracks/README.md`.
 
+How `report` counts: a post's points come from `(80 pts)` at the end of its title, and a post
+counts toward a phase only if it carries that phase's tag. A post with no status tag counts as
+Backlog. So a feature post missing its tags drops out of the phase totals; tag it by hand.
+
 ## Setting it up by hand (no bot, about 20 minutes)
 
 Use this when the bot isn't set up yet. The board looks the same and the routine takes it
@@ -74,17 +80,20 @@ whose `#number` is already posted.
    Case and separators don't matter (`doing` and `A - Capture` work too).
 2. **Make one post per feature.** Title it `#<number> <title> (<points> pts)`, the same
    title as in the track plan. Add a status tag, a track tag and `Phase 2`. The first message
-   names the owner and says what is done and what is left. For Phase 2:
+   names the owner and says what is done and what is left. Phase 2, as on the board on
+   Oct 20 (580 pts):
 
    | Title | Tags | Owner |
    |---|---|---|
    | #2 Authenticated capture + fallback chain (100 pts) | Doing · A · Capture | Blessie |
    | #16 Learned category classifier (100 pts) | Backlog · B · Accuracy | Valeria |
    | #17 Evaluation report generator (30 pts) | Backlog · B · Accuracy | Valeria |
-   | #18 Time-to-card measurement (30 pts) | Doing · C · Experience | Nick |
-   | #27 Non-blocking capture with live progress (80 pts) | Review · N · Platform | Nick |
+   | #18 Time-to-card measurement (30 pts) | Review · N · Platform | Nick |
+   | #20 In-Discord feedback + survey ★ (40 pts) | Done · C · Experience | Nick |
+   | #36 Distance + map on spot cards (40 pts) | Done · C · Experience | Nick |
+   | #27 Non-blocking capture with live progress (80 pts) | Doing · N · Platform | Nick |
    | #10 Secrets management & signing-key rotation (60 pts) | Doing · N · Platform | Nick |
-   | #30 Authentication & session hardening (100 pts) | Backlog · D · Security | Kimberly |
+   | #30 Authentication & session hardening (100 pts) | Doing · D · Security | Kimberly |
 
    Course deliverables, such as the Design Document, get their own post with a status tag
    and `Phase 2`.
@@ -132,6 +141,22 @@ computer, and keep the caption underneath.
    the code: #2 is further along than its checkboxes say).
 
 On your own machine you can run the same commands with the two variables set in your shell.
+
+## Running it from Codex (teammates)
+
+Only needed to run reports yourself; using the board needs nothing but Discord.
+
+1. Use `main` once the tool is merged; until then, the branch
+   `claude/socialagent-task-0-review-fjfksj`.
+2. Get the SprintBot token and server id from Nick **by DM only**. Never paste the token in a
+   channel, a commit or a `.env` in git; if it leaks, reset it in the Developer Portal.
+3. In the Codex environment settings, add the secrets `DISCORD_BOT_TOKEN` and
+   `SPRINT_GUILD_ID`, and allow internet access to `discord.com` (Codex blocks it by default).
+4. Ask Codex: *"Read docs/SPRINT_BOARD.md, run `python3 scripts/sprint_board.py report` and show
+   me the output. Don't commit, and never print the token."* No installs are needed.
+
+`report` is always safe. Don't run `standup` or `seed --apply` yourself: the routine already
+does, and running them twice makes duplicate posts.
 
 ## The routine
 
