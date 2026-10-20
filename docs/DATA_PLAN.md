@@ -55,6 +55,10 @@ extractor that scores it:
 - `test_extraction_labels.py` floors count **train only** (re-based once on 2026-10-20 with
   no change to the extractor; they only go up from here).
 - `test_splits.py` checks every promise on this page.
+- `python experiments/fit_check.py` prints train and dev side by side with a verdict:
+  overfitting (a real train-dev gap) or underfitting (train far under the ceiling).
+- `python scripts/count_captures.py` counts captured reels not yet labeled on a laptop,
+  without printing captions, links or server ids.
 
 ## 2. Gold and silver labels
 
