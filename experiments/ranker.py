@@ -23,6 +23,15 @@ How:
 
 Rules of the road (docs/DATA_PLAN.md): it learns from train only, is compared on dev,
 and never reads test unless --split test --final "why".
+
+Results so far (dev, paired with the rules on the same 106 reels):
+  v1, 2026-10-20   63.2% vs rules 65.1% (-1.9 pts, p=0.5): a tie. It learned to trust the
+                   rules' pick. The candidates hold the answer for 85.8%, so the room is real.
+  + venue list     no change. Only 16% of gold venues are on the LA/OC OpenStreetMap list
+                   (24% with a loose match): much of the corpus is New York, San Diego,
+                   Seoul... The list helps a SoCal-only product, not this corpus.
+  Next: features for "the poster's own account is the venue" (most reachable misses), and
+  scoring candidates against each other per reel instead of one at a time.
 """
 from __future__ import annotations
 
