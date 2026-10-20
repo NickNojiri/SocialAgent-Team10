@@ -1,0 +1,175 @@
+<!-- Label Disputes: the claude.ai page where a person settles train/dev reels on which the
+     corpus label and the blind second label (fixtures/labels.second.jsonl) disagree.
+     It runs only as a claude.ai artifact: it reads the disputes from, and saves each
+     decision to, the artifact's database (db capability). Live copy:
+     https://claude.ai/artifact/SB9qm5xZPcmDr2XE1bBpMH (private to Nick; share it from
+     the page's Share menu). See docs/DATA_PLAN.md. -->
+<title>SpotBot Label Disputes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column of dispute cards, a sticky progress bar on top, thumb-sized choices. */
+:root {
+  --bg: #f4f6f7; --surface: #ffffff; --fg: #17222b; --muted: #5d6b76; --line: #d9e0e5;
+  --accent: #1f6f78; --accent-ink: #ffffff; --accent-soft: #e2f0f1;
+  --gold: #8a5a00; --gold-soft: #fbf1dc; --second: #3b4fa0; --second-soft: #e8ecfa;
+  --ok: #1d7a46; --ok-soft: #e1f3e8;
+  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1519; --surface: #172026; --fg: #e4ebef; --muted: #96a5b0; --line: #2a363e;
+  --accent: #5bb3bc; --accent-ink: #08201f; --accent-soft: #163035;
+  --gold: #f0c26b; --gold-soft: #2e2510; --second: #9fb0f2; --second-soft: #1c2440;
+  --ok: #6cd197; --ok-soft: #12301f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1519; --surface: #172026; --fg: #e4ebef; --muted: #96a5b0; --line: #2a363e;
+  --accent: #5bb3bc; --accent-ink: #08201f; --accent-soft: #163035;
+  --gold: #f0c26b; --gold-soft: #2e2510; --second: #9fb0f2; --second-soft: #1c2440;
+  --ok: #6cd197; --ok-soft: #12301f; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface) }
+.wrap { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px }
+header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line) }
+header .wrap { padding-block: 14px 12px; display: grid; gap: 10px }
+h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance }
+.sub { margin: 0; color: var(--muted); font-size: 13.5px }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap }
+.tab { font: 600 13px var(--font-body); padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer }
+.tab[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg) }
+.tab:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+main .wrap { display: grid; gap: 14px; padding-top: 16px }
+.how { color: var(--muted); font-size: 13.5px; margin: 0 }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 12px; min-width: 0 }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; color: var(--muted) }
+.chip { font: 500 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent) }
+.code { font-family: var(--font-mono) }
+.meta a { color: var(--accent); font-weight: 600; text-decoration: none }
+.caption { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px }
+.facts { display: grid; gap: 2px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere }
+.facts b { color: var(--fg); font-weight: 600 }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+@media (max-width: 420px) { .choices { grid-template-columns: 1fr } }
+.pick { text-align: left; border-radius: 10px; padding: 10px 12px; cursor: pointer; font: 600 15px var(--font-body); display: grid; gap: 2px; min-height: 58px; overflow-wrap: anywhere }
+.pick small { font: 500 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em }
+.pick.gold { background: var(--gold-soft); color: var(--fg); border: 1px solid var(--gold) }
+.pick.gold small { color: var(--gold) }
+.pick.second { background: var(--second-soft); color: var(--fg); border: 1px solid var(--second) }
+.pick.second small { color: var(--second) }
+.row { display: flex; gap: 8px; flex-wrap: wrap }
+.row input { flex: 1 1 180px; min-width: 0; font: 15px var(--font-body); padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg) }
+.btn { font: 600 13.5px var(--font-body); padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.done { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); font-weight: 600; overflow-wrap: anywhere }
+.empty { text-align: center; color: var(--muted); padding: 40px 12px; border: 1px dashed var(--line); border-radius: 12px }
+.err { color: var(--gold) }
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none } }
+</style>
+
+<header><div class="wrap">
+  <h1>Label disputes</h1>
+  <p class="sub" id="sub">Reels where the label in the corpus and a blind second label disagree. Train and dev only.</p>
+  <div class="bar" aria-hidden="true"><i id="fill"></i></div>
+  <div class="tabs" role="group" aria-label="Show">
+    <button class="tab" id="tab-open" aria-pressed="true">To settle</button>
+    <button class="tab" id="tab-done" aria-pressed="false">Settled</button>
+  </div>
+</div></header>
+
+<main><div class="wrap">
+  <p class="how">Read the caption (open the reel if you need to), then tap the right answer. If both are wrong, type the venue. "Not a place" means a recipe, ad, meme or list. Each tap saves right away.</p>
+  <div id="list"><div class="empty">Loading the disputes…</div></div>
+</div></main>
+
+<script>
+(() => {
+  const list = document.getElementById("list");
+  const sub = document.getElementById("sub");
+  const fill = document.getElementById("fill");
+  const tabs = { open: document.getElementById("tab-open"), done: document.getElementById("tab-done") };
+  let view = "open", disputes = [], decisions = {}, db = null, canWrite = true;
+
+  for (const [k, el] of Object.entries(tabs)) el.addEventListener("click", () => {
+    view = k; for (const [j, t] of Object.entries(tabs)) t.setAttribute("aria-pressed", String(j === k)); render();
+  });
+
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const show = v => v || "no venue";
+
+  async function decide(code, choice, venue) {
+    if (!db) return;
+    try { await db.collection("decisions").doc(code).set({ choice, venue: venue || null, at: new Date().toISOString() }); }
+    catch (e) { canWrite = false; sub.textContent = "You can read this page but not save answers here."; sub.className = "sub err"; render(); }
+  }
+  async function undo(code) { if (db) { try { await db.collection("decisions").doc(code).delete(); } catch (e) {} } }
+
+  function card(d) {
+    const c = el("article", "card");
+    const meta = el("div", "meta");
+    meta.append(el("span", "chip", d.split), el("span", "code", d.code));
+    if (d.handle) meta.append(el("span", null, "@" + d.handle));
+    const a = el("a", null, "Open reel ↗"); a.href = d.url; a.target = "_blank"; a.rel = "noopener"; meta.append(a);
+    c.append(meta, el("p", "caption", d.caption || "(no caption captured)"));
+    if (d.location) { const f = el("div", "facts"); const b = el("b", null, "Location tag: "); f.append(b, document.createTextNode(d.location)); c.append(f); }
+    const dec = decisions[d.code];
+    if (dec) {
+      const done = el("div", "done");
+      const label = dec.choice === "gold" ? "Kept the corpus label" : dec.choice === "second" ? "Took the second label" : dec.choice === "none" ? "Not a place" : "Your answer";
+      done.append(el("span", null, label + ": " + show(dec.venue)));
+      const u = el("button", "btn", "Undo"); u.id = "undo-" + d.code; u.disabled = !canWrite; u.addEventListener("click", () => undo(d.code)); done.append(u);
+      c.append(done);
+      return c;
+    }
+    const ch = el("div", "choices");
+    const g = el("button", "pick gold"); g.id = "gold-" + d.code; g.append(el("small", null, "Corpus label"), document.createTextNode(show(d.gold)));
+    const s = el("button", "pick second"); s.id = "second-" + d.code; s.append(el("small", null, "Second label" + (d.confidence === "low" ? " · unsure" : "")), document.createTextNode(show(d.second)));
+    g.addEventListener("click", () => decide(d.code, "gold", d.gold));
+    s.addEventListener("click", () => decide(d.code, "second", d.second));
+    g.disabled = s.disabled = !canWrite;
+    ch.append(g, s);
+    const row = el("div", "row");
+    const inp = el("input"); inp.id = "other-" + d.code; inp.placeholder = "Neither: type the venue"; inp.setAttribute("aria-label", "The right venue, if neither is right");
+    const save = el("button", "btn primary", "Save"); save.id = "save-" + d.code;
+    save.addEventListener("click", () => { const v = inp.value.trim(); if (v) decide(d.code, "other", v); });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") save.click(); });
+    const none = el("button", "btn", "Not a place"); none.id = "none-" + d.code;
+    none.addEventListener("click", () => decide(d.code, "none", null));
+    inp.disabled = save.disabled = none.disabled = !canWrite;
+    row.append(inp, save, none);
+    c.append(ch, row);
+    return c;
+  }
+
+  function render() {
+    const settled = disputes.filter(d => decisions[d.code]).length;
+    fill.style.width = disputes.length ? (100 * settled / disputes.length) + "%" : "0";
+    tabs.open.textContent = "To settle (" + (disputes.length - settled) + ")";
+    tabs.done.textContent = "Settled (" + settled + ")";
+    const shown = disputes.filter(d => view === "open" ? !decisions[d.code] : decisions[d.code]);
+    list.replaceChildren();
+    if (!disputes.length) { list.append(el("div", "empty", "No disputes yet. They appear here once Claude loads them.")); return; }
+    if (!shown.length) { list.append(el("div", "empty", view === "open" ? "All settled. Tell Claude in the chat and it will apply them." : "Nothing settled yet.")); return; }
+    const box = el("div"); box.style.display = "grid"; box.style.gap = "14px";
+    shown.forEach(d => box.append(card(d)));
+    list.append(box);
+  }
+
+  (async () => {
+    db = window.claude ? await window.claude.use("db") : null;
+    if (!db) { list.replaceChildren(el("div", "empty", "Open this page on claude.ai, signed in, to load the disputes.")); return; }
+    const user = await window.claude.use("user");
+    if (user && (await user.can("data.write")) === false) canWrite = false;
+    db.collection("disputes").onSnapshot(snap => {
+      disputes = snap.docs.map(x => ({ code: x.id, ...x.data() })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      render();
+    }, () => { list.replaceChildren(el("div", "empty", "The disputes could not be loaded. Reload the page.")); });
+    db.collection("decisions").onSnapshot(snap => {
+      decisions = Object.fromEntries(snap.docs.map(x => [x.id, x.data()]));
+      render();
+    });
+  })();
+})();
+</script>
