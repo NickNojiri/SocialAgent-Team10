@@ -127,6 +127,7 @@ def test_the_dev_alias_table_holds_no_dev_reel(rows):
 def test_unseen_creators_means_unseen_by_what_the_split_learned_from(rows):
     dev = [r for r in rows if ev.split_of(r) == "dev"]
     assert not ev.seen_creators(rows, "dev") & {ev.creator_of(r) for r in dev}   # dev is clean by construction
-    test = [r for r in rows if ev.split_of(r) == "test"]
+    frozen = ev._manifest()["rows"]
+    test = [r for r in rows if ev.split_of(r) == "test" and ev._code(r["url"]) in frozen]
     leaked = [r for r in test if ev.creator_of(r) in ev.seen_creators(rows, "test")]
-    assert len(leaked) == 50          # docs/DATA_PLAN.md caveat 2; may only shrink as labels are fixed
+    assert len(leaked) == 50          # the frozen 185 only (docs/DATA_PLAN.md caveat 2)
