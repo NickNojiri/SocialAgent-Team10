@@ -70,3 +70,18 @@ def test_counter_counts_unlabeled_reels_and_prints_nothing_private(tmp_path, cap
     out = capsys.readouterr().out
     for private in ("NEW1", "NEW2", "OLD1", "123456789012345678", secret_caption, "instagram.com/"):
         assert private not in out
+
+
+bv = _load("build_venue_list", "scripts/build_venue_list.py")
+
+
+def test_venue_list_keeps_every_name_once_and_drops_junk():
+    data = {"elements": [
+        {"tags": {"name": "Tacos Manny", "amenity": "restaurant", "brand": "Tacos Manny"}},
+        {"tags": {"name": "tacos manny"}},                                   # same name, other case
+        {"tags": {"name": "Blue Bottle Coffee;Blue Bottle", "alt_name": "BB"}},
+        {"tags": {"amenity": "cafe"}},                                       # no name
+    ]}
+    assert bv.names(data) == ["Blue Bottle", "Blue Bottle Coffee", "Tacos Manny"]
+    q = bv.query()
+    assert "restaurant" in q and "33.4,-118.95,34.35,-117.4" in q and "out tags" in q

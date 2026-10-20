@@ -45,7 +45,7 @@ from src.ingestion.eval import (  # noqa: E402
 )
 from src.ingestion.pipeline import normalizer as nz  # noqa: E402
 
-VENUE_LIST = REPO / "data" / "venues_socal.json"     # optional; scripts/build_venue_list.py
+VENUE_LIST = REPO / "fixtures" / "venues_socal.json"   # OpenStreetMap names; scripts/build_venue_list.py
 
 _TITLE_PHRASE = re.compile(r"(?<![@#\w])([A-Z][\w'’&.]*(?:\s+(?:&|and|of|de|la|el|the|[A-Z0-9][\w'’&.]*)){1,4})")
 _HASHTAG = re.compile(r"#(\w{4,30})")
@@ -119,9 +119,10 @@ STRONG_SLOTS = ("pin", "handle_from", "jsonld", "quoted", "from_titlecase", "nam
 
 def _venue_names() -> set[str]:
     try:
-        return {sq(n) for n in json.loads(VENUE_LIST.read_text(encoding="utf-8"))}
+        data = json.loads(VENUE_LIST.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         return set()
+    return {sq(n) for n in (data.get("names", []) if isinstance(data, dict) else data) if len(sq(n)) >= 4}
 
 
 _VENUES = _venue_names()
