@@ -238,6 +238,22 @@ def test_standup_opens_one_post_per_day(fake, dc):
     assert first["id"] == again["id"] and first["name"] == "Standup — Fri Oct 16"
 
 
+def test_team_date_is_pacific_time_across_daylight_saving():
+    utc = lambda *a: datetime(*a, tzinfo=timezone.utc)
+    assert sb.team_date(utc(2026, 10, 20, 4, 8)) == date(2026, 10, 19)   # Mon 9:08 p.m. PDT
+    assert sb.team_date(utc(2026, 10, 20, 15, 51)) == date(2026, 10, 20)  # the 8:51 a.m. run
+    assert sb.team_date(utc(2026, 11, 1, 8, 59)) == date(2026, 11, 1)    # 1:59 a.m. PDT
+    assert sb.team_date(utc(2026, 11, 2, 7, 30)) == date(2026, 11, 1)    # 11:30 p.m. PST
+    assert sb.team_date(utc(2026, 3, 8, 9, 59)) == date(2026, 3, 8)      # 1:59 a.m. PST
+    assert sb.team_date(utc(2026, 1, 1, 7, 59)) == date(2025, 12, 31)
+
+
+def test_an_evening_standup_gets_the_pacific_date(fake, dc, capsys):
+    fake.add_forum(tags=all_tags())
+    assert sb.main(["standup"], dc=dc, now=datetime(2026, 10, 20, 4, 8, tzinfo=timezone.utc)) == 0
+    assert json.loads(capsys.readouterr().out)["name"] == "Standup — Mon Oct 19"
+
+
 def test_move_swaps_only_the_status_tag_and_reopens_archived_posts(fake, dc):
     forum = fake.add_forum(tags=all_tags())
     post = fake.add_post(forum, "#2 Capture (100 pts)", ["Done", "A · Capture", "Phase 2"],

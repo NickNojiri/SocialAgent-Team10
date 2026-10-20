@@ -103,6 +103,21 @@ def snowflake_time(snowflake) -> datetime:
                                   tz=timezone.utc)
 
 
+def team_date(now: datetime) -> date:
+    """Today's date in Long Beach (US Pacific), so an evening run doesn't title tomorrow.
+
+    US daylight time runs from 2 a.m. on the second Sunday in March to 2 a.m. on the first
+    Sunday in November. Worked out by hand because Windows Python has no tz database.
+    """
+    march8, nov1 = date(now.year, 3, 8), date(now.year, 11, 1)
+    dst_start = datetime.combine(march8 + timedelta(days=(6 - march8.weekday()) % 7),
+                                 datetime.min.time(), timezone.utc) + timedelta(hours=10)
+    dst_end = datetime.combine(nov1 + timedelta(days=(6 - nov1.weekday()) % 7),
+                               datetime.min.time(), timezone.utc) + timedelta(hours=9)
+    offset = -7 if dst_start <= now < dst_end else -8
+    return (now + timedelta(hours=offset)).date()
+
+
 def snowflake_at(when: datetime) -> int:
     """The smallest id made at `when`, for 'messages after this time' queries."""
     return (int(when.timestamp() * 1000) - DISCORD_EPOCH_MS) << 22
@@ -409,7 +424,7 @@ def render(posts: list[Post], phase: int, span: tuple[date, date], now: datetime
     feats = [p for p in posts if p.kind is None and p.phase == phase]
     total = sum(p.points for p in feats)
     pts = {s: sum(p.points for p in feats if p.status == s) for s in STATUSES}
-    days_left = (span[1] - now.date()).days
+    days_left = (span[1] - team_date(now)).days
     pct = round(100 * pts["Done"] / total) if total else 0
     lines = [
         f"**Phase {phase} · {span[0]:%b} {span[0].day} – {span[1]:%b} {span[1].day} · "
@@ -482,7 +497,7 @@ def main(argv: list[str] | None = None, dc: Discord | None = None,
 
     now = now or datetime.now(timezone.utc)
     cal = phase_calendar(now.year)
-    phase = getattr(args, "phase", None) or current_phase(cal, now.date())
+    phase = getattr(args, "phase", None) or current_phase(cal, team_date(now))
 
     guild = os.environ.get("SPRINT_GUILD_ID", "")
     if dc is None:
@@ -508,7 +523,7 @@ def main(argv: list[str] | None = None, dc: Discord | None = None,
             out = report_json if args.json else render
             print(out(posts, phase, cal[phase], now))
         elif args.cmd == "standup":
-            post = standup(dc, guild, forum, now.date())
+            post = standup(dc, guild, forum, team_date(now))
             print(json.dumps({"id": post["id"], "name": post["name"]}))
         elif args.cmd == "post":
             text = Path(args.file).read_text(encoding="utf-8")
