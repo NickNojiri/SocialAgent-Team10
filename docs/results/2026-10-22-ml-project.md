@@ -188,13 +188,43 @@ fine-tuned for 4 epochs (cross-entropy, AdamW 5e-5). 41.5%: beats the CRF, loses
 | Not a place, but a venue was named | 5 | 4.7 | M2's `[NO VENUE]` option + post-type classifier |
 | Name in no text we read | 7 | 6.6 | speech + on-screen text as M2 input |
 
-## 8. Results (filled in as runs finish)
+## 8. Results (overnight queue, 2026-10-22)
 
-| Model | Dev same place | Dev tolerant | vs B1 (McNemar p) |
-|---|---|---|---|
-| B0 naive | 40.6% | 53/106 | |
-| B1 parser | 65.1% | 78/106 | |
-| B2 BiLSTM | 36.8% | | p < 0.001 (worse: B1 right on 37 reels it missed, it right on 7) |
-| B3 Ollama | *pending* | | |
-| M1 transformer tagger | 41.5% | 64/106 | |
-| M2 cross-encoder | *pending* | | |
+All on the same 106 dev reels. "Prepared inputs" = cleaned text + full captions + display names
++ speech/screen text (section 3). McNemar is against the parser on the same inputs.
+
+| Model | Inputs | Dev same place | Dev tolerant | vs parser |
+|---|---|---|---|---|
+| B0 naive | raw | 40.6% (43) | 53 | |
+| B1 parser | raw | 65.1% (69) | 78 | |
+| B1 parser | prepared | 67.0% (71) | 80 | +2 reels from input fixes alone |
+| B2 BiLSTM (RNN) | raw + speech/screen | 36.8% (39) | | worse, p < 0.001 |
+| B3 Ollama llama3.1:8b, zero-shot | prepared | 68.9% (73) | **89** | p = 0.64 |
+| M1 transformer tagger | raw | 41.5% (44) | 64 | |
+| M2 v1 cross-encoder | raw | 68.9% (73) | 82 | p = 0.54 |
+| M2 v2b | prepared | 72.6% (77) | 84 | p = 0.29 |
+| M2 v2 | prepared + parser pick | 73.6% (78) | 85 | p = 0.12 |
+| **M2 v3** | **prepared + parser pick + account type** | **74.5% (79)** | **86 (81.1%)** | **p = 0.039** |
+| M2 v3, second seed | same | 73.6% (78) | 86 | p = 0.09 |
+
+**M2 v3 is the first model to beat the parser significantly**: +8 reels over the parser on the
+same prepared inputs, +10 reels (+9.4 points) over the original raw parser. The second seed
+lands within one reel, so the result is stable.
+
+**What each change was worth (ablation, dev reels):** input preparation +2 for the parser and +4
+for M2 (73 → 77); the parser's pick as input +1; account type +1. The largest single gain is
+the learned re-ranker itself over the rules on the same inputs.
+
+**Learning curve (M2 v1, raw inputs):**
+
+| Training creators used | 25% | 50% | 75% | 100% |
+|---|---|---|---|---|
+| Fit reels | 202 | 403 | 631 | 825 |
+| Dev correct | 55 | 63 | 71 | 73 |
+
+Still rising at 100%, though slower: **more labeled reels will keep improving M2.** That is
+the case for continuing gold labeling.
+
+**B3 (Ollama) has the best tolerant score (89/106, 84%)**: it often names the right place in a
+slightly different form. That makes the LLM a strong candidate *source* or close-call *judge*
+next to M2 (plan step 6), rather than a replacement.
