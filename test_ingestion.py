@@ -543,6 +543,13 @@ class TestLlmExtractorLadder:
         assert grounded.venue_name == "About Time Cafe"
         assert ungrounded.venue_name is None
 
+    def test_venue_read_from_on_screen_text_is_grounded(self):
+        # The normalizer sends OCR'd frame text as on_screen_text; a venue that only
+        # appears on a sign in the video must survive the hallucination check.
+        payload = {**IG_PAYLOAD, "on_screen_text": "SUNDAY MORNING CINNAMON ROLLS open 7am"}
+        result = make_extractor(good_extraction_json(venue_name="Sunday Morning Cinnamon Rolls")).extract(payload)
+        assert result.venue_name == "Sunday Morning Cinnamon Rolls"
+
 
 class TestNormalizeWithLlm:
     def test_llm_does_not_override_a_confident_heuristic(self):

@@ -177,7 +177,9 @@ class LlmFieldExtractor:
 
 def _payload_text(payload: dict) -> str:
     parts: list[str] = []
-    for key in ("caption", "transcript", "title", "og_description", "location_text"):
+    # Every text field build_llm_payload can send; a field missing here makes a venue
+    # the model read from it look invented (on_screen_text was missing until 2026-10).
+    for key in ("caption", "transcript", "on_screen_text", "title", "og_description", "location_text"):
         value = payload.get(key)
         if value:
             parts.append(str(value))
