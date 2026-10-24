@@ -560,6 +560,30 @@ class TestLlmExtractorLadder:
         assert cousin.venue_name is None        # shares a word, but it's a different place
         assert short.venue_name is None         # too short for a near match: exact only
 
+    def test_default_transport_sets_the_context_window(self, monkeypatch):
+        sent = {}
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"message": {"content": good_extraction_json()}}
+
+        def fake_post(url, json, timeout):
+            sent.update(json)
+            return Resp()
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        LlmFieldExtractor(IngestionSettings(llm_num_ctx=8192)).extract(IG_PAYLOAD)
+        assert sent["options"]["num_ctx"] == 8192
+
+    def test_warns_when_the_prompt_nears_the_context_window(self, caplog):
+        payload = {**IG_PAYLOAD, "caption": "壽司飯丸專門店" * 230, "transcript": "壽司" * 700}   # CJK: ~1 token/char
+        with caplog.at_level("WARNING", logger="ingestion.llm"):
+            make_extractor(good_extraction_json(), llm_num_ctx=2048).extract(payload)
+        assert any("close to num_ctx" in r.getMessage() for r in caplog.records)
+
     def test_venue_read_from_on_screen_text_is_grounded(self):
         # The normalizer sends OCR'd frame text as on_screen_text; a venue that only
         # appears on a sign in the video must survive the hallucination check.

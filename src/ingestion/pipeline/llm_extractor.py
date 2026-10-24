@@ -91,7 +91,7 @@ class LlmFieldExtractor:
                 "messages": messages,
                 "stream": False,
                 "format": fmt,
-                "options": {"temperature": 0, "seed": self.settings.llm_seed},
+                "options": {"temperature": 0, "seed": self.settings.llm_seed, "num_ctx": self.settings.llm_num_ctx},
             },
             timeout=self.settings.llm_timeout_s,
         )
@@ -108,6 +108,10 @@ class LlmFieldExtractor:
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
+        tokens = _approx_tokens(system + messages[1]["content"])
+        if tokens > 0.8 * self.settings.llm_num_ctx:
+            log.warning(f"[llm] prompt is ~{tokens} tokens, close to num_ctx={self.settings.llm_num_ctx}; "
+                        "the model may not see the whole post")
 
         last_error: Optional[str] = None
         for attempt in range(self.settings.llm_max_retries + 1):
@@ -174,6 +178,13 @@ class LlmFieldExtractor:
 
 
 # ── module helpers ─────────────────────────────────────────────────────────
+
+
+def _approx_tokens(text: str) -> int:
+    """Rough token count without the model's tokenizer: ~3.5 characters per token for
+    Latin text, ~1 per character for CJK and other non-ASCII scripts (the costly case)."""
+    ascii_chars = sum(1 for ch in text if ord(ch) < 128)
+    return int(ascii_chars / 3.5 + (len(text) - ascii_chars))
 
 
 def _payload_text(payload: dict) -> str:
