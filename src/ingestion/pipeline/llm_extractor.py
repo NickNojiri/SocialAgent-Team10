@@ -15,6 +15,7 @@ the whole ladder is unit-testable offline without a running Ollama.
 import json
 import logging
 import re
+from difflib import SequenceMatcher
 from typing import Callable, Optional
 
 import httpx
@@ -160,13 +161,13 @@ class LlmFieldExtractor:
         """Enforce prompt rule 2 in code: discard fields not grounded in the input."""
         haystack = _collapse(payload_text)
 
-        if ext.venue_name and _collapse(ext.venue_name) not in haystack:
+        if ext.venue_name and not _grounded(ext.venue_name, haystack):
             log.info(f"[llm] discarding ungrounded venue_name {ext.venue_name!r}")
             ext.venue_name = None
-        if ext.raw_location_text and _collapse(ext.raw_location_text) not in haystack:
+        if ext.raw_location_text and not _grounded(ext.raw_location_text, haystack):
             log.info(f"[llm] discarding ungrounded raw_location_text {ext.raw_location_text!r}")
             ext.raw_location_text = None
-        ext.place_names = [p for p in ext.place_names if p.strip() and _collapse(p) in haystack]
+        ext.place_names = [p for p in ext.place_names if p.strip() and _grounded(p, haystack)]
         if ext.category not in CategoryLiteral:
             ext.category = "other"
         return ext
@@ -187,6 +188,34 @@ def _payload_text(payload: dict) -> str:
     if tags:
         parts.append(" ".join(tags))
     return " ".join(parts)
+
+
+# Near-match grounding: a transcript spells a name the way Whisper heard it ("mutsu lov"
+# for Mutsu Love), so an exact match rejects real venues. A name counts as grounded when
+# some stretch of the input within one letter of its length is >= 90% similar. Short
+# names must match exactly: one letter off is usually a different name.
+_FUZZY_MIN_LEN = 6
+_FUZZY_MIN_RATIO = 0.9
+
+
+def _grounded(value: str, haystack: str) -> bool:
+    """True when `value` (collapsed) appears in the collapsed input, exactly or nearly."""
+    needle = _collapse(value)
+    if not needle:
+        return False
+    if needle in haystack:
+        return True
+    if len(needle) < _FUZZY_MIN_LEN:
+        return False
+    matcher = SequenceMatcher(autojunk=False)
+    matcher.set_seq2(needle)                    # seq2 is the side difflib caches
+    for size in (len(needle) - 1, len(needle), len(needle) + 1):
+        for i in range(max(1, len(haystack) - size + 1)):
+            matcher.set_seq1(haystack[i:i + size])
+            if matcher.real_quick_ratio() >= _FUZZY_MIN_RATIO and matcher.quick_ratio() >= _FUZZY_MIN_RATIO \
+                    and matcher.ratio() >= _FUZZY_MIN_RATIO:
+                return True
+    return False
 
 
 def _collapse(text: str) -> str:

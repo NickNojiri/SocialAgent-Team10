@@ -543,6 +543,23 @@ class TestLlmExtractorLadder:
         assert grounded.venue_name == "About Time Cafe"
         assert ungrounded.venue_name is None
 
+    def test_near_match_grounds_a_misheard_venue(self):
+        # Whisper dropped a letter; the name is still the place the video talks about.
+        extractor = make_extractor()
+        payload_text = "so we stopped at mutsu lov for lunch and the omakase was insane"
+        kept = extractor._strip_hallucinations(LlmExtraction(venue_name="Mutsu Love"), payload_text)
+        assert kept.venue_name == "Mutsu Love"
+
+    def test_near_match_still_rejects_invented_and_short_names(self):
+        extractor = make_extractor()
+        payload_text = "so we stopped at mutsu lov for lunch and the omakase was insane " * 20
+        invented = extractor._strip_hallucinations(LlmExtraction(venue_name="Totally Fake Place"), payload_text)
+        cousin = extractor._strip_hallucinations(LlmExtraction(venue_name="Mutsu Kitchen"), payload_text)
+        short = extractor._strip_hallucinations(LlmExtraction(venue_name="Muts"), "we went to mutz")
+        assert invented.venue_name is None
+        assert cousin.venue_name is None        # shares a word, but it's a different place
+        assert short.venue_name is None         # too short for a near match: exact only
+
     def test_venue_read_from_on_screen_text_is_grounded(self):
         # The normalizer sends OCR'd frame text as on_screen_text; a venue that only
         # appears on a sign in the video must survive the hallucination check.
