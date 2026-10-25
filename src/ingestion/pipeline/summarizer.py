@@ -77,7 +77,11 @@ def _sources(caption: str, transcript: str, visual: str) -> str:
 
 def _generate(model: str, prompt: str, settings: IngestionSettings, *, label: str,
               images: Optional[list[str]] = None, num_predict: int = 120) -> Optional[str]:
-    body = {"model": model, "prompt": prompt, "stream": False, "options": {"num_predict": num_predict}}
+    # Same num_ctx as the extractor: Ollama reloads a model whenever num_ctx changes, and its
+    # own default (32k on 0.23) also made llama3.2 take 8.5 GB, evicting the vision model.
+    # Matching it took a capture's model calls from 38 s to 16 s on an 8 GB GPU.
+    body = {"model": model, "prompt": prompt, "stream": False,
+            "options": {"num_predict": num_predict, "num_ctx": settings.llm_num_ctx}}
     if images:
         body["images"] = images
     try:

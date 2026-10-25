@@ -77,6 +77,14 @@ class TestSummaries:
         assert WEDDING in prompt and "holding a mic" in prompt
         assert fake.bodies[0]["model"] == SETTINGS.ollama_model
 
+    def test_every_call_asks_for_the_extractors_context_size(self, monkeypatch):
+        # A different num_ctx makes Ollama reload the model on every call (see _generate).
+        fake = _FakeOllama()
+        monkeypatch.setattr(httpx, "post", fake)
+        summarize_post("wedding drama 😭", WEDDING, None, SETTINGS)
+        describe_frames([b"jpeg"], SETTINGS)
+        assert [b["options"]["num_ctx"] for b in fake.bodies] == [SETTINGS.llm_num_ctx] * 2
+
     def test_post_summary_skips_a_bare_caption(self, monkeypatch):
         monkeypatch.setattr(httpx, "post", lambda *a, **k: pytest.fail("called the model"))
         assert summarize_post("lol", None, None, SETTINGS) is None
