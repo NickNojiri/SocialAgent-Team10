@@ -206,6 +206,13 @@ def _build_ig_source():
 
 _ig_source = _build_ig_source()
 
+# Reels DM'd to SpotBot's Instagram account (ADR-0007): the webhook app (serving/ig_webhook_app.py)
+# saves what Meta sent here, and the capture chain reads it before any other rung.
+from src.ingestion.sources.ig_webhook import FirstOf, SharedPostStore  # noqa: E402
+
+_shared_posts = SharedPostStore(Path(os.getenv("IG_SHARED_DIR", "").strip() or "data/ig_webhook/shared"))
+_capture_source = FirstOf(_shared_posts, _ig_source)
+
 
 def _build_ocr():
     """Cover-image OCR (on-screen text), opt-in via OCR_ENABLED=1. The reader
@@ -397,7 +404,7 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         temporal_resolver=build_temporal_resolver(_settings),
         jsonl_sink=JsonlSink(_JSONL_DIR / f"{key}.jsonl" if key else _LEGACY_JSONL),
         chroma_sink=sink,
-        authed_source=_ig_source,
+        authed_source=_capture_source,
         ocr_reader=_ocr_reader,
         on_stage=on_stage,
     )

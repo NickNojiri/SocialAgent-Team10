@@ -218,6 +218,30 @@ train-only alias table for scoring, and `review.py` as the single writer (it rew
 the whole file). Open: per-row label provenance and a second annotator
 (`ML_ADVISOR_BRIEF.md`).
 
+### T10 · The public Instagram webhook · B1 → B4 · **mitigated** (ADR-0007)
+
+`serving/ig_webhook_app.py` is the first SpotBot endpoint on the open internet (a tunnel or
+the staging proxy points at `:8011`). Threats and controls:
+
+- **Forged deliveries** (anyone POSTing a fake "reel" to make us fetch a URL or fill the
+  catalog): every POST must carry `X-Hub-Signature-256`, an HMAC of the raw body with the
+  Instagram app secret, checked in constant time *before* the body is parsed; no secret
+  configured → 503. A forged handshake can't subscribe us anywhere: it only echoes a challenge
+  when `hub.verify_token` matches.
+- **Exposing the admin app:** the tunnel targets `:8011` only; the webhook app has two routes
+  and no docs/OpenAPI pages (a test pins the route list). It reaches `:8010` over localhost and
+  signs server-catalog requests like the bot does (T2). Pasted links in a DM are limited to
+  instagram.com and tiktok.com, then pass the admin app's SSRF check (T3) like any capture.
+- **Floods** (T5): bodies over 256 KB are refused; each sender gets 20 captures an hour; Meta
+  only delivers messages from app testers until App Review.
+- **Secrets and personal data** (T6): app secret and access token live in `.env` only and are
+  never logged; the check script prints only whether each is set. Raw Instagram sender ids go
+  only to Meta's reply API: the catalog sees a hash (`ig:<sha256>`), and the local event log
+  (`data/ig_webhook/events.jsonl`, never committed) hashes sender and recipient ids.
+- **Losing the capture account:** the permitted API removes the reason the burner was banned.
+  Breaking Meta's Platform Terms could still cost the app its access; read them before reusing
+  webhook captions for model training.
+
 ---
 
 ## 4. Summary
@@ -233,6 +257,7 @@ the whole file). Open: per-row label provenance and a second annotator
 | T7 | XSS on web pages | Tampering | verified safe |
 | T8 | `:8010` exposure on the box | Info disclosure | staging: closed by design (#11); laptop/systemd box: open — set the key, bind `127.0.0.1` |
 | T9 | benchmark integrity | Repudiation | process controls in place |
+| T10 | public Instagram webhook | Spoofing / DoS / Info disclosure | mitigated — signature before parse, `:8011` only, size and sender caps, hashed ids (ADR-0007) |
 
 Things deliberately *not* modelled: Discord's own security, Ollama's process
 isolation, physical access to the box.

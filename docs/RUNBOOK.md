@@ -28,6 +28,45 @@ Set `INGEST_URL=http://localhost:8010` and `RECOMMEND_URL=http://localhost:8003`
 the bot when running on the host (`run_local.ps1` does this; `.env.example` carries the
 Docker-oriented defaults).
 
+## Instagram: reels DM'd to SpotBot (ADR-0007)
+
+People DM a reel to SpotBot's Instagram **professional** account; Meta's webhook delivers it
+and it's captured like a pasted link. No burner, no logged-in scraping.
+
+**One-time setup (by hand: accounts and secrets):**
+
+1. Instagram app: create SpotBot's account → Settings → *Account type and tools* →
+   *Switch to professional account* (Creator or Business).
+2. developers.facebook.com → *Create app* (Business) → add the **Instagram** product →
+   *API setup with Instagram login* → *Add account* and log in as SpotBot.
+3. Same page: copy the **Instagram app secret** into `.env` as `IG_APP_SECRET`; optionally
+   *Generate access token* → `IG_ACCESS_TOKEN` (lets SpotBot reply "got it").
+4. *App roles* → add each teammate/tester as an **Instagram tester**; each accepts in the
+   Instagram app (Settings → Website permissions → Apps and websites → Tester invites).
+   Until App Review, Meta delivers messages from these people only.
+5. App settings → Basic: privacy-policy URL (`docs/PRIVACY.md` on GitHub works); switch the
+   app to **Live** (needed to receive webhooks at all).
+
+**Every time:**
+
+```powershell
+.\scripts\run_local.ps1        # admin :8010 + recommend :8003 + bot (another window)
+.\scripts\run_instagram.ps1    # webhook :8011 + tunnel; prints and copies the callback URL
+```
+
+First run only, and after each restart (a quick tunnel's address changes): dashboard →
+*Configure webhooks* → paste the callback URL and the `IG_WEBHOOK_VERIFY_TOKEN` from `.env` →
+*Verify and save* → subscribe to **messages**. Then:
+
+```bash
+python scripts/check_instagram.py --public https://<the-tunnel>.trycloudflare.com
+```
+
+It checks the secrets are set (never prints them), the token and account type, that the
+webhook refuses unsigned and accepts signed deliveries, the handshake through the tunnel, and
+the admin app. Deliveries are logged with hashed ids to `data/ig_webhook/events.jsonl`.
+`cloudflared` is a one-time install: `winget install --id Cloudflare.cloudflared`.
+
 ## Docker
 
 `docker compose up --build` runs **only** the bot and the recommend service. The admin

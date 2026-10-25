@@ -211,8 +211,11 @@ class IngestionPipeline:
                 raw = None
             if raw is not None:
                 self._authed_misses = 0
-                return _Capture(raw=raw, path="authed")
-            if "instagram.com/" in url:             # a non-IG URL is a pass, not a miss
+                # A source may name its rung (the DM-share store says "dm_share", ADR-0007).
+                return _Capture(raw=raw, path=getattr(raw, "capture_path", None) or "authed")
+            # A non-IG URL is a pass, not a miss; so is a source that only serves what it
+            # was handed (the DM-share store), since it has no account to get flagged.
+            if "instagram.com/" in url and getattr(self.authed_source, "counts_misses", True):
                 self._authed_misses += 1
                 if self._authed_misses == self.settings.authed_max_misses:
                     log.warning(
