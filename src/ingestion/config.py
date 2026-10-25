@@ -96,6 +96,11 @@ class IngestionSettings(BaseModel):
     # download/transcribe failure all degrade to "no transcript" — never a crash.
     transcribe_enabled: bool = False        # opt-in; needs faster-whisper + ffmpeg installed
     whisper_model: str = "base"             # tiny | base | small — accuracy vs speed on CPU
+    # Visual summary: this many still frames (one every 3 s) go to a local vision model,
+    # and its description feeds the card text and the "what it's about" note for reels
+    # that aren't a place. 0 = off. Needs ffmpeg and the model pulled in Ollama.
+    video_frames: int = Field(0, ge=0, le=8)
+    vision_model: str = "gemma3:4b"
 
     # ── On-screen text OCR (Phase 2.6) ───────────────────────────────────────
     # Some reels carry their info as burned-in text in the video, never spoken

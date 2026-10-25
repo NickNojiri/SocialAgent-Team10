@@ -81,11 +81,18 @@ class IngestionPipeline:
         ocr_reader: Optional["ImageTextReader"] = None,
         on_result: Optional[Callable[[IngestionResult], None]] = None,
         on_stage: Optional[Callable[[str, str], None]] = None,
+        frame_describer: Optional[Callable[[list[bytes]], Optional[str]]] = None,
+        post_summarizer: Optional[Callable[[Optional[str], Optional[str], Optional[str]], Optional[str]]] = None,
     ):
         self.settings = settings
         self.extractor = extractor
         self.transcriber = transcriber
+        # summarizer(caption, transcript) or, when it takes a third argument, (…, visual).
         self.summarizer = summarizer
+        # frame_describer(frames) → what the video shows; post_summarizer(caption,
+        # transcript, visual) → what a reel that isn't a place is about. Both optional.
+        self.frame_describer = frame_describer
+        self.post_summarizer = post_summarizer
         self.ocr_reader = ocr_reader
         # Flipped to False by the per-run Ollama pre-flight; direct _process
         # calls (tests, CLI internals) keep LLM stages enabled by default.
@@ -122,7 +129,7 @@ class IngestionPipeline:
         # so a down Ollama degrades to heuristics instantly instead of hitting
         # a 90s timeout on every URL.
         self._llm_ok = True
-        if self.extractor is not None or self.summarizer is not None:
+        if self.extractor is not None or self.summarizer is not None or self.post_summarizer is not None:
             if not _ollama_reachable(self.settings):
                 self._llm_ok = False
                 log.warning(
@@ -268,9 +275,19 @@ class IngestionPipeline:
         source. `raw` is a RawPostSnapshot; everything below is fetch-agnostic."""
         # Phase 2.5: transcribe the reel's audio so a venue/location that is only
         # *spoken* (never written in the caption) still reaches the LLM.
+        visual = None
         if self.transcriber is not None and getattr(raw, "video_url", None):
             self._stage(url, "transcribing")
-            transcript = self.transcriber.transcribe_url(raw.video_url)
+            frames_wanted = self.settings.video_frames if (self.frame_describer and self._llm_ok) else 0
+            if frames_wanted and hasattr(self.transcriber, "transcribe_media"):
+                transcript, frames = self.transcriber.transcribe_media(raw.video_url, frames=frames_wanted)
+                if frames:
+                    try:
+                        visual = self.frame_describer(frames)
+                    except Exception as exc:
+                        log.warning(f"[frames] description skipped: {type(exc).__name__}: {exc}")
+            else:
+                transcript = self.transcriber.transcribe_url(raw.video_url)
             if transcript:
                 raw.transcript = transcript
 
@@ -284,13 +301,24 @@ class IngestionPipeline:
         self._stage(url, "extracting")
         record, reason = build_record(raw, extractor=self.extractor if self._llm_ok else None)
         if record is None:
-            return IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
+            result = IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
+            # Not a spot, but the reel was read: say what it's about anyway.
+            if self.post_summarizer is not None and self._llm_ok:
+                try:
+                    result.post_summary = self.post_summarizer(
+                        getattr(raw, "caption", None), getattr(raw, "transcript", None), visual)
+                except Exception as exc:
+                    log.warning(f"[post summary] skipped: {type(exc).__name__}: {exc}")
+            return result
 
-        # Phase 2.5: a user-facing "quick description" from the audio. Only when we
-        # actually transcribed something — no transcript → no summary → card shows "No info".
-        if self.summarizer is not None and self._llm_ok and getattr(raw, "transcript", None):
+        # Phase 2.5: a user-facing "quick description" from the audio (and what the video
+        # shows, when frames were read). Nothing heard or seen → no summary → "No info".
+        transcript = getattr(raw, "transcript", None)
+        if self.summarizer is not None and self._llm_ok and (transcript or visual):
             try:
-                record.summary = self.summarizer(getattr(raw, "caption", None), raw.transcript)
+                caption = getattr(raw, "caption", None)
+                record.summary = (self.summarizer(caption, transcript, visual) if visual
+                                  else self.summarizer(caption, transcript))
             except Exception as exc:
                 log.warning(f"[summary] skipped: {type(exc).__name__}: {exc}")
 

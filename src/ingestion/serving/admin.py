@@ -32,7 +32,7 @@ from src.ingestion.cli import (
 )
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
-from src.ingestion.pipeline.summarizer import summarize_place
+from src.ingestion.pipeline.summarizer import describe_frames, summarize_place, summarize_post
 from src.ingestion.serving import capture_stats
 from src.ingestion.serving import forget as data_purge
 from src.ingestion.serving.capture_limits import (
@@ -86,10 +86,15 @@ for _env, _field, _cast in (
     ("WHISPER_MODEL", "whisper_model", str),
     ("SETTLE_TIMEOUT_MS", "settle_timeout_ms", int),
     ("CAPTURE_BUDGET_S", "capture_budget_s", float),
+    ("VIDEO_FRAMES", "video_frames", int),
+    ("VISION_MODEL", "vision_model", str),
 ):
     _val = os.getenv(_env, "").strip()
     if _val:
         _env_overrides[_field] = _cast(_val)
+# The served app reads 4 frames by default (what the video shows, for the summaries);
+# VIDEO_FRAMES=0 turns it off.
+_env_overrides.setdefault("video_frames", 4)
 
 _settings = IngestionSettings(chroma_enabled=True, geocode_enabled=False, **_env_overrides)
 # Each server's captures and failed-page snapshots go in files of its own, so
@@ -163,12 +168,17 @@ def _build_transcriber():
     try:
         from faster_whisper import WhisperModel
 
-        from src.ingestion.pipeline.transcriber import Transcriber
+        from src.ingestion.pipeline.transcriber import Transcriber, decode_audio
 
         model = WhisperModel(_settings.whisper_model, device="cpu", compute_type="int8")
 
         def _fn(path: str):
-            segments, _info = model.transcribe(path, beam_size=1, vad_filter=True)
+            # Decode with ffmpeg first: handing faster-whisper the path goes through its PyAV
+            # loader, which raises on current PyAV, so every reel lost its speech silently.
+            audio = decode_audio(path)
+            if audio is None or audio.size == 0:
+                return None
+            segments, _info = model.transcribe(audio, beam_size=1, vad_filter=True)
             return " ".join(s.text for s in segments).strip()
 
         return Transcriber(_settings, transcribe_fn=_fn)
@@ -399,7 +409,9 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         _settings.model_copy(update={"raw_dir": _RAW_ROOT / key}) if key else _settings,
         extractor=build_extractor(_settings),
         transcriber=_transcriber,
-        summarizer=lambda cap, tr: summarize_place(cap, tr, _settings),
+        summarizer=lambda cap, tr, vis=None: summarize_place(cap, tr, _settings, vis),
+        post_summarizer=lambda cap, tr, vis: summarize_post(cap, tr, vis, _settings),
+        frame_describer=lambda frames: describe_frames(frames, _settings),
         geo_enricher=None,  # geocoding off here (fast; Nominatim often blocked)
         temporal_resolver=build_temporal_resolver(_settings),
         jsonl_sink=JsonlSink(_JSONL_DIR / f"{key}.jsonl" if key else _LEGACY_JSONL),

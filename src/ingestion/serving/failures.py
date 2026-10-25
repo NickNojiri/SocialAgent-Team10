@@ -65,5 +65,13 @@ def failure_class(result: IngestionResult) -> Optional[str]:
 
 
 def failures(results: list[IngestionResult]) -> list[dict]:
-    """[{url, class}] for every link in a run that didn't become a spot."""
-    return [{"url": r.url, "class": failure_class(r)} for r in results if r.record is None]
+    """[{url, class}] for every link in a run that didn't become a spot, plus "summary"
+    (what the reel was about) when the pipeline could still say."""
+    out = []
+    for r in results:
+        if r.record is None:
+            entry = {"url": r.url, "class": failure_class(r)}
+            if r.post_summary:
+                entry["summary"] = r.post_summary
+            out.append(entry)
+    return out

@@ -84,17 +84,29 @@ def failure_message(data: dict, *, single: bool, can_retry: Optional[bool] = Non
         return _GENERIC_UNREADABLE if data.get("unreadable") else _GENERIC_NO_VENUE
     if single or len(set(classes)) == 1:
         retry = "tap Retry" if (single if can_retry is None else can_retry) else "paste it again later"
-        return FAILURE_MESSAGES[classes[0]].format(retry=retry, Retry=retry[0].upper() + retry[1:])
+        text = FAILURE_MESSAGES[classes[0]].format(retry=retry, Retry=retry[0].upper() + retry[1:])
+        if len(found) == 1 and _summary(found[0]):
+            text += f"\n> 📝 What it's about: {_summary(found[0])}"
+        return text
     return f"⚠️ None of those {len(found)} links worked:\n" + failure_lines(found)
 
 
 def failure_lines(found: list[dict]) -> str:
-    """'• instagram.com/reel/A — private or needs a login', one line per link."""
+    """'• instagram.com/reel/A — private or needs a login', one line per link, with what
+    the reel was about under it when the admin app could still say."""
     lines = []
     for f in found[:10]:
         link = re.sub(r"^https?://(www\.)?", "", str(f.get("url", "")))[:60]
         lines.append(f"• {link} — {FAILURE_SHORT.get(f.get('class'), 'didn’t work')}")
+        if _summary(f):
+            lines.append(f"  📝 {_summary(f, limit=200)}")
     return "\n".join(lines)
+
+
+def _summary(failure: dict, limit: int = 400) -> str:
+    """The admin app's "what it's about" note, on one line and capped (it's model output)."""
+    text = " ".join(str(failure.get("summary") or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 async def report_time_to_card(guild: str, seconds: float, outcome: str, links: int) -> None:

@@ -34,6 +34,9 @@ class IngestionResult(BaseModel):
     # (pipeline/orchestrator.py::_capture). Lets the capture harness and /dash measure
     # the fallback chain instead of guessing.
     capture_path: Optional[str] = None
+    # For a reel that read fine but didn't make a spot (a skit, a story, a product): a short
+    # summary of the whole video, so the bot can say what it was about.
+    post_summary: Optional[str] = None
 
     @property
     def succeeded(self) -> bool:

@@ -5,12 +5,18 @@ fakes, so these run in CI. Proves the wiring — video-URL discovery, transcript
 attachment, payload/grounding integration, and the never-crash degrade paths.
 """
 
+import shutil
+import subprocess
+import sys
+import types
 from unittest.mock import patch
+
+import pytest
 
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.llm_extractor import _payload_text
 from src.ingestion.pipeline.normalizer import build_llm_payload
-from src.ingestion.pipeline.transcriber import Transcriber, video_url_from_meta
+from src.ingestion.pipeline.transcriber import Transcriber, decode_audio, video_url_from_meta
 from src.ingestion.schemas.snapshot import RawPostSnapshot
 
 SETTINGS = IngestionSettings(transcribe_enabled=True)
@@ -68,6 +74,54 @@ class TestTranscriber:
              patch.object(Transcriber, "_default_whisper", return_value=None), \
              patch("os.unlink"):
             assert t.transcribe_url("https://cdn.ig/v.mp4") is None
+
+
+class TestDefaultWhisperBackend:
+    """Regression: faster-whisper 1.2.1 + PyAV >= 15 made every real transcription raise
+    inside faster-whisper's own audio loader, which the catch-all turned into a silent
+    None. The backend must hand Whisper decoded samples, never the file path."""
+
+    def test_whisper_gets_samples_not_a_path(self, monkeypatch):
+        np = pytest.importorskip("numpy")
+        seen = {}
+
+        class FakeModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def transcribe(self, audio, **kwargs):
+                seen["audio"] = audio
+                return [types.SimpleNamespace(text="we are at Casa Loma")], None
+
+        monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeModel))
+        samples = np.zeros(16000, dtype=np.float32)
+        with patch("src.ingestion.pipeline.transcriber.decode_audio", return_value=samples):
+            run = Transcriber(SETTINGS)._default_whisper()
+            assert run("/tmp/fake.mp4") == "we are at Casa Loma"
+        assert not isinstance(seen["audio"], str)
+
+    def test_no_audio_is_none_not_a_crash(self, monkeypatch):
+        class FakeModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def transcribe(self, audio, **kwargs):
+                raise AssertionError("must not be called without audio")
+
+        monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeModel))
+        with patch("src.ingestion.pipeline.transcriber.decode_audio", return_value=None):
+            assert Transcriber(SETTINGS)._default_whisper()("/tmp/fake.mp4") is None
+
+    @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs the ffmpeg binary")
+    def test_decode_audio_reads_a_real_file(self, tmp_path):
+        pytest.importorskip("numpy")
+        clip = tmp_path / "tone.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                        "-i", "sine=frequency=440:duration=1", "-c:a", "aac", str(clip)], check=True)
+        audio = decode_audio(str(clip))
+        assert audio is not None and str(audio.dtype) == "float32"
+        assert 15000 < audio.size < 17500          # ~1 s at 16 kHz
+        assert float(abs(audio).max()) > 0.1       # a real tone, not silence
 
 
 class TestPayloadIntegration:

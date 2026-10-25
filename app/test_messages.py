@@ -48,6 +48,20 @@ async def test_many_links_different_reasons_are_listed():
     assert "• instagram.com/reel/B/ — deleted, or a wrong link" in text
 
 
+async def test_a_reel_that_isnt_a_place_says_what_its_about():
+    data = {"failures": [{"url": URL_A, "class": "not_a_place",
+                          "summary": "Wedding drama:\nthe bride's mom objects."}]}
+    text = cards.failure_message(data, single=True)
+    assert text.startswith("🤔") and text.endswith("> 📝 What it's about: Wedding drama: the bride's mom objects.")
+
+
+async def test_partial_lines_carry_a_short_summary():
+    found = [{"url": URL_A, "class": "not_a_place", "summary": "x" * 500}, {"url": URL_B, "class": "removed"}]
+    lines = cards.failure_lines(found).split("\n")
+    assert lines[1].startswith("  📝 ") and len(lines[1]) <= 205 and lines[1].endswith("…")
+    assert lines[2].startswith("• instagram.com/reel/B/")
+
+
 @pytest.mark.parametrize("data, says", [
     ({"unreadable": 1}, "couldn't read that reel"),
     ({"rejected": 1}, "couldn't find a venue"),
