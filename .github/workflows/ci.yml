@@ -11,7 +11,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that moved to 26.04, where Playwright can't install Chromium
+    # yet ("Playwright does not support chromium on ubuntu26.04-x64"). Unpin once it can.
+    runs-on: ubuntu-24.04
     # The offline suite takes ~1 min; anything near this limit is a hang, not slowness.
     timeout-minutes: 20
 
