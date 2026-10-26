@@ -276,6 +276,69 @@ def test_move_swaps_only_the_status_tag_and_reopens_archived_posts(fake, dc):
     assert post["thread_metadata"]["archived"] is False
 
 
+CAL = {2: (date(2026, 10, 6), date(2026, 10, 24)), 3: (date(2026, 10, 27), date(2026, 11, 14))}
+LATER = datetime(2026, 10, 26, 16, 0, tzinfo=timezone.utc)  # the Monday between Phase 2 and 3
+
+
+def phase_2_board(fake, tags):
+    forum = fake.add_forum(tags=tags)
+    old = datetime(2026, 10, 19, 16, 0, tzinfo=timezone.utc)
+    return forum, {
+        "done": fake.add_post(forum, "#20 Survey (40 pts)", ["Done", "C · Experience", "Phase 2"], old),
+        "doing": fake.add_post(forum, "#27 Progress (80 pts)", ["Doing", "N · Platform", "Phase 2"],
+                               old, archived=True),
+        "old_standup": fake.add_post(forum, "Standup — Mon Oct 19", ["Standup"], old),
+        "new_standup": fake.add_post(forum, "Standup — Mon Oct 26", ["Standup"], LATER),
+        "setup": fake.add_post(forum, "Setup — how to use the sprint board", [], old),
+        "phase_3": fake.add_post(forum, "#11 Staging (100 pts)", ["Doing", "N · Platform", "Phase 3"], LATER),
+    }
+
+
+def test_archive_dry_run_lists_the_changes_and_makes_none(fake, dc):
+    forum, _ = phase_2_board(fake, all_tags())
+    out = sb.archive(dc, GUILD, forum, 3, CAL, LATER, apply=False)
+    assert out[0] == "would post   Archive — Phase 2"
+    assert sorted(out[1:]) == ["would carry  #27 Progress (80 pts) [Phase 2 -> Phase 3, Doing]",
+                               "would close  #20 Survey (40 pts)",
+                               "would close  Standup — Mon Oct 19"]
+    assert all(m == "GET" for m, _, _ in fake.calls)
+
+
+def test_archive_posts_the_final_board_closes_done_work_and_carries_the_rest(fake, dc):
+    forum, post = phase_2_board(fake, all_tags())
+    out = sb.archive(dc, GUILD, forum, 3, CAL, LATER, apply=True)
+    names = sb.tag_names(forum)
+    tags = lambda p: sorted(names[t] for t in p["applied_tags"])
+    [arch] = [c for c in fake.channels.values() if c.get("name") == "Archive — Phase 2"]
+    assert out[0] == f"posted       Archive — Phase 2 (id {arch['id']})"
+    assert tags(arch) == ["Archive", "Phase 2"]
+    text = fake.messages[arch["id"]][0]["content"]
+    assert "Points done 40 / 120" in text  # the board as it stood, before the carry-over
+    assert "**Carried into Phase 3:** #27 Progress (80 pts) (Doing)" in text
+    assert post["done"]["thread_metadata"]["archived"] is True
+    assert post["old_standup"]["thread_metadata"]["archived"] is True
+    assert tags(post["doing"]) == ["Doing", "N · Platform", "Phase 3"]
+    assert post["doing"]["thread_metadata"]["archived"] is False
+    assert fake.messages[post["doing"]["id"]][-1]["content"] == (
+        "Carried over from Phase 2 into Phase 3, still Doing.")
+    for kept in ("new_standup", "setup", "phase_3"):
+        assert post[kept]["thread_metadata"]["archived"] is False
+    assert sb.archive(dc, GUILD, forum, 3, CAL, LATER, apply=True) == []  # nothing left to do
+
+
+def test_archive_adds_the_archive_tag_to_an_older_board(fake, dc):
+    forum, _ = phase_2_board(fake, [t for t in all_tags() if t != "Archive"])
+    sb.archive(dc, GUILD, forum, 3, CAL, LATER, apply=True)
+    forum = fake.channels[forum["id"]]
+    [arch] = [c for c in fake.channels.values() if c.get("name") == "Archive — Phase 2"]
+    assert sb.tag_names(forum)[arch["applied_tags"][0]] == "Archive"
+
+
+def test_archive_has_nothing_to_do_before_the_first_phase(fake, dc):
+    forum = fake.add_forum(tags=all_tags())
+    assert sb.archive(dc, GUILD, forum, 2, CAL, LATER, apply=True) == ["nothing before Phase 2 to archive"]
+
+
 def test_rate_limit_waits_and_retries(fake):
     waits = []
     dc = sb.Discord("t", send=fake, sleep=waits.append)

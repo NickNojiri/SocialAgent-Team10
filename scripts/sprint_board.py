@@ -12,6 +12,7 @@ runs this script Mon/Wed/Fri (docs/SPRINT_BOARD.md has the whole loop).
     python scripts/sprint_board.py post --title T --file F   # a new post (tagged Digest)
     python scripts/sprint_board.py post --into ID --file F   # a reply inside an existing post
     python scripts/sprint_board.py move POST_ID Review    # change a post's status tag
+    python scripts/sprint_board.py archive --phase 3      # close out the phases before 3 (--apply)
 
 Needs DISCORD_BOT_TOKEN and SPRINT_GUILD_ID in the environment (a seed dry run needs
 neither). Standard library only, so a fresh routine session runs it without installing
@@ -46,9 +47,9 @@ STALE_DAYS = 5                     # a Doing post this quiet gets flagged
 STATUSES = ["Backlog", "Doing", "Review", "Blocked", "Done"]
 TRACKS = {"A": "A · Capture", "B": "B · Accuracy", "C": "C · Experience",
           "D": "D · Security", "N": "N · Platform"}
-KINDS = ["Standup", "Digest"]      # posts that are not features
+KINDS = ["Standup", "Digest", "Archive"]  # posts that are not features
 EMOJI = {"Backlog": "📋", "Doing": "🔧", "Review": "👀", "Blocked": "🚧", "Done": "✅",
-         "Standup": "📣", "Digest": "📰"}
+         "Standup": "📣", "Digest": "📰", "Archive": "📦"}
 TOPIC = ("One post per feature. Tags: status, track, phase. Reply with progress and change "
          "the status tag when it moves. Standups: reply Did / Doing / Blocked. "
          "Guide: docs/SPRINT_BOARD.md")
@@ -348,6 +349,68 @@ def seed(dc: Discord | None, guild: str, forum: dict | None, features: list[Feat
     return out
 
 
+def archive(dc: Discord, guild: str, forum: dict, phase: int,
+            cal: dict[int, tuple[date, date]], now: datetime, apply: bool) -> list[str]:
+    """Close out every phase before `phase`, so the board shows only the new one.
+
+    For each earlier phase with features: one "Archive — Phase N" post holding its final
+    board (the report as it stands before anything moves). Then Done features and the
+    standups and digests from those phases are closed (Discord archives the thread; it stays
+    readable and a reply reopens it), and unfinished features carry over: their phase tag
+    becomes `phase`, the status stays, and a reply on the post says so. Safe to re-run: a
+    phase that already has its Archive post is not posted again.
+    """
+    earlier = [n for n in sorted(cal) if n < phase]
+    if not earlier:
+        return [f"nothing before Phase {phase} to archive"]
+    cutoff = cal[earlier[-1]][1]
+    names = tag_names(forum)
+    pairs = [(t, as_post(t, names)) for t in forum_posts(dc, guild, forum)]
+    posts = [p for _, p in pairs]
+    have = {p.name for p in posts if p.kind == "Archive"}
+    out = []
+
+    if apply and "Archive" not in tag_ids(forum):
+        forum, _ = setup(dc, guild, forum["name"])  # boards made before the Archive tag existed
+    for n in earlier:
+        feats = [p for p in posts if p.kind is None and p.phase == n]
+        title = f"Archive — Phase {n}"
+        if not feats or title in have:
+            continue
+        carried = [p for p in feats if p.status != "Done"]
+        body = render(posts, n, cal[n], now)
+        if carried:
+            body += f"\n\n**Carried into Phase {phase}:** " + ", ".join(
+                f"{p.name} ({p.status})" for p in carried)
+        if apply:
+            post = new_post(dc, forum, title, body, ["Archive", f"Phase {n}"])
+            out.append(f"{'posted':<12} {title} (id {post['id']})")
+        else:
+            out.append(f"{'would post':<12} {title}")
+
+    phases = [f"Phase {n}" for n in range(1, 5)]
+    for t, p in pairs:
+        closed = t.get("thread_metadata", {}).get("archived")
+        if p.kind is None and p.phase in earlier and p.status != "Done":
+            if apply:
+                ids = tag_ids(forum)
+                keep = [i for i in t.get("applied_tags", []) if names.get(i) not in phases]
+                body = {"applied_tags": keep + [ids[f"Phase {phase}"]]}
+                if closed:
+                    body["archived"] = False  # carried work belongs on the open board
+                dc.call("PATCH", f"/channels/{t['id']}", body)
+                reply(dc, t["id"], f"Carried over from Phase {p.phase} into Phase {phase}, "
+                                   f"still {p.status}.")
+            out.append(f"{'carried' if apply else 'would carry':<12} {p.name} "
+                       f"[Phase {p.phase} -> Phase {phase}, {p.status}]")
+        elif not closed and ((p.kind is None and p.phase in earlier)  # a Done feature
+                             or (p.kind in ("Standup", "Digest") and team_date(p.created) <= cutoff)):
+            if apply:
+                dc.call("PATCH", f"/channels/{t['id']}", {"archived": True})
+            out.append(f"{'closed' if apply else 'would close':<12} {p.name}")
+    return out
+
+
 def move(dc: Discord, forum: dict, post_id: str, status: str) -> str:
     """Swap a post's status tag, keeping its track and phase tags."""
     thread = dc.call("GET", f"/channels/{post_id}")
@@ -409,15 +472,20 @@ class Post:
         return int(m.group(1)) if m else 0
 
 
+def as_post(t: dict, names: dict[str, str]) -> Post:
+    """A forum thread from Discord as a Post (tag ids turned into tag names)."""
+    return Post(t["id"], t["name"], [names[i] for i in t.get("applied_tags", []) if i in names],
+                snowflake_time(t["id"]), snowflake_time(t.get("last_message_id") or t["id"]),
+                t.get("message_count", 0))
+
+
 def collect(dc: Discord, guild: str, forum: dict, since: datetime | None) -> list[Post]:
     """Read every post; for those active since `since`, also read the people's replies."""
     names = tag_names(forum)
     posts = []
     for t in forum_posts(dc, guild, forum):
-        last = snowflake_time(t.get("last_message_id") or t["id"])
-        post = Post(t["id"], t["name"], [names[i] for i in t.get("applied_tags", []) if i in names],
-                    snowflake_time(t["id"]), last, t.get("message_count", 0))
-        if since is not None and last >= since:
+        post = as_post(t, names)
+        if since is not None and post.last >= since:
             msgs = dc.call("GET", f"/channels/{t['id']}/messages?limit=50&after={snowflake_at(since)}")
             for m in sorted(msgs, key=lambda m: int(m["id"])):
                 if m["id"] == t["id"] or m["author"].get("bot"):
@@ -517,6 +585,9 @@ def main(argv: list[str] | None = None, dc: Discord | None = None,
     m = sub.add_parser("move", help="change a post's status tag")
     m.add_argument("post_id")
     m.add_argument("status", choices=STATUSES)
+    a = sub.add_parser("archive", help="close out the phases before one")
+    a.add_argument("--phase", type=int, help="the phase starting now (default: the current one)")
+    a.add_argument("--apply", action="store_true", help="really change the board (default: dry run)")
     args = ap.parse_args(argv)
 
     now = now or datetime.now(timezone.utc)
@@ -561,6 +632,8 @@ def main(argv: list[str] | None = None, dc: Discord | None = None,
                 print(json.dumps({"id": post["id"], "name": post["name"]}))
         elif args.cmd == "move":
             print(move(dc, forum, args.post_id, args.status))
+        elif args.cmd == "archive":
+            print("\n".join(archive(dc, guild, forum, phase, cal, now, args.apply)))
     except DiscordError as err:
         print(f"discord: {err}", file=sys.stderr)
         return 1

@@ -44,7 +44,7 @@ Nobody gets pinged. The routine writes names, never @mentions, and the script se
 ## The commands
 
 ```bash
-python scripts/sprint_board.py setup                  # create #sprint-board and its 16 tags (safe to re-run)
+python scripts/sprint_board.py setup                  # create #sprint-board and its 17 tags (safe to re-run)
 python scripts/sprint_board.py seed --phase 2         # dry run: which posts it would make
 python scripts/sprint_board.py seed --phase 2 --apply # post them (features already there are skipped)
 python scripts/sprint_board.py report                 # the board as Discord markdown
@@ -53,7 +53,21 @@ python scripts/sprint_board.py standup                # open today's standup pos
 python scripts/sprint_board.py post --title "Sprint digest — week of Oct 19" --file digest.md
 python scripts/sprint_board.py post --into <post id> --file note.md
 python scripts/sprint_board.py move <post id> Review  # swap only the status tag
+python scripts/sprint_board.py archive --phase 3      # dry run: how Phase 2 would be closed out
+python scripts/sprint_board.py archive --phase 3 --apply
 ```
+
+**Between phases**, run `archive` before `seed`. `archive --phase 3` closes out every phase
+before 3:
+
+1. It posts `Archive — Phase 2`, tagged 📦 Archive, with the final Phase 2 board (the
+   `report` as it stood) and a list of what carries over. `report` doesn't count that post.
+2. Done features, and the standups and digests from Phase 2, are closed. Discord keeps them
+   readable under older posts, and a reply reopens one.
+3. Unfinished features carry over: their phase tag becomes Phase 3, their status stays, and a
+   reply on each post says so. Move a finished one to Done first if it shouldn't carry.
+
+Re-running it is safe: a phase that has its Archive post isn't posted again.
 
 The feature list comes from the `### Phase N` sections of `docs/tracks/TRACK-*.md`, in the
 form `**#27 Title (80)**` followed by `- [ ]` checkboxes. A post starts as Backlog if no box
@@ -75,7 +89,7 @@ whose `#number` is already posted.
    add these tags:
    - Status: `Backlog`, `Doing`, `Review`, `Blocked`, `Done`
    - Track: `A · Capture`, `B · Accuracy`, `C · Experience`, `D · Security`, `N · Platform`
-   - Other: `Phase 2`, `Standup`
+   - Other: `Phase 2`, `Standup`, `Archive`
 
    Case and separators don't matter (`doing` and `A - Capture` work too).
 2. **Make one post per feature.** Title it `#<number> <title> (<points> pts)`, the same
