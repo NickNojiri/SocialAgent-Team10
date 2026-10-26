@@ -1,0 +1,492 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-17T22:22:10.889849+00:00",
+  "measurement": {
+    "scope": "public logged-out fetch + embed fallback + heuristic extraction + validation",
+    "ollama": false,
+    "transcription": false,
+    "ocr": false,
+    "geocoding": false,
+    "temporal_resolution": false,
+    "authenticated_source": false,
+    "jsonl_sink": false,
+    "chroma_sink": false,
+    "raw_snapshots": false
+  },
+  "selection": {
+    "source": "fixtures/labels.jsonl",
+    "source_sha256": "0b50dd103667770c32eed5c4d0903da32f234eecb8c47b132ba452af419c4b4a",
+    "method": "random.Random(seed).sample(sorted(unique_reel_urls), sample_size)",
+    "seed": 20261017,
+    "eligible_urls": 430,
+    "sample_size": 50,
+    "selected_urls": [
+      "https://www.instagram.com/reel/DcRfN0Dv9M4/",
+      "https://www.instagram.com/reel/DZqT6pNEXur/",
+      "https://www.instagram.com/reel/DcxY36XTfLt/",
+      "https://www.instagram.com/reel/DbnEv4gguA-/",
+      "https://www.instagram.com/reel/DdCfw6XB39l/",
+      "https://www.instagram.com/reel/DbGH-jEsBke/",
+      "https://www.instagram.com/reel/DdB08AVM2mh/",
+      "https://www.instagram.com/reel/DdDPxKAICg1/",
+      "https://www.instagram.com/reel/DdBtZJtx1dD/",
+      "https://www.instagram.com/reel/DdBvTjgxdWK/",
+      "https://www.instagram.com/reel/DdBqxmbI6b8/",
+      "https://www.instagram.com/reel/DdDCClGDZao/",
+      "https://www.instagram.com/reel/DdC4JA7OZFe/",
+      "https://www.instagram.com/reel/DdC2UJozUqW/",
+      "https://www.instagram.com/reel/Dcbs-9lyjf7/",
+      "https://www.instagram.com/reel/DdCEL8GS6B7/",
+      "https://www.instagram.com/reel/DblXOBEN08e/",
+      "https://www.instagram.com/reel/DdAkGahCfd5/",
+      "https://www.instagram.com/reel/DdB_EIvJ-Q9/",
+      "https://www.instagram.com/reel/DcqkReOJIH7/",
+      "https://www.instagram.com/reel/DdC1JfaPjGJ/",
+      "https://www.instagram.com/reel/DdC6HVNB3_h/",
+      "https://www.instagram.com/reel/Db2A8M2KGqI/",
+      "https://www.instagram.com/reel/DblbrmmJvm9/",
+      "https://www.instagram.com/reel/DdCuPqkhAbu/",
+      "https://www.instagram.com/reel/DbotyHDBgjt/",
+      "https://www.instagram.com/reel/DbbThiTPaZA/",
+      "https://www.instagram.com/reel/DcKOjt2oqB3/",
+      "https://www.instagram.com/reel/Dc_lIehxekU/",
+      "https://www.instagram.com/reel/DczjUiCPNHP/",
+      "https://www.instagram.com/reel/DdDEMQixgJI/",
+      "https://www.instagram.com/reel/DdC6LmCAlCX/",
+      "https://www.instagram.com/reel/DbL1iGeR8SA/",
+      "https://www.instagram.com/reel/DXR9yLHESKQ/",
+      "https://www.instagram.com/reel/DcbruQ4NWfk/",
+      "https://www.instagram.com/reel/DdDSS-aoKoW/",
+      "https://www.instagram.com/reel/DZ5XvAhzzFc/",
+      "https://www.instagram.com/reel/Db1qtDmueLa/",
+      "https://www.instagram.com/reel/DdDHxW0Odq0/",
+      "https://www.instagram.com/reel/DcjPLEViiqD/",
+      "https://www.instagram.com/reel/Dc_zmAMMYo5/",
+      "https://www.instagram.com/reel/DcmTrt5J-1B/",
+      "https://www.instagram.com/reel/DdBNeWYPN-l/",
+      "https://www.instagram.com/reel/DcfZVmxBkrK/",
+      "https://www.instagram.com/reel/DdB6GDBTVba/",
+      "https://www.instagram.com/reel/Dcm6J5Yv8iF/",
+      "https://www.instagram.com/reel/DdDFX4vtfD1/",
+      "https://www.instagram.com/reel/Dbbr0znu5Kx/",
+      "https://www.instagram.com/reel/DcFRZOONEs7/",
+      "https://www.instagram.com/reel/Dc_OnGCIULd/"
+    ]
+  },
+  "summary": {
+    "total_tested": 50,
+    "successful": 34,
+    "failed": 16,
+    "pass_rate": 0.68,
+    "failure_breakdown": {
+      "login_wall": 0,
+      "no_video": 0,
+      "timeout": 0,
+      "no_venue": 13,
+      "not_a_place": 3,
+      "other": 0
+    }
+  },
+  "results": [
+    {
+      "url": "https://www.instagram.com/reel/DcRfN0Dv9M4/",
+      "outcome": "success",
+      "elapsed_seconds": 11.735,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DZqT6pNEXur/",
+      "outcome": "success",
+      "elapsed_seconds": 9.98,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcxY36XTfLt/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.438,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DbnEv4gguA-/",
+      "outcome": "success",
+      "elapsed_seconds": 11.515,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdCfw6XB39l/",
+      "outcome": "success",
+      "elapsed_seconds": 9.899,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DbGH-jEsBke/",
+      "outcome": "success",
+      "elapsed_seconds": 10.977,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdB08AVM2mh/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 13.27,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDPxKAICg1/",
+      "outcome": "success",
+      "elapsed_seconds": 10.537,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdBtZJtx1dD/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 13.149,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdBvTjgxdWK/",
+      "outcome": "success",
+      "elapsed_seconds": 9.759,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdBqxmbI6b8/",
+      "outcome": "success",
+      "elapsed_seconds": 9.724,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDCClGDZao/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 11.179,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdC4JA7OZFe/",
+      "outcome": "success",
+      "elapsed_seconds": 9.82,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdC2UJozUqW/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 8.738,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dcbs-9lyjf7/",
+      "outcome": "success",
+      "elapsed_seconds": 9.477,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdCEL8GS6B7/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 9.477,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DblXOBEN08e/",
+      "outcome": "success",
+      "elapsed_seconds": 9.72,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdAkGahCfd5/",
+      "outcome": "success",
+      "elapsed_seconds": 9.45,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdB_EIvJ-Q9/",
+      "outcome": "success",
+      "elapsed_seconds": 10.653,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcqkReOJIH7/",
+      "outcome": "success",
+      "elapsed_seconds": 9.544,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdC1JfaPjGJ/",
+      "outcome": "success",
+      "elapsed_seconds": 9.566,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdC6HVNB3_h/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.106,
+      "failure_class": "not_a_place",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Db2A8M2KGqI/",
+      "outcome": "success",
+      "elapsed_seconds": 10.278,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DblbrmmJvm9/",
+      "outcome": "success",
+      "elapsed_seconds": 9.641,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdCuPqkhAbu/",
+      "outcome": "success",
+      "elapsed_seconds": 9.744,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DbotyHDBgjt/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 9.613,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DbbThiTPaZA/",
+      "outcome": "success",
+      "elapsed_seconds": 9.946,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcKOjt2oqB3/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.491,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dc_lIehxekU/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 11.433,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DczjUiCPNHP/",
+      "outcome": "success",
+      "elapsed_seconds": 9.712,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDEMQixgJI/",
+      "outcome": "success",
+      "elapsed_seconds": 9.668,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdC6LmCAlCX/",
+      "outcome": "success",
+      "elapsed_seconds": 11.311,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DbL1iGeR8SA/",
+      "outcome": "success",
+      "elapsed_seconds": 9.648,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DXR9yLHESKQ/",
+      "outcome": "success",
+      "elapsed_seconds": 10.02,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcbruQ4NWfk/",
+      "outcome": "success",
+      "elapsed_seconds": 10.812,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDSS-aoKoW/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 9.719,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DZ5XvAhzzFc/",
+      "outcome": "success",
+      "elapsed_seconds": 9.811,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Db1qtDmueLa/",
+      "outcome": "success",
+      "elapsed_seconds": 9.65,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDHxW0Odq0/",
+      "outcome": "success",
+      "elapsed_seconds": 11.315,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcjPLEViiqD/",
+      "outcome": "success",
+      "elapsed_seconds": 9.378,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dc_zmAMMYo5/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.035,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcmTrt5J-1B/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 9.556,
+      "failure_class": "not_a_place",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdBNeWYPN-l/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.04,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcfZVmxBkrK/",
+      "outcome": "success",
+      "elapsed_seconds": 9.963,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdB6GDBTVba/",
+      "outcome": "success",
+      "elapsed_seconds": 9.541,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dcm6J5Yv8iF/",
+      "outcome": "success",
+      "elapsed_seconds": 9.864,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DdDFX4vtfD1/",
+      "outcome": "success",
+      "elapsed_seconds": 9.55,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dbbr0znu5Kx/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 9.794,
+      "failure_class": "not_a_place",
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/DcFRZOONEs7/",
+      "outcome": "success",
+      "elapsed_seconds": 10.298,
+      "failure_class": null,
+      "fetch_status": "ok",
+      "video_available": true
+    },
+    {
+      "url": "https://www.instagram.com/reel/Dc_OnGCIULd/",
+      "outcome": "content_rejected",
+      "elapsed_seconds": 10.267,
+      "failure_class": "no_venue",
+      "fetch_status": "ok",
+      "video_available": true
+    }
+  ]
+}
