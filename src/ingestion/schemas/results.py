@@ -20,6 +20,15 @@ class FetchStatus(str, Enum):
     ERROR = "error"
 
 
+class PostGist(BaseModel):
+    """What a reel that read fine but didn't make a spot is about (summarizer.describe_post)."""
+    title: str
+    kind: str                  # one of summarizer.POST_KINDS
+    summary: str
+    author: Optional[str] = None
+    image_url: Optional[str] = None
+
+
 class IngestionResult(BaseModel):
     url: str
     fetch_status: FetchStatus
@@ -34,9 +43,9 @@ class IngestionResult(BaseModel):
     # (pipeline/orchestrator.py::_capture). Lets the capture harness and /dash measure
     # the fallback chain instead of guessing.
     capture_path: Optional[str] = None
-    # For a reel that read fine but didn't make a spot (a skit, a story, a product): a short
-    # summary of the whole video, so the bot can say what it was about.
-    post_summary: Optional[str] = None
+    # For a reel that read fine but didn't make a spot (a skit, a recipe, a meme): a title, a
+    # kind and a summary of the whole video, so the bot can say what it was about.
+    gist: Optional[PostGist] = None
 
     @property
     def succeeded(self) -> bool:

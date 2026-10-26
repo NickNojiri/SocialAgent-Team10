@@ -286,7 +286,22 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
     """Turn a capture result into cards (or the failure view). The result shape is
     the same whether it came back from /api/ingest or a finished /api/jobs job."""
     events = data.get("events", [])
-    await _swap_reaction(message, "⏳", "✅" if events else "⚠️")
+    gists, missed = cards.split_gists(data.get("failures") or [])
+    await _swap_reaction(message, "⏳", "✅" if events else (cards.NOT_A_PLACE if gists else "⚠️"))
+
+    if not events and gists:
+        # Read fine, just not a place: say what each reel is about instead of "it failed".
+        sharer = message.author.display_name
+        first, rest = gists[0], gists[1:]
+        await status.edit(content=None, embed=cards.build_gist_embed(first["gist"], first["url"], sharer=sharer),
+                          view=cards.build_gist_view(first["gist"]))
+        for found in rest:
+            await message.reply(embed=cards.build_gist_embed(found["gist"], found["url"], sharer=sharer),
+                                view=cards.build_gist_view(found["gist"]), mention_author=False)
+        if missed:
+            await message.reply(f"⚠️ {len(missed)} of {len(urls)} links didn't work:\n"
+                                + cards.failure_lines(missed), mention_author=False)
+        return
 
     if not events:
         await status.edit(
@@ -318,14 +333,14 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
                 mention_author=False,
             )
 
-    # Some links worked and some didn't: say which, rather than nothing (#19).
-    missed = data.get("failures") or []
-    if missed:
+    # Some links worked and some didn't: say which, rather than nothing (#19). Not-a-place
+    # reels are listed by title; they're under 💭 in /catalog.
+    if gists or missed:
         try:
             await message.reply(
-                f"⚠️ {len(missed)} of {len(urls)} links didn't make a spot:\n"
-                + cards.failure_lines(missed)
-                + "\n-# Paste those again later, or add them yourself.",
+                f"⚠️ {len(gists) + len(missed)} of {len(urls)} links didn't make a spot:\n"
+                + cards.failure_lines(gists + missed)
+                + ("\n-# Paste those again later, or add them yourself." if missed else ""),
                 mention_author=False,
             )
         except Exception:
@@ -565,14 +580,11 @@ async def catalog_command(interaction: discord.Interaction):
         log.warning(f"[catalog] fetch failed: {exc}")
         await interaction.followup.send("⚠️ Couldn't reach the catalog right now.")
         return
-    if not events:
+    gists = await _fetch_gists(cards.guild_key(interaction))
+    if not events and not gists:
         await interaction.followup.send("The catalog is empty — paste a reel to start it!")
         return
-    lines = [
-        f"{cards.emoji_for(ev.get('category'))} **{ev.get('venue')}** · {int(ev.get('votes', 0))} 👍"
-        for ev in events[:10]
-    ]
-    await interaction.followup.send("🏆 **Top spots**\n" + "\n".join(lines))
+    await interaction.followup.send(cards.catalog_text(events, gists))
 
 
 _BROWSE_CHOICES = [
@@ -584,6 +596,7 @@ _BROWSE_CHOICES = [
     app_commands.Choice(name="🏞️ outdoors", value="outdoors"),
     app_commands.Choice(name="🤝 community", value="community"),
     app_commands.Choice(name="📍 everything", value="all"),
+    app_commands.Choice(name="💭 not a place", value="not_a_place"),
 ]
 
 
@@ -604,6 +617,21 @@ async def _fetch_events(gid: str) -> list[dict]:
         )
         resp.raise_for_status()
         return resp.json().get("events", [])
+
+
+async def _fetch_gists(gid: str) -> list[dict]:
+    """The server's not-a-place reels; an empty list if the admin app can't say (a list
+    that won't load should never break /catalog)."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{INGEST_URL}/api/gists", params={"guild_id": gid}, headers=tenant_headers(gid)
+            )
+            resp.raise_for_status()
+            return resp.json().get("gists", [])
+    except Exception as exc:
+        log.warning(f"[gists] fetch failed: {exc}")
+        return []
 
 
 def _browse_label(category, area: Optional[str], when) -> Optional[str]:
@@ -632,6 +660,19 @@ async def browse_command(
 ):
     await interaction.response.defer(thinking=True)
     gid = cards.guild_key(interaction)
+    if category is not None and category.value == "not_a_place":
+        # Not-a-place reels have no area or date, so those filters don't apply here.
+        gists = await _fetch_gists(gid)
+        if not gists:
+            await interaction.followup.send("No not-a-place reels saved — they show up here when "
+                                            "someone pastes a reel that isn't somewhere to go.")
+            return
+        view = cards.GistBrowseView(gists)
+        if len(gists) == 1:
+            await interaction.followup.send(embed=view.embed(), view=cards.build_gist_view(gists[0]))
+        else:
+            view.message = await interaction.followup.send(embed=view.embed(), view=view, wait=True)
+        return
     try:
         events = await _fetch_events(gid)
     except Exception as exc:

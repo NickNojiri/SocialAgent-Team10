@@ -48,18 +48,60 @@ async def test_many_links_different_reasons_are_listed():
     assert "• instagram.com/reel/B/ — deleted, or a wrong link" in text
 
 
-async def test_a_reel_that_isnt_a_place_says_what_its_about():
-    data = {"failures": [{"url": URL_A, "class": "not_a_place",
-                          "summary": "Wedding drama:\nthe bride's mom objects."}]}
-    text = cards.failure_message(data, single=True)
-    assert text.startswith("🤔") and text.endswith("> 📝 What it's about: Wedding drama: the bride's mom objects.")
+GIST = {"id": "a1b2c3d4e5f6", "title": "I Married the Girl Who Broke My Heart", "kind": "story",
+        "summary": "He tells how she left and how they found their way back.", "author": "darianthao",
+        "image_url": "https://cdn.ig/t.jpg"}
 
 
-async def test_partial_lines_carry_a_short_summary():
-    found = [{"url": URL_A, "class": "not_a_place", "summary": "x" * 500}, {"url": URL_B, "class": "removed"}]
-    lines = cards.failure_lines(found).split("\n")
-    assert lines[1].startswith("  📝 ") and len(lines[1]) <= 205 and lines[1].endswith("…")
-    assert lines[2].startswith("• instagram.com/reel/B/")
+async def test_partial_lines_name_a_not_a_place_reel_by_its_title():
+    found = [{"url": URL_A, "class": "no_venue", "gist": GIST}, {"url": URL_B, "class": "removed"}]
+    assert cards.failure_lines(found).split("\n") == [
+        "• 💭 I Married the Girl Who Broke My Heart — not a place",
+        "• instagram.com/reel/B/ — deleted, or a wrong link"]
+
+
+async def test_the_not_a_place_card_leads_with_what_its_about():
+    embed = cards.build_gist_embed(GIST, URL_A, sharer="nick")
+    assert embed.title == "I Married the Girl Who Broke My Heart" and embed.url == URL_A
+    assert embed.description.startswith("💬 Story · @darianthao\n\nHe tells how")
+    assert "Watch the reel" in embed.description
+    assert embed.footer.text.startswith("💭 Not a place") and "shared by nick" in embed.footer.text
+    assert "fail" not in (embed.description + embed.footer.text).lower()
+
+
+async def test_an_unknown_kind_shows_as_a_story():
+    assert cards.gist_kind("vlog") == ("💬", "Story")
+    assert set(cards.GIST_KINDS) == {"recipe", "meme", "game", "music", "ad", "story"}
+
+
+async def test_catalog_groups_by_category_hides_empty_ones_and_puts_not_a_place_last():
+    events = [{"venue": "HEYTEA", "category": "cafe_dessert", "votes": 5},
+              {"venue": "Casa Loma Birria", "category": "food_drink", "votes": 7},
+              {"venue": "Pho Hoa", "category": "food_drink", "votes": 4}]
+    gists = [{**GIST, "url": URL_A}, {"title": "3-Ingredient Mochi", "kind": "recipe", "url": URL_B}]
+    lines = cards.catalog_text(events, gists).split("\n")
+    assert lines[0] == "🏆 **Top spots**"
+    assert lines[1:7] == ["", "🍽️ **Food & drink**", "Casa Loma Birria · 7 👍", "Pho Hoa · 4 👍",
+                          "", "🍰 **Cafés & dessert**"]
+    assert "Nightlife" not in "\n".join(lines)                       # empty categories hidden
+    tail = lines[lines.index("-# **💭 Not a place** · saved so you know what they're about"):]
+    assert tail[1:] == [f"-# 💬 [I Married the Girl Who Broke My Heart]({URL_A}) · @darianthao",
+                        f"-# 🍳 [3-Ingredient Mochi]({URL_B})"]
+
+
+async def test_a_huge_catalog_still_fits_one_message():
+    events = [{"venue": f"Spot number {i} with a long name", "category": c, "votes": i}
+              for i in range(60) for c in cards.CATALOG_ORDER]
+    gists = [{**GIST, "url": f"{URL_A}{i}"} for i in range(50)]
+    text = cards.catalog_text(events, gists)
+    assert len(text) <= 1990 and "💭 Not a place" in text
+
+
+async def test_a_moved_spot_offers_move_it_back_and_a_pasted_reel_add_it_anyway():
+    moved = cards.build_gist_view({**GIST, "moved": True})
+    pasted = cards.build_gist_view(GIST)
+    assert [c.custom_id for c in moved.children] == ["spot:back:a1b2c3d4e5f6"]
+    assert [c.custom_id for c in pasted.children] == ["spot:anyway:0"]
 
 
 @pytest.mark.parametrize("data, says", [
@@ -139,6 +181,17 @@ async def test_when_some_links_work_the_others_are_named_not_dropped(monkeypatch
     notes = [args[0] for args, _ in replies if args and "didn't make a spot" in args[0]]
     assert notes == ["⚠️ 1 of 2 links didn't make a spot:\n• instagram.com/reel/B/ — deleted, or a wrong link"
                      "\n-# Paste those again later, or add them yourself."]
+
+
+async def test_a_not_a_place_paste_gets_a_card_not_a_failure(monkeypatch):
+    async def wedding(*args, **kwargs):
+        return {"events": [], "rejected": 1, "failures": [{"url": URL_A, "class": "no_venue", "gist": GIST}]}
+
+    message, _replies, edits = _paste(monkeypatch, wedding)
+    await bot.handle_reel_capture(message, [URL_A])
+    card = edits[-1]
+    assert card["content"] is None and card["embed"].title == "I Married the Girl Who Broke My Heart"
+    assert [c.custom_id for c in card["view"].children] == ["spot:anyway:0"]
 
 
 async def test_retry_that_fails_again_is_plain_too(monkeypatch):

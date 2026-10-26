@@ -84,29 +84,28 @@ def failure_message(data: dict, *, single: bool, can_retry: Optional[bool] = Non
         return _GENERIC_UNREADABLE if data.get("unreadable") else _GENERIC_NO_VENUE
     if single or len(set(classes)) == 1:
         retry = "tap Retry" if (single if can_retry is None else can_retry) else "paste it again later"
-        text = FAILURE_MESSAGES[classes[0]].format(retry=retry, Retry=retry[0].upper() + retry[1:])
-        if len(found) == 1 and _summary(found[0]):
-            text += f"\n> 📝 What it's about: {_summary(found[0])}"
-        return text
+        return FAILURE_MESSAGES[classes[0]].format(retry=retry, Retry=retry[0].upper() + retry[1:])
     return f"⚠️ None of those {len(found)} links worked:\n" + failure_lines(found)
 
 
 def failure_lines(found: list[dict]) -> str:
-    """'• instagram.com/reel/A — private or needs a login', one line per link, with what
-    the reel was about under it when the admin app could still say."""
+    """'• instagram.com/reel/A — private or needs a login', one line per link. A reel that was
+    read fine but isn't a place shows its title instead: '• 💭 Wedding Toast Gone Wrong'."""
     lines = []
     for f in found[:10]:
+        gist = f.get("gist") or {}
+        if gist.get("title"):
+            lines.append(f"• {NOT_A_PLACE} {' '.join(str(gist['title']).split())[:80]} — not a place")
+            continue
         link = re.sub(r"^https?://(www\.)?", "", str(f.get("url", "")))[:60]
         lines.append(f"• {link} — {FAILURE_SHORT.get(f.get('class'), 'didn’t work')}")
-        if _summary(f):
-            lines.append(f"  📝 {_summary(f, limit=200)}")
     return "\n".join(lines)
 
 
-def _summary(failure: dict, limit: int = 400) -> str:
-    """The admin app's "what it's about" note, on one line and capped (it's model output)."""
-    text = " ".join(str(failure.get("summary") or "").split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+def split_gists(found: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(reels that get a not-a-place card, the real failures)."""
+    gists = [f for f in found if (f.get("gist") or {}).get("title")]
+    return gists, [f for f in found if f not in gists]
 
 
 async def report_time_to_card(guild: str, seconds: float, outcome: str, links: int) -> None:
@@ -906,6 +905,11 @@ class SpotModal(discord.ui.Modal, title="Add a spot"):
     )
     link = discord.ui.TextInput(label="Link (optional)", required=False, max_length=200)
 
+    def __init__(self, link: str = ""):
+        super().__init__()
+        if link:                       # "Add it anyway" on a not-a-place card: the reel is known
+            self.link.default = link[:200]
+
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
         try:
@@ -1046,14 +1050,197 @@ class RemoveButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:re
 
 
 def build_spot_view(event_id: str, votes: int = 0) -> discord.ui.View:
-    """The action row on a spot card: vote up/down, suggest, edit, remove (5 max)."""
+    """The action rows on a spot card: vote up/down, suggest, edit, remove (a row holds 5),
+    then "Not a place" on a second row."""
     view = discord.ui.View(timeout=None)
     view.add_item(VoteButton(event_id, 1, votes))
     view.add_item(VoteButton(event_id, -1))
     view.add_item(AddSuggestionsButton(event_id))
     view.add_item(EditButton(event_id))
     view.add_item(RemoveButton(event_id))
+    view.add_item(NotAPlaceButton(event_id))
     return view
+
+
+# ── "Not a place" reels ──────────────────────────────────────────────────────
+# A reel that read fine but isn't somewhere to go gets a card saying what it's about (title,
+# kind, summary from the admin app's gist) instead of a failure message, and goes in a quiet
+# 💭 section at the bottom of /catalog. Mirrors src/ingestion/pipeline/summarizer.py::POST_KINDS
+# — the reasons from the burner review, so every card is also a label for the detector.
+
+NOT_A_PLACE = "💭"
+GIST_KINDS = {
+    "recipe": ("🍳", "Recipe"),
+    "meme": ("😂", "Meme"),
+    "game": ("🎮", "Game"),
+    "music": ("🎵", "Music"),
+    "ad": ("🛍️", "Ad"),
+    "story": ("💬", "Story"),
+}
+_GIST_COLOR = 0x888780
+
+
+def gist_kind(kind: Optional[str]) -> tuple[str, str]:
+    return GIST_KINDS.get(str(kind or ""), GIST_KINDS["story"])
+
+
+def build_gist_embed(gist: dict, url: Optional[str] = None, *, sharer: Optional[str] = None,
+                     moved: bool = False) -> discord.Embed:
+    """A not-a-place reel as a card: what it's about first, "not a place" last and small."""
+    emoji, label = gist_kind(gist.get("kind"))
+    link = url or gist.get("url") or None
+    embed = discord.Embed(title=str(gist.get("title") or "A reel")[:256], color=_GIST_COLOR, url=link)
+    tag = f"{emoji} {label}" + (f" · @{gist['author']}" if gist.get("author") else "")
+    parts = [tag, str(gist.get("summary") or "")[:900]]
+    if link:
+        parts.append(f"▶ [Watch the reel]({link})")
+    embed.description = "\n\n".join(p for p in parts if p)
+    if gist.get("image_url"):
+        embed.set_thumbnail(url=gist["image_url"])
+    footer = [f"{NOT_A_PLACE} Not a place" + (" · moved off the spot list" if moved else ", so it's under 💭 in /catalog")]
+    if sharer:
+        footer.append(f"shared by {sharer}")
+    embed.set_footer(text=" · ".join(footer))
+    return embed
+
+
+def build_gist_view(gist: dict) -> discord.ui.View:
+    """Under a not-a-place card: put a moved spot back, or add a pasted reel as a spot anyway."""
+    view = discord.ui.View(timeout=None)
+    if gist.get("moved") and gist.get("id"):
+        view.add_item(MoveBackButton(gist["id"]))
+    else:
+        view.add_item(AddAnywayButton())
+    return view
+
+
+class NotAPlaceButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:nap:(?P<eid>[^:]+)"):
+    def __init__(self, event_id: str):
+        self.event_id = event_id
+        super().__init__(
+            discord.ui.Button(style=discord.ButtonStyle.secondary, label="Not a place", emoji=NOT_A_PLACE,
+                              custom_id=f"spot:nap:{event_id}", row=1)
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["eid"])
+
+    async def callback(self, interaction: discord.Interaction):
+        """Anyone can tap it — the card offers "Move it back", so a wrong tap costs nothing."""
+        await interaction.response.defer()
+        guild, user = guild_key(interaction), str(interaction.user.id)
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/events/{self.event_id}/not-a-place",
+                    params={"guild_id": guild}, json={"user_id": user},
+                    headers=tenant_headers(guild, user_id=user),
+                )
+                resp.raise_for_status()
+                gist = resp.json()
+        except Exception:
+            await interaction.followup.send("⚠️ Couldn't move that one — try again.", ephemeral=True)
+            return
+        gist["moved"] = True
+        await interaction.edit_original_response(
+            embed=build_gist_embed(gist, moved=True), view=build_gist_view(gist))
+
+
+class MoveBackButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:back:(?P<gid>[0-9a-f]+)"):
+    def __init__(self, gist_id: str):
+        self.gist_id = gist_id
+        super().__init__(
+            discord.ui.Button(style=discord.ButtonStyle.secondary, label="Move it back", emoji="↩️",
+                              custom_id=f"spot:back:{gist_id}")
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(match["gid"])
+
+    async def callback(self, interaction: discord.Interaction):
+        guild, user = guild_key(interaction), str(interaction.user.id)
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    f"{ADMIN_URL}/api/gists/{self.gist_id}/restore",
+                    params={"guild_id": guild}, json={"user_id": user},
+                    headers=tenant_headers(guild, user_id=user),
+                )
+                resp.raise_for_status()
+                ev = resp.json()
+        except Exception:
+            await interaction.response.send_message("⚠️ Couldn't move it back — try again.", ephemeral=True)
+            return
+        await interaction.response.edit_message(
+            embed=build_spot_embed(ev, await home_for(guild)), view=build_spot_view(ev["id"], int(ev.get("votes", 0))))
+
+
+class AddAnywayButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:anyway:0"):
+    def __init__(self):
+        super().__init__(
+            discord.ui.Button(style=discord.ButtonStyle.secondary, label="Add it anyway", emoji="✍️",
+                              custom_id="spot:anyway:0")
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls()
+
+    async def callback(self, interaction: discord.Interaction):
+        embeds = getattr(interaction.message, "embeds", None) or []
+        await interaction.response.send_modal(SpotModal(link=(embeds[0].url or "") if embeds else ""))
+
+
+def gist_lines(gists: list[dict], limit: int = 10) -> list[str]:
+    """The quiet 💭 section of /catalog: one small grey line per reel (Discord's -# subtext)."""
+    lines = [f"-# **{NOT_A_PLACE} Not a place** · saved so you know what they're about"]
+    for g in gists[:limit]:
+        emoji, _ = gist_kind(g.get("kind"))
+        title = str(g.get("title") or "A reel")[:80]
+        shown = f"[{title}]({g['url']})" if str(g.get("url", "")).startswith("http") else title
+        lines.append(f"-# {emoji} {shown}" + (f" · @{g['author']}" if g.get("author") else ""))
+    if len(gists) > limit:
+        lines.append(f"-# …and {len(gists) - limit} more in `/browse` → 💭 not a place")
+    return lines
+
+
+CATALOG_ORDER = ("food_drink", "cafe_dessert", "nightlife", "live_music", "market_popup",
+                 "outdoors", "community", "other")
+CATEGORY_LABEL = {
+    "food_drink": "Food & drink", "cafe_dessert": "Cafés & dessert", "nightlife": "Nightlife",
+    "live_music": "Live music", "market_popup": "Markets & pop-ups", "outdoors": "Outdoors",
+    "community": "Community", "other": "Other spots",
+}
+
+
+def catalog_text(events: list[dict], gists: list[dict]) -> str:
+    """/catalog: spots grouped by category in a fixed order (empty ones hidden), top-voted first,
+    then the not-a-place reels last, small and grey. A big catalog shows fewer per category
+    (and fewer 💭 lines) so the message stays under Discord's 2000 characters."""
+    for per_category, gist_limit in ((5, 10), (3, 5), (1, 3), (1, 0)):
+        out = ["🏆 **Top spots**"]
+        for cat in CATALOG_ORDER:
+            here = sorted((e for e in events if (e.get("category") or "other") == cat),
+                          key=lambda e: (-int(e.get("votes", 0)), str(e.get("venue") or "")))
+            if not here:
+                continue
+            out.append(f"\n{emoji_for(cat)} **{CATEGORY_LABEL[cat]}**")
+            for ev in here[:per_category]:
+                when = _short_date(ev)
+                out.append(f"{str(ev.get('venue') or 'Unknown spot')[:80]}" + (f" · {when}" if when else "")
+                           + f" · {int(ev.get('votes', 0))} 👍")
+            if len(here) > per_category:
+                out.append(f"-# …{len(here) - per_category} more in `/browse`")
+        if gists:
+            out.append("")
+            out.extend(gist_lines(gists, limit=gist_limit) if gist_limit else
+                       [f"-# **{NOT_A_PLACE} Not a place** · {len(gists)} reels in `/browse` → 💭 not a place"])
+        text = "\n".join(out)
+        if len(text) <= 1990:
+            return text
+    return text[:1990]
 
 
 # ── /browse filters (#35) ────────────────────────────────────────────────────
@@ -1213,11 +1400,62 @@ class BrowseView(discord.ui.View):
                 pass
 
 
+class GistBrowseView(discord.ui.View):
+    """/browse → 💭 not a place: one full not-a-place card per page, with that reel's own
+    button (Move it back, or Add it anyway) swapped in as the pages turn."""
+
+    def __init__(self, gists: list[dict], *, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.gists = gists
+        self.page = 0
+        self.message: Optional[discord.Message] = None
+        self._action: Optional[discord.ui.Item] = None
+        self._sync()
+
+    def _sync(self) -> None:
+        self.prev_gist.disabled = self.page <= 0
+        self.next_gist.disabled = self.page >= len(self.gists) - 1
+        if self._action is not None:
+            self.remove_item(self._action)
+        gist = self.gists[self.page]
+        self._action = MoveBackButton(gist["id"]) if gist.get("moved") else AddAnywayButton()
+        self.add_item(self._action)
+
+    def embed(self) -> discord.Embed:
+        gist = self.gists[self.page]
+        embed = build_gist_embed(gist, moved=bool(gist.get("moved")))
+        embed.set_footer(text=f"{NOT_A_PLACE} Not a place · {self.page + 1}/{len(self.gists)}")
+        return embed
+
+    async def _turn(self, interaction: discord.Interaction, delta: int) -> None:
+        self.page = max(0, min(self.page + delta, len(self.gists) - 1))
+        self._sync()
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+    @discord.ui.button(label="Previous", emoji="◀", style=discord.ButtonStyle.secondary)
+    async def prev_gist(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._turn(interaction, -1)
+
+    @discord.ui.button(label="Next", emoji="▶", style=discord.ButtonStyle.secondary)
+    async def next_gist(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._turn(interaction, +1)
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+
 def register_dynamic_items(client: discord.Client) -> None:
     """Call once in on_ready so buttons keep working after a restart."""
     client.add_dynamic_items(
         VoteButton, AddSuggestionsButton, RemoveButton, LockInButton,
         RetryButton, ManualAddButton, WentButton, NopeButton, EditButton,
+        NotAPlaceButton, MoveBackButton, AddAnywayButton,
     )
 
 

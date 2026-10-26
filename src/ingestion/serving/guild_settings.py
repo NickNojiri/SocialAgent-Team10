@@ -11,6 +11,8 @@ gets the defaults, which mean "behave exactly as before /setup existed".
                      and "near you" ranking read it later
     home_lat/lng     where that city is, looked up once when it's saved (#36);
                      None when the lookup failed or no city is set
+    gists_expire     whether "not a place" reels leave the list after 30 days
+                     (serving/gists.py); on by default
     updated_at       unix seconds of the last save; 0 = never configured
 
 No user ids, message text, or tokens are stored.
@@ -27,7 +29,7 @@ import time
 from pathlib import Path
 
 DEFAULTS = {"drop_channel_id": None, "home_city": "", "home_lat": None, "home_lng": None,
-            "updated_at": 0}
+            "gists_expire": True, "updated_at": 0}
 MAX_CITY_LEN = 80
 
 # The characters collection_for_guild keeps. A guild id outside this set is
@@ -104,6 +106,10 @@ class GuildSettingsStore:
             clean["home_city"] = clean_city(changes["home_city"] or "")
         if "drop_channel_id" in changes:
             clean["drop_channel_id"] = clean_channel_id(changes["drop_channel_id"])
+        if "gists_expire" in changes:
+            if not isinstance(changes["gists_expire"], bool):
+                raise SettingsError("gists_expire must be true or false")
+            clean["gists_expire"] = changes["gists_expire"]
         if "home_lat" in changes or "home_lng" in changes:
             clean["home_lat"] = clean_coordinate(changes.get("home_lat"), 90.0)
             clean["home_lng"] = clean_coordinate(changes.get("home_lng"), 180.0)

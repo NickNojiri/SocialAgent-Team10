@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import src.ingestion.serving.admin as admin  # noqa: E402
 import src.ingestion.serving.app as serving_app  # noqa: E402
 from src.ingestion.serving.feedback import FeedbackStore  # noqa: E402
+from src.ingestion.serving.gists import GistStore  # noqa: E402
 from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
 from src.ingestion.serving.time_to_card import TimeToCardLog  # noqa: E402
@@ -47,6 +48,9 @@ admin._guild_settings = GuildSettingsStore(Path(tempfile.mkdtemp(prefix="bench_s
 admin._feedback = FeedbackStore(Path(tempfile.mkdtemp(prefix="bench_feedback_")))
 admin._geocode_city = lambda city: None                      # never the network
 admin._time_to_card = TimeToCardLog(Path(tempfile.mkdtemp(prefix="bench_ttc_")) / "ttc.jsonl")
+admin._gists = GistStore(Path(tempfile.mkdtemp(prefix="bench_gists_")))
+admin._TAPS = Path(tempfile.mkdtemp(prefix="bench_taps_")) / "taps.jsonl"
+admin.describe_post = lambda *a, **k: None                   # never Ollama
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 
@@ -121,6 +125,14 @@ def run(client):
     save_settings = lambda g, t: client.put(  # noqa: E731
         "/api/settings", json={"guild_id": g, "home_city": "Long Beach, CA"}, headers=hdr(t)
     )
+    gists = lambda g, t: client.get(f"/api/gists?guild_id={g}", headers=hdr(t))  # noqa: E731
+
+    def not_a_place(g, t, user):
+        return client.post(f"/api/events/{EVENT}/not-a-place?guild_id={g}", json={"user_id": user}, headers=hdr(t))
+
+    def restore(g, t, user):
+        gid = not_a_place(MINE, MINE_ME, ME).json()["id"]          # something on MINE's list to restore
+        return client.post(f"/api/gists/{gid}/restore?guild_id={g}", json={"user_id": user}, headers=hdr(t))
 
     # a real job in MINE, to probe reading its status from outside
     job_id = job(MINE, MINE_ME, ME).json()["job_id"]
@@ -179,6 +191,13 @@ def run(client):
         ("POST", "/api/feedback", "post feedback into another guild", lambda: feedback(THEIRS, MINE_RW)),
         ("POST", "/api/time-to-card", "pad the time-to-card numbers with no token", lambda: timing(MINE, None)),
         ("POST", "/api/time-to-card", "pad time-to-card with a share token", lambda: timing(MINE, MINE_R)),
+        ("GET", "/api/gists", "read another guild's not-a-place list", lambda: gists(THEIRS, MINE_RW)),
+        ("GET", "/api/gists", "read a not-a-place list with no token", lambda: gists(MINE, None)),
+        ("POST", "/api/events/{event_id}/not-a-place", "move another guild's spot off its list", lambda: not_a_place(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/events/{event_id}/not-a-place", "move a spot as another user", lambda: not_a_place(MINE, MINE_ME, YOU)),
+        ("POST", "/api/events/{event_id}/not-a-place", "move a spot with a share token", lambda: not_a_place(MINE, MINE_R, ME)),
+        ("POST", "/api/gists/{gid}/restore", "restore into another guild", lambda: restore(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/gists/{gid}/restore", "restore with no token", lambda: restore(MINE, None, ME)),
     ]
 
     authentic = [
@@ -188,6 +207,9 @@ def run(client):
         ("read my nights counter", lambda: nights(MINE, MINE_RW)),
         ("delete in my own guild", lambda: delete(MINE, MINE_RW)),
         ("vote as myself", lambda: vote(MINE, MINE_ME, ME)),
+        ("read my not-a-place list with a share token", lambda: gists(MINE, MINE_R)),
+        ("mark a spot not a place as myself", lambda: not_a_place(MINE, MINE_ME, ME)),
+        ("move it back as myself", lambda: restore(MINE, MINE_ME, ME)),
         ("confirm a night out as myself", lambda: went(MINE, MINE_ME, ME)),
         ("read my own capture job", lambda: job_status(MINE_RW)),
         ("add a manual spot to my guild", lambda: manual(MINE, MINE_RW)),

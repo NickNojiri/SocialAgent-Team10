@@ -85,6 +85,11 @@ def city_text(city: str) -> str:
     return city or "not set"
 
 
+def gists_text(expire) -> str:
+    """The "not a place" list's expiry (serving/gists.py); on unless turned off."""
+    return "cleared after 30 days" if expire is not False else "kept until removed"
+
+
 def overview_embed(settings: Optional[dict], *, can_manage: bool, here: str) -> discord.Embed:
     """/setup for everyone: how it works, and how this server is set up."""
     embed = discord.Embed(
@@ -121,6 +126,7 @@ def wizard_embed(current: dict, pending: dict, note: str = "") -> discord.Embed:
     lines = [
         line("1", "Reels channel", "drop_channel_id", channel_text),
         line("2", "Home city", "home_city", lambda v: city_text(v or "")),
+        line("💭", "Not-a-place reels", "gists_expire", gists_text),
         "**3. Save** — nothing else changes: saved spots, votes and plans stay put.",
     ]
     if note:
@@ -252,6 +258,14 @@ class SetupWizard(discord.ui.View):
             return
         self.stop()
         await interaction.response.edit_message(embed=done_embed(saved), view=None)
+
+    @discord.ui.button(label="Not-a-place reels: 30 days / keep", emoji="💭",
+                       style=discord.ButtonStyle.secondary, row=3)
+    async def toggle_gists(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        now = self.pending.get("gists_expire", self.current.get("gists_expire", True))
+        self.pending["gists_expire"] = now is False      # flips; default (missing) counts as on
+        self.note = ""
+        await self._refresh(interaction)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=2)
     async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):

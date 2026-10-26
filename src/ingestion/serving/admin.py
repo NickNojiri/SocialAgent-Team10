@@ -32,14 +32,15 @@ from src.ingestion.cli import (
 )
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
-from src.ingestion.pipeline.summarizer import describe_frames, summarize_place, summarize_post
+from src.ingestion.pipeline.summarizer import describe_frames, describe_post, fallback_title, summarize_place
 from src.ingestion.serving import capture_stats
 from src.ingestion.serving import forget as data_purge
 from src.ingestion.serving.capture_limits import (
     CaptureRateLimitExceeded,
     CaptureRateLimiter,
 )
-from src.ingestion.serving.failures import failures
+from src.ingestion.serving.failures import GIST_CLASSES, failures
+from src.ingestion.serving.gists import GistError, GistStore, gist_id
 from src.ingestion.serving.feedback import FeedbackError, FeedbackStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore, SettingsError, clean_city
 from src.ingestion.serving.time_to_card import TimeToCardLog, TimingError
@@ -410,7 +411,7 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         extractor=build_extractor(_settings),
         transcriber=_transcriber,
         summarizer=lambda cap, tr, vis=None: summarize_place(cap, tr, _settings, vis),
-        post_summarizer=lambda cap, tr, vis: summarize_post(cap, tr, vis, _settings),
+        post_summarizer=lambda cap, tr, vis, author: describe_post(cap, tr, vis, author, _settings),
         frame_describer=lambda frames: describe_frames(frames, _settings),
         geo_enricher=None,  # geocoding off here (fast; Nominatim often blocked)
         temporal_resolver=build_temporal_resolver(_settings),
@@ -440,6 +441,11 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
             "lines": [result_line(r) for r in report.results][:5],
         }
     )
+    # Reels that read fine but aren't a spot go on the server's "not a place" list.
+    missed = failures(report.results)
+    for entry in missed:
+        if entry.get("gist") and entry["class"] in GIST_CLASSES:
+            entry["gist"]["id"] = _gists.add(guild_id, entry["url"], entry["gist"])["id"]
     return {
         "added": len(report.validated),
         "rejected": len(report.rejected),
@@ -450,8 +456,9 @@ async def _run_ingest(urls: list[str], guild_id: str = "", on_stage=None) -> dic
         # Links whose failure a second try can fix — a page-load timeout or a
         # Chromium network error. The job queue retries only these (feature #26).
         "retryable_urls": retryable_urls(report.results),
-        # Why each other link failed, as a class the bot words for people (#19).
-        "failures": failures(report.results),
+        # Why each other link failed, as a class the bot words for people (#19), with what
+        # the reel was about when it was read fine.
+        "failures": missed,
     }
 
 
@@ -653,6 +660,13 @@ def add_manual(body: ManualBody, x_tenant_token: str | None = TenantToken):
     sink = _sink_for(body.guild_id)
     event_id = sink.add(record)
     src = str(record.provenance.source_url)
+    if body.source_url.strip():
+        # "Add it anyway" on a not-a-place card: it's a spot now, so it leaves that list.
+        try:
+            if _gists.pop(body.guild_id, gist_id(body.source_url.strip())) is not None:
+                _log_tap(body.source_url.strip(), undo=True)
+        except GistError:
+            pass
     return {
         "id": event_id,
         "venue": record.venue_name,
@@ -848,6 +862,7 @@ class SettingsBody(BaseModel):
     guild_id: str
     drop_channel_id: str | None = None
     home_city: str | None = None
+    gists_expire: bool | None = None
 
 
 @app.get("/api/settings")
@@ -880,6 +895,105 @@ def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
         return {"settings": _guild_settings.update(body.guild_id, changes)}
     except SettingsError as exc:
         raise HTTPException(400, str(exc))
+
+
+# ── "Not a place" list (serving/gists.py) ───────────────────────────────────
+# Reels that read fine but aren't somewhere to go, each as a title + kind + summary. Never in
+# the catalog, so /plan, suggestions and votes don't see them. A spot someone marks "Not a
+# place" moves here whole, so "Move it back" restores it; each move is also kept as a label
+# for the not-a-place detector (no user id), in data/labels/not_a_place_taps.jsonl.
+
+_gists = GistStore(Path("data/gists"))
+_TAPS = Path("data/labels/not_a_place_taps.jsonl")
+
+
+class GistActionBody(BaseModel):
+    user_id: str
+
+
+def _expire_for(guild_id: str) -> bool:
+    try:
+        return bool(_guild_settings.get(guild_id)["gists_expire"]) if guild_id else True
+    except SettingsError:
+        return True
+
+
+def _log_tap(url: str, undo: bool = False) -> None:
+    try:
+        _TAPS.parent.mkdir(parents=True, exist_ok=True)
+        with _TAPS.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps({"url": url, "not_a_place": not undo, "ts": int(time.time())}) + "\n")
+    except OSError:
+        pass                     # a label we couldn't write never blocks the move
+
+
+@app.get("/api/gists")
+def list_gists(guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    """The server's "not a place" reels, newest first."""
+    authorize(guild_id, x_tenant_token, need=SCOPE_READ)
+    try:
+        expire = _expire_for(guild_id)
+        return {"gists": _gists.list(guild_id, expire=expire), "expire": expire}
+    except GistError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/events/{event_id}/not-a-place")
+def mark_not_a_place(event_id: str, body: GistActionBody, guild_id: str = "",
+                     x_tenant_token: str | None = TenantToken):
+    """Move a spot off the list into "not a place", written up as a gist. Signed over the
+    acting user like a vote; undone with /api/gists/{id}/restore."""
+    authorize(guild_id, x_tenant_token, user_id=body.user_id)
+    sink = _sink_for(guild_id, create=False)
+    res = sink.collection.get(ids=[event_id], include=["metadatas", "documents", "embeddings"])
+    if not res["ids"]:
+        raise HTTPException(404, "event not found")
+    meta = (res["metadatas"][0] or {}) if res.get("metadatas") else {}
+    document = (res.get("documents") or [""])[0] or ""
+    embeddings = res.get("embeddings")
+    embedding = embeddings[0] if embeddings is not None and len(embeddings) else None
+    url = meta.get("source_url") or f"spot:{event_id}"
+    author = meta.get("author_handle") or None
+    gist = describe_post(document or meta.get("core_theme"), None, meta.get("summary"), author, _settings) or {
+        "title": fallback_title(author), "kind": "story",
+        "summary": meta.get("summary") or meta.get("core_theme") or "",
+    }
+    spot = {"id": event_id, "metadata": meta, "document": document,
+            "embedding": [float(x) for x in embedding] if embedding is not None else None}
+    try:
+        entry = _gists.add(guild_id, url, {**gist, "image_url": meta.get("image_url")}, spot=spot)
+    except GistError as exc:
+        raise HTTPException(400, str(exc))
+    sink.collection.delete(ids=[event_id])
+    _log_tap(url)
+    return {k: v for k, v in entry.items() if k != "spot"}
+
+
+@app.post("/api/gists/{gid}/restore")
+def restore_gist(gid: str, body: GistActionBody, guild_id: str = "",
+                 x_tenant_token: str | None = TenantToken):
+    """Undo "Not a place": put the spot back exactly as it was (votes included)."""
+    authorize(guild_id, x_tenant_token, user_id=body.user_id)
+    try:
+        entry = _gists.pop(guild_id, gid)
+    except GistError as exc:
+        raise HTTPException(400, str(exc))
+    if entry is None:
+        raise HTTPException(404, "not on the list anymore")
+    spot = entry.get("spot")
+    if not spot:
+        _gists.add(guild_id, entry["url"], entry)           # leave it where it was
+        raise HTTPException(409, "this reel was never a spot — add it with Add manually")
+    add = {"ids": [spot["id"]], "metadatas": [spot["metadata"]], "documents": [spot["document"]]}
+    if spot.get("embedding"):
+        add["embeddings"] = [spot["embedding"]]
+    _sink_for(guild_id).collection.add(**add)
+    _log_tap(entry["url"], undo=True)
+    meta = spot["metadata"]
+    return {"id": spot["id"], "venue": meta.get("venue_name", "Unknown"), "category": meta.get("category", "other"),
+            "theme": meta.get("core_theme", ""), "source_url": meta.get("source_url", ""),
+            "image": meta.get("image_url", ""), "blurb": meta.get("summary", ""),
+            "votes": int(meta.get("votes", 0)), "voters": sorted(_voters(meta).values())}
 
 
 # ── Feedback and the SUS survey (Track C #20) ───────────────────────────────
@@ -1005,6 +1119,7 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
         raise HTTPException(409, "a capture for this server is still running — try again once it finishes")
     report = {"catalog": _purge_catalog(gid)}
     report["settings"] = _guild_settings.delete(gid)
+    report["gists"] = _gists.delete(gid)
     report["feedback_rows"] = _feedback.delete(gid)
     report["jobs"] = _jobs.forget_guild(gid)
     kept = [entry for entry in _CAPTURE_LOG if entry.get("guild_id") != gid]

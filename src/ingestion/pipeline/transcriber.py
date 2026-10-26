@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from typing import Callable, Optional
 
 import httpx
@@ -64,8 +65,22 @@ def decode_audio(path: str):
     return np.frombuffer(proc.stdout, np.int16).astype(np.float32) / 32768.0
 
 
-def extract_frames(path: str, count: int = 4, every_s: float = 3.0, tile: bool = False) -> list[bytes]:
-    """Up to `count` JPEG frames, one every `every_s` seconds from the start, 512 px wide.
+def video_duration(path: str) -> Optional[float]:
+    """Seconds, from ffprobe; None when it can't tell."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                             capture_output=True, text=True, timeout=30).stdout
+        return float(out.strip()) or None
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def extract_frames(path: str, count: int = 4, every_s: Optional[float] = None, tile: bool = False) -> list[bytes]:
+    """Up to `count` JPEG frames, 512 px wide: spread evenly over the whole video (a quarter
+    of the way into each quarter, for 4), or one every `every_s` seconds from the start.
 
     What the video *shows* (a setting, a dish, a sign) for the visual summary; empty
     when ffmpeg is missing or the file has no video track. tile=True returns ONE image,
@@ -74,12 +89,20 @@ def extract_frames(path: str, count: int = 4, every_s: float = 3.0, tile: bool =
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None or count <= 0:
         return []
+    start = 0.0
+    if every_s is None:
+        # A fixed 3 s step only ever saw the first 12 s of a long video.
+        duration = video_duration(path)
+        every_s = max(duration / count, 0.5) if duration else 3.0
+        # A quarter step in, not half: ffmpeg's fps filter needs half a step of video past
+        # the last frame it takes, and at half a step in the last frame fell off the end.
+        start = every_s / 4 if duration else 0.0
     vf = f"fps=1/{every_s:g},scale=512:-2"
     if tile and count > 1:
         vf = f"fps=1/{every_s:g},scale=384:-2,tile=2x{(count + 1) // 2}"
     with tempfile.TemporaryDirectory() as tmp:
         proc = subprocess.run(
-            [ffmpeg, "-nostdin", "-loglevel", "error", "-i", path,
+            [ffmpeg, "-nostdin", "-loglevel", "error", "-ss", f"{start:.2f}", "-i", path,
              "-vf", vf, "-frames:v", "1" if tile and count > 1 else str(count),
              os.path.join(tmp, "frame_%02d.jpg")],
             capture_output=True, timeout=_DECODE_TIMEOUT,
@@ -138,13 +161,18 @@ class Transcriber:
         """Download the video and return its transcript, or None on any failure."""
         return self.transcribe_media(video_url, frames=0)[0]
 
-    def transcribe_media(self, video_url: str, frames: int = 0) -> tuple[Optional[str], list[bytes]]:
+    def transcribe_media(
+        self, video_url: str, frames: int = 0, on_frames: Optional[Callable[[list[bytes]], None]] = None,
+    ) -> tuple[Optional[str], list[bytes]]:
         """One download, two reads: the transcript (or None) and `frames` still frames, tiled
         into one contact-sheet image (for the visual summary). Either can fail without the
-        other; nothing raises."""
+        other; nothing raises. `on_frames(stills)`, when given, runs in a thread WHILE the
+        speech is transcribed (the vision model is on the GPU, Whisper on the CPU), and has
+        finished by the time this returns."""
         path = self._download(video_url)
         if path is None:
             return None, []
+        worker = None
         try:
             stills: list[bytes] = []
             if frames > 0:
@@ -152,8 +180,13 @@ class Transcriber:
                     stills = (self._frames_fn or (lambda p: extract_frames(p, count=frames, tile=True)))(path)[:frames]
                 except Exception as exc:
                     log.warning(f"[frames] failed ({type(exc).__name__}: {exc})")
+            if stills and on_frames is not None:
+                worker = threading.Thread(target=on_frames, args=(stills,), daemon=True)
+                worker.start()
             return self._transcribe_path(path, video_url), stills
         finally:
+            if worker is not None:
+                worker.join()
             try:
                 os.unlink(path)
             except OSError:

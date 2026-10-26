@@ -230,7 +230,8 @@ def test_lock_in_button_custom_id():
     assert button.custom_id == "spot:lockin:deadbeef"
 
 
-def test_failure_view_composition():
+@pytest.mark.asyncio          # discord.py 2.4+ builds a View on the running event loop
+async def test_failure_view_composition():
     url = "https://www.instagram.com/reel/DU3evm2Ewhn/"
     view = cards.build_failure_view(url)
     ids = [child.custom_id for child in view.children]
@@ -242,7 +243,8 @@ def test_failure_view_composition():
     assert [c.custom_id for c in cards.build_failure_view(long_url).children] == ["spot:manual:0"]
 
 
-def test_build_spot_view_has_five_buttons_with_event_id():
+@pytest.mark.asyncio
+async def test_build_spot_view_has_six_buttons_with_event_id():
     view = cards.build_spot_view("deadbeef", votes=2)
     custom_ids = [child.custom_id for child in view.children]
     assert custom_ids == [
@@ -251,4 +253,5 @@ def test_build_spot_view_has_five_buttons_with_event_id():
         "spot:suggest:deadbeef",
         "spot:edit:deadbeef",
         "spot:remove:deadbeef",
+        "spot:nap:deadbeef",          # "Not a place", on the second row
     ]

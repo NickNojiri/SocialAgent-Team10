@@ -29,7 +29,7 @@ from src.ingestion.pipeline.geo_enricher import GeoEnricher
 from src.ingestion.pipeline.llm_extractor import LlmFieldExtractor
 from src.ingestion.pipeline.temporal_resolver import TemporalResolver
 from src.ingestion.pipeline.validator import build_record
-from src.ingestion.schemas.results import FetchStatus, IngestionResult
+from src.ingestion.schemas.results import FetchStatus, IngestionResult, PostGist
 from src.ingestion.schemas.snapshot import PageSnapshot
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
@@ -82,15 +82,15 @@ class IngestionPipeline:
         on_result: Optional[Callable[[IngestionResult], None]] = None,
         on_stage: Optional[Callable[[str, str], None]] = None,
         frame_describer: Optional[Callable[[list[bytes]], Optional[str]]] = None,
-        post_summarizer: Optional[Callable[[Optional[str], Optional[str], Optional[str]], Optional[str]]] = None,
+        post_summarizer: Optional[Callable[..., Optional[dict]]] = None,
     ):
         self.settings = settings
         self.extractor = extractor
         self.transcriber = transcriber
         # summarizer(caption, transcript) or, when it takes a third argument, (…, visual).
         self.summarizer = summarizer
-        # frame_describer(frames) → what the video shows; post_summarizer(caption,
-        # transcript, visual) → what a reel that isn't a place is about. Both optional.
+        # frame_describer(frames) → what the video shows; post_summarizer(caption, transcript,
+        # visual, author) → {title, kind, summary} for a reel that isn't a place. Both optional.
         self.frame_describer = frame_describer
         self.post_summarizer = post_summarizer
         self.ocr_reader = ocr_reader
@@ -280,12 +280,20 @@ class IngestionPipeline:
             self._stage(url, "transcribing")
             frames_wanted = self.settings.video_frames if (self.frame_describer and self._llm_ok) else 0
             if frames_wanted and hasattr(self.transcriber, "transcribe_media"):
-                transcript, frames = self.transcriber.transcribe_media(raw.video_url, frames=frames_wanted)
-                if frames:
+                seen: dict = {}
+
+                def describe(frames: list[bytes]) -> None:   # runs while Whisper transcribes
                     try:
-                        visual = self.frame_describer(frames)
+                        seen["visual"] = self.frame_describer(frames)
                     except Exception as exc:
+                        seen["visual"] = None
                         log.warning(f"[frames] description skipped: {type(exc).__name__}: {exc}")
+
+                transcript, frames = self.transcriber.transcribe_media(
+                    raw.video_url, frames=frames_wanted, on_frames=describe)
+                if frames and "visual" not in seen:           # a transcriber that didn't run it
+                    describe(frames)
+                visual = seen.get("visual")
             else:
                 transcript = self.transcriber.transcribe_url(raw.video_url)
             if transcript:
@@ -304,9 +312,12 @@ class IngestionPipeline:
             result = IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
             # Not a spot, but the reel was read: say what it's about anyway.
             if self.post_summarizer is not None and self._llm_ok:
+                author = getattr(raw, "author_handle", None)
                 try:
-                    result.post_summary = self.post_summarizer(
-                        getattr(raw, "caption", None), getattr(raw, "transcript", None), visual)
+                    out = self.post_summarizer(
+                        getattr(raw, "caption", None), getattr(raw, "transcript", None), visual, author)
+                    if out:
+                        result.gist = PostGist(**out, author=author, image_url=getattr(raw, "image_url", None))
                 except Exception as exc:
                     log.warning(f"[post summary] skipped: {type(exc).__name__}: {exc}")
             return result

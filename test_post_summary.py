@@ -3,6 +3,7 @@ vision model) and what a reel that ISN'T a place is about, so the bot can still 
 something useful. Ollama, Whisper, ffmpeg and the download are all faked.
 """
 
+import json
 import shutil
 import subprocess
 from unittest.mock import patch
@@ -13,7 +14,7 @@ import pytest
 import src.ingestion.pipeline.orchestrator as orchestrator
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline
-from src.ingestion.pipeline.summarizer import describe_frames, summarize_post
+from src.ingestion.pipeline.summarizer import clean_title, describe_frames, describe_post
 from src.ingestion.pipeline.transcriber import Transcriber, extract_frames
 from src.ingestion.schemas.snapshot import RawPostSnapshot
 from src.ingestion.serving.failures import failures
@@ -39,6 +40,25 @@ class TestTranscribeMedia:
         with patch.object(Transcriber, "_download", return_value="/tmp/fake.mp4"), patch("os.unlink"):
             assert t.transcribe_media("https://cdn.ig/v.mp4", frames=2) == (WEDDING, [])
 
+    def test_frames_are_described_while_the_speech_is_transcribed(self):
+        import threading
+
+        order, done = [], threading.Event()
+
+        def slow_whisper(path):
+            assert done.wait(5), "the frames weren't being described alongside"
+            order.append("transcript")
+            return WEDDING
+
+        def describe(stills):
+            order.append(f"described {len(stills)}")
+            done.set()
+
+        t = Transcriber(SETTINGS, transcribe_fn=slow_whisper, frames_fn=lambda p: [b"sheet"])
+        with patch.object(Transcriber, "_download", return_value="/tmp/fake.mp4"), patch("os.unlink"):
+            assert t.transcribe_media("https://cdn.ig/v.mp4", frames=4, on_frames=describe) == (WEDDING, [b"sheet"])
+        assert order == ["described 1", "transcript"]
+
     def test_no_frames_asked_never_reads_them(self):
         def must_not_run(path):
             raise AssertionError("frames read when none were asked for")
@@ -54,6 +74,11 @@ class TestTranscribeMedia:
                         "-i", "testsrc=duration=7:size=320x240:rate=10", str(clip)], check=True)
         frames = extract_frames(str(clip), count=2)
         assert len(frames) == 2 and all(f[:2] == b"\xff\xd8" for f in frames)   # JPEGs
+        # Spread over the whole clip: a 40 s video still gives 4 frames, not 4 from the start.
+        long_clip = tmp_path / "long.mp4"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                        "-i", "testsrc=duration=40:size=160x120:rate=5", str(long_clip)], check=True)
+        assert len(extract_frames(str(long_clip), count=4)) == 4
         sheet = extract_frames(str(clip), count=2, tile=True)
         assert len(sheet) == 1 and sheet[0][:2] == b"\xff\xd8"                    # one contact sheet
 
@@ -67,27 +92,61 @@ class _FakeOllama:
         return httpx.Response(200, json={"response": self.text}, request=httpx.Request("POST", url))
 
 
+GIST_JSON = json.dumps({"title": "I Married the Girl Who Broke My Heart", "kind": "story",
+                        "summary": "He tells how she left him and how they found their way back."})
+
+
 class TestSummaries:
-    def test_post_summary_uses_speech_and_visuals(self, monkeypatch):
-        fake = _FakeOllama()
+    def test_describe_post_uses_speech_and_visuals(self, monkeypatch):
+        fake = _FakeOllama(GIST_JSON)
         monkeypatch.setattr(httpx, "post", fake)
-        text = summarize_post("wedding drama 😭", WEDDING, "a reception hall, a woman holding a mic", SETTINGS)
-        assert text == fake.text
-        prompt = fake.bodies[0]["prompt"]
-        assert WEDDING in prompt and "holding a mic" in prompt
-        assert fake.bodies[0]["model"] == SETTINGS.ollama_model
+        gist = describe_post("wedding drama 😭", WEDDING, "a reception hall, a woman holding a mic", "darianthao", SETTINGS)
+        assert gist == {"title": "I Married the Girl Who Broke My Heart", "kind": "story",
+                        "summary": "He tells how she left him and how they found their way back."}
+        body = fake.bodies[0]
+        assert WEDDING in body["prompt"] and "holding a mic" in body["prompt"]
+        assert body["model"] == SETTINGS.ollama_model and body["format"] == "json"
+
+    def test_an_unknown_kind_becomes_story(self, monkeypatch):
+        monkeypatch.setattr(httpx, "post", _FakeOllama(json.dumps({"title": "Cats Doing Cat Things", "kind": "vlog",
+                                                                   "summary": "Cats."})))
+        assert describe_post("my cats being weird lol", WEDDING, None, "x", SETTINGS)["kind"] == "story"
+
+    def test_not_json_still_gives_a_summary_under_the_account_name(self, monkeypatch):
+        monkeypatch.setattr(httpx, "post", _FakeOllama("A wedding toast goes wrong."))
+        gist = describe_post("wedding drama 😭", WEDDING, None, "darianthao", SETTINGS)
+        assert gist == {"title": "@darianthao's reel", "kind": "story", "summary": "A wedding toast goes wrong."}
 
     def test_every_call_asks_for_the_extractors_context_size(self, monkeypatch):
         # A different num_ctx makes Ollama reload the model on every call (see _generate).
-        fake = _FakeOllama()
+        fake = _FakeOllama(GIST_JSON)
         monkeypatch.setattr(httpx, "post", fake)
-        summarize_post("wedding drama 😭", WEDDING, None, SETTINGS)
+        describe_post("wedding drama 😭", WEDDING, None, None, SETTINGS)
         describe_frames([b"jpeg"], SETTINGS)
         assert [b["options"]["num_ctx"] for b in fake.bodies] == [SETTINGS.llm_num_ctx] * 2
 
-    def test_post_summary_skips_a_bare_caption(self, monkeypatch):
+    def test_describe_post_skips_a_bare_caption(self, monkeypatch):
         monkeypatch.setattr(httpx, "post", lambda *a, **k: pytest.fail("called the model"))
-        assert summarize_post("lol", None, None, SETTINGS) is None
+        assert describe_post("lol", None, None, "x", SETTINGS) is None
+
+
+class TestTitleRules:
+    @pytest.mark.parametrize("title", [
+        "Wedding",                                    # under 2 words
+        "one two three four five six seven eight nine ten eleven",   # over 10
+        "Best #wedding ever", "Shoutout to @mom", "Watch at www.site.com", "Wedding day 💍",
+        "THIS IS THE CRAZIEST WEDDING", "This video shows a wedding", "Untitled reel",
+        "this wedding got out of hand",              # the caption's first line again
+    ])
+    def test_weird_titles_fall_back_to_the_account(self, title):
+        assert clean_title(title, "this wedding got out of hand\nmore text", "darianthao") == "@darianthao's reel"
+
+    def test_a_good_title_is_kept_and_tidied(self):
+        assert clean_title(' "I Married the Girl Who Broke My Heart." ', "caption", "x") == \
+            "I Married the Girl Who Broke My Heart"
+
+    def test_no_account_name_reads_a_reel(self):
+        assert clean_title("", None, None) == "A reel"
 
     def test_describe_frames_sends_images_to_the_vision_model(self, monkeypatch):
         fake = _FakeOllama("A reception hall with round tables.")
@@ -102,16 +161,16 @@ class TestSummaries:
 
         monkeypatch.setattr(httpx, "post", down)
         assert describe_frames([b"x"], SETTINGS) is None
-        assert summarize_post("a long enough caption about nothing", WEDDING, None, SETTINGS) is None
+        assert describe_post("a long enough caption about nothing", WEDDING, None, "x", SETTINGS) is None
 
 
 class _FakeTranscriber:
     def __init__(self, transcript):
         self.transcript, self.asked = transcript, []
 
-    def transcribe_media(self, video_url, frames=0):
+    def transcribe_media(self, video_url, frames=0, on_frames=None):
         self.asked.append(frames)
-        return self.transcript, [b"f"] * frames
+        return self.transcript, [b"f"] * frames      # never calls on_frames: the pipeline must cope
 
     def transcribe_url(self, video_url):
         return self.transcript
@@ -122,7 +181,8 @@ class _Source:
         self.caption = caption
 
     def fetch_url(self, url):
-        return RawPostSnapshot(source_url=url, caption=self.caption, video_url="https://cdn.ig/v.mp4")
+        return RawPostSnapshot(source_url=url, caption=self.caption, video_url="https://cdn.ig/v.mp4",
+                               author_handle="darianthao", image_url="https://cdn.ig/t.jpg")
 
 
 async def _run(caption, transcript, monkeypatch, **kwargs):
@@ -138,19 +198,22 @@ class TestPipeline:
     async def test_a_reel_that_isnt_a_place_still_gets_a_summary(self, monkeypatch):
         seen = {}
 
-        def post_summarizer(caption, transcript, visual):
-            seen.update(caption=caption, transcript=transcript, visual=visual)
-            return "Wedding drama: the bride's mom objects during the toast."
+        def post_summarizer(caption, transcript, visual, author):
+            seen.update(caption=caption, transcript=transcript, visual=visual, author=author)
+            return {"title": "Wedding Toast Gone Wrong", "kind": "story",
+                    "summary": "The bride's mom objects during the toast."}
 
         result, transcriber = await _run(
             "this wedding got out of hand 😭", WEDDING, monkeypatch,
             post_summarizer=post_summarizer, frame_describer=lambda frames: f"{len(frames)} frames of a reception")
         assert result.record is None
-        assert result.post_summary == "Wedding drama: the bride's mom objects during the toast."
+        assert result.gist.model_dump() == {"title": "Wedding Toast Gone Wrong", "kind": "story",
+                                            "summary": "The bride's mom objects during the toast.",
+                                            "author": "darianthao", "image_url": "https://cdn.ig/t.jpg"}
         assert seen == {"caption": "this wedding got out of hand 😭", "transcript": WEDDING,
-                        "visual": "2 frames of a reception"}
+                        "visual": "2 frames of a reception", "author": "darianthao"}
         assert transcriber.asked == [2]
-        assert failures([result])[0]["summary"] == result.post_summary
+        assert failures([result])[0]["gist"]["title"] == "Wedding Toast Gone Wrong"
 
     @pytest.mark.asyncio
     async def test_a_place_card_summary_gets_the_visuals_too(self, monkeypatch):
@@ -163,13 +226,14 @@ class TestPipeline:
         result, _ = await _run(PLACE_CAPTION, "come through to Casa Loma", monkeypatch,
                                summarizer=summarizer, frame_describer=lambda frames: "tacos on a grill")
         assert result.record is not None and result.record.summary == "Birria tacos at Casa Loma."
-        assert calls == ["tacos on a grill"] and result.post_summary is None
+        assert calls == ["tacos on a grill"] and result.gist is None
 
     @pytest.mark.asyncio
     async def test_no_frame_describer_reads_no_frames(self, monkeypatch):
-        result, transcriber = await _run("this wedding got out of hand 😭", WEDDING, monkeypatch,
-                                         post_summarizer=lambda c, t, v: "summary")
-        assert transcriber.asked == [] and result.post_summary == "summary"
+        result, transcriber = await _run(
+            "this wedding got out of hand 😭", WEDDING, monkeypatch,
+            post_summarizer=lambda c, t, v, a: {"title": "A Title Here", "kind": "story", "summary": "summary"})
+        assert transcriber.asked == [] and result.gist.summary == "summary"
 
     @pytest.mark.asyncio
     async def test_ollama_down_means_no_summary_and_no_frames(self, monkeypatch):
@@ -177,10 +241,10 @@ class TestPipeline:
         monkeypatch.setattr(orchestrator, "_ollama_reachable", lambda settings: False)
         pipeline = IngestionPipeline(SETTINGS, authed_source=_Source("this wedding got out of hand"),
                                      transcriber=transcriber,
-                                     post_summarizer=lambda c, t, v: pytest.fail("summarized"),
+                                     post_summarizer=lambda c, t, v, a: pytest.fail("summarized"),
                                      frame_describer=lambda f: pytest.fail("described"))
         result = (await pipeline.run(["https://www.instagram.com/reel/DenJ7IAIX2k/"])).results[0]
-        assert result.post_summary is None and transcriber.asked == []
+        assert result.gist is None and transcriber.asked == []
 
     def test_failures_leave_summary_out_when_there_is_none(self):
         from src.ingestion.schemas.results import FetchStatus, IngestionResult

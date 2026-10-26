@@ -65,13 +65,19 @@ def failure_class(result: IngestionResult) -> Optional[str]:
 
 
 def failures(results: list[IngestionResult]) -> list[dict]:
-    """[{url, class}] for every link in a run that didn't become a spot, plus "summary"
-    (what the reel was about) when the pipeline could still say."""
+    """[{url, class}] for every link in a run that didn't become a spot, plus "gist" (title,
+    kind, summary: what the reel was about) when the pipeline could still say."""
     out = []
     for r in results:
         if r.record is None:
             entry = {"url": r.url, "class": failure_class(r)}
-            if r.post_summary:
-                entry["summary"] = r.post_summary
+            if r.gist is not None:
+                entry["gist"] = r.gist.model_dump()
             out.append(entry)
     return out
+
+
+# A reel in one of these classes was read fine and just isn't a spot, so its gist is worth keeping
+# in the server's "not a place" list. Either can mean "not a place": the not-a-place detector
+# catches only about 3 in 10, and the rest arrive as "couldn't tell which place".
+GIST_CLASSES = ("not_a_place", "no_venue")

@@ -21,6 +21,7 @@ import src.ingestion.serving.admin as admin
 import src.ingestion.serving.app as serving_app
 from src.ingestion.serving.capture_limits import CaptureRateLimiter
 from src.ingestion.serving.feedback import FeedbackStore
+from src.ingestion.serving.gists import GistStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.time_to_card import TimeToCardLog
@@ -56,6 +57,9 @@ PROTECTED_ROUTES = {
     ("POST", "/api/forget"),
     ("DELETE", "/api/events/{event_id}"),
     ("POST", "/api/events/{event_id}/vote"),
+    ("GET", "/api/gists"),
+    ("POST", "/api/events/{event_id}/not-a-place"),
+    ("POST", "/api/gists/{gid}/restore"),
     ("POST", "/recommend"),
     ("POST", "/plan"),
     ("GET", "/share"),
@@ -123,6 +127,9 @@ class StubCollection:
     def update(self, **kwargs):
         return None
 
+    def add(self, **kwargs):
+        return None
+
 
 class StubSink:
     def __init__(self):
@@ -155,6 +162,9 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_feedback", FeedbackStore(tmp_path / "feedback"))
     monkeypatch.setattr(admin, "_geocode_city", lambda city: None)      # never the network
     monkeypatch.setattr(admin, "_time_to_card", TimeToCardLog(tmp_path / "ttc.jsonl"))
+    monkeypatch.setattr(admin, "_gists", GistStore(tmp_path / "gists"))
+    monkeypatch.setattr(admin, "_TAPS", tmp_path / "taps.jsonl")
+    monkeypatch.setattr(admin, "describe_post", lambda *a, **k: None)   # never Ollama
     with TestClient(admin.app) as c:
         yield c
 
@@ -248,6 +258,39 @@ def test_unvote_as_another_user_rejected(client):
 
 def test_vote_without_token_rejected(client):
     assert vote(client, None).status_code == 403
+
+
+# ── the "not a place" list ───────────────────────────────────────────────────
+
+
+def test_gists_read_needs_this_servers_token(client):
+    url = f"/api/gists?guild_id={MINE}"
+    assert client.get(url, headers=hdr(mint_token(MINE, scope=SCOPE_READ))).status_code == 200
+    assert client.get(url).status_code == 403
+    assert client.get(url, headers=hdr(mint_token(THEIRS))).status_code == 403
+
+
+def not_a_place(client, token, *, guild=MINE, user_id=ME):
+    return client.post(f"/api/events/{EVENT}/not-a-place?guild_id={guild}",
+                       json={"user_id": user_id}, headers=hdr(token))
+
+
+def test_not_a_place_is_signed_over_the_acting_user(client):
+    assert not_a_place(client, None).status_code == 403
+    assert not_a_place(client, mint_token(MINE)).status_code == 403            # no user in the token
+    assert not_a_place(client, mint_token(MINE, user_id=ME), user_id=YOU).status_code == 403
+    assert not_a_place(client, mint_token(MINE, user_id=ME), guild=THEIRS).status_code == 403
+    assert not_a_place(client, mint_token(MINE, user_id=ME)).status_code == 200
+
+
+def test_restore_is_signed_over_the_acting_user(client):
+    gid = not_a_place(client, mint_token(MINE, user_id=ME)).json()["id"]
+    url = f"/api/gists/{gid}/restore?guild_id={MINE}"
+    assert client.post(url, json={"user_id": ME}).status_code == 403
+    assert client.post(url, json={"user_id": YOU}, headers=hdr(mint_token(MINE, user_id=ME))).status_code == 403
+    assert client.post(f"/api/gists/{gid}/restore?guild_id={THEIRS}", json={"user_id": ME},
+                       headers=hdr(mint_token(MINE, user_id=ME))).status_code == 403
+    assert client.post(url, json={"user_id": ME}, headers=hdr(mint_token(MINE, user_id=ME))).status_code == 200
 
 
 def went(client, token, *, user_id=ME, happened=True):
