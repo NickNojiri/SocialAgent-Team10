@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SpotBot Status Report</title>
+<style>
+  @page { size: Letter; margin: 0.6in 0.65in; }
+  :root { --ink:#16181d; --ink2:#4a5161; --ink3:#7a8191; --line:#d9dde4; --accent:#4E5BD8; --ok:#1F7A45; --warn:#B5541E; --soft:#EEF0FB; }
+  * { box-sizing:border-box; }
+  body { font: 10.5pt/1.45 "Segoe UI", system-ui, sans-serif; color:var(--ink); margin:0; background:#fff; }
+  h1 { font-size:21pt; margin:0 0 2px; letter-spacing:-0.3px; }
+  h2 { font-size:12.5pt; margin:18px 0 6px; padding-bottom:3px; border-bottom:1.5px solid var(--line); }
+  .sub { color:var(--ink2); margin:0 0 14px; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:8px 0 4px; }
+  .kpi { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+  .kpi b { display:block; font-size:18pt; line-height:1.1; }
+  .kpi span { color:var(--ink2); font-size:9pt; }
+  table { width:100%; border-collapse:collapse; font-size:9.5pt; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--ink2); font-weight:600; }
+  .tag { display:inline-block; font-size:8pt; padding:0 6px; border-radius:3px; font-weight:600; }
+  .t-loss { background:#FBE6DC; color:var(--warn); }
+  .t-ux { background:var(--soft); color:var(--accent); }
+  .t-rob { background:#E3F1E8; color:var(--ok); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .cap { font-size:8.5pt; color:var(--ink3); margin-top:2px; }
+  ul { margin:4px 0; padding-left:18px; }
+  li { margin:2px 0; }
+  .two, table, .kpis { break-inside:avoid; }
+  h2 { break-after:avoid; }
+  svg text { font-family:"Segoe UI", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <h1>SpotBot status report</h1>
+  <p class="sub">Monday, October 26, 2026 · end of Phase 2, Phase 3 starts October 27 · prepared for the standup push</p>
+
+  <div class="kpis">
+    <div class="kpi"><b>13</b><span>bugs fixed (9 from the audit, 4 found by the new tests)</span></div>
+    <div class="kpi"><b>1,167</b><span>offline tests passing, 0 failing (was 995)</span></div>
+    <div class="kpi"><b>10</b><span>local commits ready to push on Oct 27</span></div>
+    <div class="kpi"><b>580</b><span>Phase 3 points ready to seed on the sprint board</span></div>
+  </div>
+
+  <h2>What changed today</h2>
+  <ul>
+    <li><b>The "Not a place" list can no longer lose a spot.</b> A moved spot is the only copy left, so it is now saved under its own id, kept past the 30-day expiry and the 300-item cap, and only removed after "Move it back" succeeds.</li>
+    <li><b>Bot cards behave under load.</b> Buttons answer inside Discord's 3-second limit, wait past the model's 90-second timeout, and failed links next to not-a-place cards get Retry / Add manually.</li>
+    <li><b>The Instagram webhook never returns a 500.</b> Any delivery shape is skipped safely (Meta resends every non-200), and every sender id is hashed in the event log.</li>
+    <li><b>Sprint board gets an <code>archive</code> command.</b> It writes one index post that links every Phase 2 standup, digest and finished feature, then closes those posts. Nothing is deleted.</li>
+  </ul>
+
+  <h2>Bugs fixed</h2>
+  <table>
+    <tr><th style="width:26%">Area</th><th>Bug</th><th style="width:15%">Type</th></tr>
+    <tr><td>Not-a-place list</td><td>Two manual spots shared one key, so the second move overwrote the first</td><td><span class="tag t-loss">data loss</span></td></tr>
+    <tr><td>Not-a-place list</td><td>Moved spots expired after 30 days or fell off the 300 cap</td><td><span class="tag t-loss">data loss</span></td></tr>
+    <tr><td>Restore</td><td>Entry removed before the spot was re-added, so a failure lost both</td><td><span class="tag t-loss">data loss</span></td></tr>
+    <tr><td>Bot buttons</td><td>Move it back missed Discord's 3 s deadline; Not a place timed out before the model did</td><td><span class="tag t-ux">UX</span></td></tr>
+    <tr><td>Bot cards</td><td>A no-text reel was called "not a place"; missed links had no Retry button</td><td><span class="tag t-ux">UX</span></td></tr>
+    <tr><td>Post summaries</td><td>A reply cut off at the token limit showed raw JSON on the card</td><td><span class="tag t-ux">UX</span></td></tr>
+    <tr><td>Post summaries <i>(new)</i></td><td>Non-text titles and 600-character "two-word" titles reached cards</td><td><span class="tag t-ux">UX</span></td></tr>
+    <tr><td>Webhook</td><td>Unexpected payload shapes raised a 500 and caused endless redelivery</td><td><span class="tag t-rob">robustness</span></td></tr>
+    <tr><td>Webhook <i>(new)</i></td><td>Very deeply nested JSON crashed the parser (500 → now 400)</td><td><span class="tag t-rob">robustness</span></td></tr>
+    <tr><td>Event log <i>(new)</i></td><td>A sender id sent as plain text was logged unhashed</td><td><span class="tag t-rob">privacy</span></td></tr>
+  </table>
+  <p class="cap">13 fixes in total. Rows group related fixes. <i>(new)</i> means the bug was found by the new adversarial tests, not the audit.</p>
+
+  <h2>Tests</h2>
+  <div class="two">
+    <div>
+      <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Offline tests grew from 995 to 1,167">
+        <line x1="40" y1="120" x2="310" y2="120" stroke="#d9dde4"/>
+        <rect x="70" y="35.6" width="70" height="84.4" fill="#B9BFE9" rx="3"/>
+        <rect x="190" y="21" width="70" height="99" fill="#4E5BD8" rx="3"/>
+        <text x="105" y="29" text-anchor="middle" font-size="12" font-weight="600" fill="#16181d">995</text>
+        <text x="225" y="15" text-anchor="middle" font-size="12" font-weight="600" fill="#16181d">1,167</text>
+        <text x="105" y="137" text-anchor="middle" font-size="10" fill="#4a5161">Before today</text>
+        <text x="225" y="137" text-anchor="middle" font-size="10" fill="#4a5161">After</text>
+      </svg>
+      <p class="cap">Offline suite (<code>pytest -k "not live"</code>): 0 failures, 8 expected failures (xfail).</p>
+    </div>
+    <div>
+      <p style="margin-top:0"><b>New adversarial tests</b> (<code>test_adversarial.py</code>, seeded so they repeat):</p>
+      <ul>
+        <li>1,600 random and mutated webhook deliveries</li>
+        <li>Random move / paste / expire / restore sequences, checking a moved spot is always recoverable</li>
+        <li>8 threads writing the list at once</li>
+        <li>A model reply cut off at every possible character</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div>
+  <h2>Phase 3 on the sprint board</h2>
+  <div class="two">
+    <div>
+      <svg viewBox="0 0 320 170" width="100%" role="img" aria-label="Phase 3 points by track">
+        <g font-size="10" fill="#4a5161">
+          <text x="0" y="24">A · Capture</text>
+          <text x="0" y="54">B · Accuracy</text>
+          <text x="0" y="84">C · Experience</text>
+          <text x="0" y="114">D · Security</text>
+          <text x="0" y="144">N · Platform</text>
+        </g>
+        <rect x="88" y="12" width="129" height="18" fill="#4E5BD8" rx="2"/>
+        <rect x="88" y="42" width="129" height="18" fill="#4E5BD8" rx="2"/>
+        <rect x="88" y="72" width="77" height="18" fill="#1F7A45" rx="2"/>
+        <rect x="165" y="72" width="77" height="18" fill="#4E5BD8" rx="2"/>
+        <rect x="88" y="102" width="154" height="18" fill="#4E5BD8" rx="2"/>
+        <rect x="88" y="132" width="51" height="18" fill="#1F7A45" rx="2"/>
+        <rect x="139" y="132" width="129" height="18" fill="#B9BFE9" rx="2"/>
+        <g font-size="10" font-weight="600" fill="#16181d">
+          <text x="223" y="25">100</text><text x="223" y="55">100</text><text x="248" y="85">120</text>
+          <text x="248" y="115">120</text><text x="274" y="145">140</text>
+        </g>
+        <g font-size="9" fill="#4a5161">
+          <rect x="88" y="160" width="9" height="9" fill="#1F7A45"/><text x="100" y="168">Done</text>
+          <rect x="135" y="160" width="9" height="9" fill="#B9BFE9"/><text x="147" y="168">Doing</text>
+          <rect x="185" y="160" width="9" height="9" fill="#4E5BD8"/><text x="197" y="168">Backlog</text>
+        </g>
+      </svg>
+      <p class="cap">8 features, 580 points. Starting status comes from each plan's checkboxes.</p>
+    </div>
+    <div>
+      <table>
+        <tr><th>Feature</th><th>Pts</th><th>Start</th></tr>
+        <tr><td>#15 Gatekept-reel recovery ★</td><td>100</td><td>Backlog</td></tr>
+        <tr><td>#6 Place-or-not gate ★</td><td>100</td><td>Backlog</td></tr>
+        <tr><td>#21 Privacy &amp; data-deletion UX ★</td><td>60</td><td>Done</td></tr>
+        <tr><td>#22 Usability fixes from the study</td><td>60</td><td>Backlog</td></tr>
+        <tr><td>#13 Threat model &amp; security review</td><td>60</td><td>Backlog</td></tr>
+        <tr><td>#31 Dependency &amp; supply-chain scanning</td><td>60</td><td>Backlog</td></tr>
+        <tr><td>#11 Always-on staging deployment</td><td>100</td><td>Doing</td></tr>
+        <tr><td>#26 Retry only what's worth retrying</td><td>40</td><td>Done</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>Accuracy: the not-a-place detector (dev split)</h2>
+  <div class="two">
+    <div>
+      <svg viewBox="0 0 320 130" width="100%" role="img" aria-label="Recall: rules 28.6 percent, llama3.2 35.7 percent">
+        <line x1="40" y1="100" x2="310" y2="100" stroke="#d9dde4"/>
+        <rect x="70" y="71.4" width="70" height="28.6" fill="#B9BFE9" rx="3"/>
+        <rect x="190" y="64.3" width="70" height="35.7" fill="#4E5BD8" rx="3"/>
+        <text x="105" y="65" text-anchor="middle" font-size="12" font-weight="600" fill="#16181d">28.6%</text>
+        <text x="225" y="58" text-anchor="middle" font-size="12" font-weight="600" fill="#16181d">35.7%</text>
+        <text x="105" y="116" text-anchor="middle" font-size="10" fill="#4a5161">Rules only</text>
+        <text x="225" y="116" text-anchor="middle" font-size="10" fill="#4a5161">llama3.2</text>
+        <text x="40" y="12" font-size="9" fill="#7a8191">Recall (scale 0–100%)</text>
+      </svg>
+    </div>
+    <div>
+      <p style="margin-top:0">The LLM catches 5 of 14 not-a-place reels against 4 for the rules. Its precision is 71.4% (the rules got all 4 of their picks right). With only 14 examples the gap is small and uncertain. A larger model (llama3.1:8b) is being scored next. The test split has not been read.</p>
+    </div>
+  </div>
+
+  <h2>Next</h2>
+  <ul>
+    <li><b>Oct 27:</b> push the 10 commits for standup. Then, from the session with the SprintBot token: <code>archive --phase 3 --apply</code>, then <code>seed --phase 3 --apply</code>.</li>
+    <li><b>Voting card:</b> the top pick as a poster/ticket hero with "+1" approval votes, a private "Show more" list, auto-close at quorum, and a random tie-breaker with a spin animation.</li>
+    <li><b>/prefs:</b> people enter their own preferences, which feed <code>/plan</code>. The bot does not listen to chat.</li>
+    <li><b>Housekeeping:</b> move root tests into <code>tests/</code>, sort the docs, rewrite the README (it still says 143 tests).</li>
+  </ul>
+</div>
+
+</body>
+</html>

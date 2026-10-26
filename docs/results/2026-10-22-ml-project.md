@@ -201,6 +201,7 @@ All on the same 106 dev reels. "Prepared inputs" = cleaned text + full captions 
 | B2 BiLSTM (RNN) | raw + speech/screen | 36.8% (39) | | worse, p < 0.001 |
 | B3 Ollama llama3.1:8b, zero-shot | prepared | 68.9% (73) | **89** | p = 0.64 |
 | M1 transformer tagger | raw | 41.5% (44) | 64 | |
+| M2 **before fine-tuning** (pretrained checkpoint, v3's inputs) | prepared + parser pick + account type | 38.7% (41) | 56 | worse, p < 0.001 |
 | M2 v1 cross-encoder | raw | 68.9% (73) | 82 | p = 0.54 |
 | M2 v2b | prepared | 72.6% (77) | 84 | p = 0.29 |
 | M2 v2 | prepared + parser pick | 73.6% (78) | 85 | p = 0.12 |
