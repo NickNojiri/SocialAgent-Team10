@@ -77,8 +77,11 @@ def describe_post(
     except ValueError:
         out = None
     if not isinstance(out, dict):
-        return {"title": fallback_title(author), "kind": "story", "summary": raw.strip()} if raw else None
-    summary = " ".join(str(out.get("summary") or "").split())
+        out = _salvage(raw or "")
+        if out is None:
+            return None
+    summary = out.get("summary")
+    summary = " ".join(summary.split()) if isinstance(summary, str) else ""   # never a dict's repr on a card
     if not summary:
         return None
     kind = str(out.get("kind") or "").strip().lower()
@@ -89,21 +92,43 @@ def describe_post(
     }
 
 
+_JSON_FIELD = re.compile(r'"(title|kind|summary)"\s*:\s*"((?:[^"\\]|\\.)*)', re.DOTALL)
+
+
+def _salvage(raw: str) -> Optional[dict]:
+    """What can be read from a reply that isn't a JSON object: usually one cut off at the
+    token limit mid-summary. Plain prose is the summary itself; broken JSON gives up its
+    fields one by one, and never shows on a card as raw braces and quotes."""
+    text = raw.strip()
+    if not text:
+        return None
+    if not text.startswith(("{", "[", '"')):
+        return {"summary": text}
+    out = {}
+    for key, value in _JSON_FIELD.findall(text):
+        try:
+            out[key] = json.loads(f'"{value}"')
+        except ValueError:
+            out[key] = value.rstrip("\\")
+    return out or None
+
+
 def fallback_title(author: Optional[str]) -> str:
     handle = (author or "").strip().lstrip("@")
     return f"@{handle}'s reel" if handle else "A reel"
 
 
 def clean_title(title, caption: Optional[str], author: Optional[str]) -> str:
-    """The model's title, or "@account's reel" when it's too weird to show: under 2 or over 10
-    words; a hashtag, @, link or emoji; mostly capitals; a description ("This video…"); or just
+    """The model's title, or "@account's reel" when it's too weird to show: not text; under 2 or
+    over 10 words, or over 100 characters; a hashtag, @, link or emoji; mostly capitals; a description ("This video…"); or just
     the caption's first line again."""
-    text = " ".join(str(title or "").split()).strip("\"'“”‘’ ").rstrip(".")
+    text = " ".join(title.split()).strip("\"'“”‘’ ").rstrip(".") if isinstance(title, str) else ""
     words = text.split()
     letters = [c for c in text if c.isalpha()]
     first_line = " ".join(((caption or "").strip().split("\n") or [""])[0].split()).casefold()
     weird = (
         not 2 <= len(words) <= 10
+        or len(text) > 100                       # ten words of a headline, not two very long ones
         or "#" in text or "@" in text or _URLISH.search(text)
         or any(unicodedata.category(c) == "So" or ord(c) >= 0x1F000 for c in text)
         or (len(letters) >= 4 and sum(c.isupper() for c in letters) > 0.7 * len(letters))

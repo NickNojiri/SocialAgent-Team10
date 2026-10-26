@@ -94,7 +94,7 @@ def failure_lines(found: list[dict]) -> str:
     lines = []
     for f in found[:10]:
         gist = f.get("gist") or {}
-        if gist.get("title"):
+        if _saved_gist(f):
             lines.append(f"• {NOT_A_PLACE} {' '.join(str(gist['title']).split())[:80]} — not a place")
             continue
         link = re.sub(r"^https?://(www\.)?", "", str(f.get("url", "")))[:60]
@@ -104,8 +104,16 @@ def failure_lines(found: list[dict]) -> str:
 
 def split_gists(found: list[dict]) -> tuple[list[dict], list[dict]]:
     """(reels that get a not-a-place card, the real failures)."""
-    gists = [f for f in found if (f.get("gist") or {}).get("title")]
+    gists = [f for f in found if _saved_gist(f)]
     return gists, [f for f in found if f not in gists]
+
+
+def _saved_gist(f: dict) -> bool:
+    """A reel the admin app put on the not-a-place list. It only saves those (an "id"); a reel
+    that failed for another reason, like no readable text, may still carry a title, but it
+    isn't on the list and shouldn't be called "not a place"."""
+    gist = f.get("gist") or {}
+    return bool(gist.get("title") and gist.get("id"))
 
 
 async def report_time_to_card(guild: str, seconds: float, outcome: str, links: int) -> None:
@@ -1131,7 +1139,9 @@ class NotAPlaceButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot
         await interaction.response.defer()
         guild, user = guild_key(interaction), str(interaction.user.id)
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            # Longer than the admin app's own Ollama timeout (90 s) for the write-up, so a slow
+            # model doesn't report a failure for a move that then goes through.
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(
                     f"{ADMIN_URL}/api/events/{self.event_id}/not-a-place",
                     params={"guild_id": guild}, json={"user_id": user},
@@ -1160,6 +1170,7 @@ class MoveBackButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:
         return cls(match["gid"])
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()     # Discord wants an answer in 3 s; the restore can take longer
         guild, user = guild_key(interaction), str(interaction.user.id)
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -1171,9 +1182,9 @@ class MoveBackButton(discord.ui.DynamicItem[discord.ui.Button], template=r"spot:
                 resp.raise_for_status()
                 ev = resp.json()
         except Exception:
-            await interaction.response.send_message("⚠️ Couldn't move it back — try again.", ephemeral=True)
+            await interaction.followup.send("⚠️ Couldn't move it back — try again.", ephemeral=True)
             return
-        await interaction.response.edit_message(
+        await interaction.edit_original_response(
             embed=build_spot_embed(ev, await home_for(guild)), view=build_spot_view(ev["id"], int(ev.get("votes", 0))))
 
 

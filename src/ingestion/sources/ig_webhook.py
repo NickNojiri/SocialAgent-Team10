@@ -122,10 +122,11 @@ def shared_posts(payload: dict) -> list[SharedPost]:
         return []
     found: list[SharedPost] = []
     seen: set[str] = set()
-    for entry in payload.get("entry") or []:
-        for event in (entry or {}).get("messaging") or []:
-            message = (event or {}).get("message")
-            sender = str(((event or {}).get("sender") or {}).get("id") or "")
+    for entry in _dicts(payload.get("entry")):
+        for event in _dicts(entry.get("messaging")):
+            message = event.get("message")
+            sender = event.get("sender")
+            sender = str(sender.get("id") or "") if isinstance(sender, dict) else ""
             if not isinstance(message, dict) or not sender:
                 continue
             if message.get("is_echo") or message.get("is_deleted") or message.get("is_unsupported"):
@@ -137,16 +138,27 @@ def shared_posts(payload: dict) -> list[SharedPost]:
     return found
 
 
+def _dicts(value) -> list[dict]:
+    """The dicts in what should be a list of objects. The payload is signed by Meta but its
+    shape is still theirs to change, and a surprise must skip a message, never 500."""
+    return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+
+
+def _text(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _from_message(message: dict, sender: str) -> Iterable[SharedPost]:
-    for attachment in message.get("attachments") or []:
-        kind = str((attachment or {}).get("type") or "")
+    for attachment in _dicts(message.get("attachments")):
+        kind = str(attachment.get("type") or "")
         if kind not in SHARE_TYPES:
             continue
-        body = (attachment or {}).get("payload") or {}
-        url = str(body.get("url") or "").strip()
-        caption = (body.get("title") or body.get("caption") or "").strip() or None
+        body = attachment.get("payload")
+        body = body if isinstance(body, dict) else {}
+        url = _text(body.get("url"))
+        caption = _text(body.get("title")) or _text(body.get("caption")) or None
         media_id = next((str(body[k]) for k in ("reel_video_id", "video_id", "media_id", "id", "ig_post_media_id")
-                         if body.get(k)), None)
+                         if isinstance(body.get(k), (str, int)) and body.get(k)), None)
         if url and is_post_permalink(url):
             yield SharedPost(url, sender, kind, caption, media_id)
         elif media_id and (url or caption):
@@ -270,4 +282,6 @@ def scrub_event(payload: dict) -> dict:
 def _hash_id(party):
     if isinstance(party, dict) and party.get("id"):
         return {"id": "h_" + hashlib.sha256(str(party["id"]).encode("utf-8")).hexdigest()[:12]}
+    if isinstance(party, (str, int)) and not isinstance(party, bool):    # a bare id is still an id
+        return "h_" + hashlib.sha256(str(party).encode("utf-8")).hexdigest()[:12]
     return party

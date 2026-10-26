@@ -124,7 +124,8 @@ def test_not_a_place_moves_the_spot_and_move_back_restores_it_exactly(api):
     listed = client.get(f"/api/gists?guild_id={GUILD}", headers={"X-Tenant-Token": mint_token(GUILD)}).json()
     assert [g["title"] for g in listed["gists"]] == ["Wedding Toast Gone Wrong"] and listed["gists"][0]["moved"]
 
-    back = client.post(f"/api/gists/{gist_id(URL)}/restore?guild_id={GUILD}", json={"user_id": ME}, headers=_as_me())
+    assert listed["gists"][0]["id"] == r.json()["id"] == gist_id("spot:spot1")
+    back = client.post(f"/api/gists/{r.json()['id']}/restore?guild_id={GUILD}", json={"user_id": ME}, headers=_as_me())
     assert back.status_code == 200 and back.json()["votes"] == 2 and back.json()["voters"] == ["Ana"]
     assert sink.collection.rows["spot1"] == before                 # same metadata, text and embedding
     taps = (tmp_path / "taps.jsonl").read_text(encoding="utf-8").split("\n")

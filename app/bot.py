@@ -299,8 +299,12 @@ async def _render_capture(message: discord.Message, status: discord.Message, url
             await message.reply(embed=cards.build_gist_embed(found["gist"], found["url"], sharer=sharer),
                                 view=cards.build_gist_view(found["gist"]), mention_author=False)
         if missed:
+            # Same way out as an all-failed paste: Retry / Add manually.
             await message.reply(f"⚠️ {len(missed)} of {len(urls)} links didn't work:\n"
-                                + cards.failure_lines(missed), mention_author=False)
+                                + cards.failure_lines(missed)
+                                + "\n-# Paste those again later, or add them yourself.",
+                                view=cards.build_failure_view(missed[0]["url"] if len(missed) == 1 else None),
+                                mention_author=False)
         return
 
     if not events:

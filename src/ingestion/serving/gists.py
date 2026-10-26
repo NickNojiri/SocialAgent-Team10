@@ -9,6 +9,7 @@ A gist that was moved off the spot list with the "Not a place" button also keeps
 
 Entries older than EXPIRY_DAYS are dropped when the list is read, unless the server turned that
 off in /setup (`gists_expire`, on by default). At most MAX_PER_SERVER are kept, newest first.
+Neither applies to a moved spot: its entry is the only copy left, so it stays until moved back.
 No user ids are stored.
 """
 
@@ -35,6 +36,18 @@ class GistError(ValueError):
 
 def gist_id(url: str) -> str:
     return hashlib.sha256(str(url).encode("utf-8")).hexdigest()[:12]
+
+
+def _capped(rows: list[dict]) -> list[dict]:
+    """Newest first, at most MAX_PER_SERVER plain gists; moved spots are always kept."""
+    out, plain = [], 0
+    for r in rows:
+        if "spot" in r:
+            out.append(r)
+        elif plain < MAX_PER_SERVER:
+            out.append(r)
+            plain += 1
+    return out
 
 
 class GistStore:
@@ -70,16 +83,30 @@ class GistStore:
             Path(tmp).unlink(missing_ok=True)
             raise
 
-    def add(self, guild_id: str, url: str, gist: dict, *, spot: dict | None = None) -> dict:
-        """Save (or refresh) one reel's gist. The same reel twice is one entry."""
-        entry = {"id": gist_id(url), "url": str(url), "saved_at": int(time.time()),
+    def add(self, guild_id: str, url: str, gist: dict, *, spot: dict | None = None,
+            key: str | None = None) -> dict:
+        """Save (or refresh) one reel's gist. The same reel twice is one entry.
+
+        `key` (default: the url) names the entry. A moved spot passes its own id, because
+        several spots can share one url (every manual spot is "manual://discord"). Refreshing
+        an entry never drops a spot it holds: that copy is the only one left."""
+        entry = {"id": gist_id(key or url), "url": str(url), "saved_at": int(time.time()),
                  **{k: gist.get(k) for k in _FIELDS}}
         if spot is not None:
             entry["spot"] = spot
         with self._lock:
-            rows = [r for r in self._read(guild_id) if r["id"] != entry["id"]]
-            self._write(guild_id, ([entry] + rows)[:MAX_PER_SERVER])
+            rows = self._read(guild_id)
+            old = next((r for r in rows if r["id"] == entry["id"]), None)
+            if old is not None and "spot" in old and "spot" not in entry:
+                entry["spot"] = old["spot"]
+            rest = [r for r in rows if r["id"] != entry["id"]]
+            self._write(guild_id, _capped([entry] + rest))
         return entry
+
+    def get(self, guild_id: str, gid: str) -> dict | None:
+        """One gist whole (with its stored spot, if any), left in place."""
+        with self._lock:
+            return next((r for r in self._read(guild_id) if r["id"] == gid), None)
 
     def list(self, guild_id: str, *, expire: bool = True, now: float | None = None) -> list[dict]:
         """Newest first, without the stored spot itself ("moved" says whether there is one)."""
@@ -87,7 +114,8 @@ class GistStore:
         with self._lock:
             rows = self._read(guild_id)
             if expire:
-                kept = [r for r in rows if r.get("saved_at", 0) >= cutoff]
+                # A moved spot never expires: its entry is the spot's only copy.
+                kept = [r for r in rows if "spot" in r or r.get("saved_at", 0) >= cutoff]
                 if len(kept) != len(rows):
                     self._write(guild_id, kept)
                 rows = kept

@@ -126,10 +126,15 @@ async def deliver(request: Request, background: BackgroundTasks):
         return PlainTextResponse("forbidden", status_code=403)
     try:
         payload = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):      # RecursionError: nesting deeper than Python's stack
         return PlainTextResponse("bad json", status_code=400)
-    _log_event(payload)
-    posts = shared_posts(payload)
+    try:
+        _log_event(payload)
+        posts = shared_posts(payload)
+    except Exception as exc:
+        # Signed but shaped in a way we don't read: still 200, or Meta redelivers it forever.
+        log.warning(f"[ig-webhook] couldn't read a delivery: {type(exc).__name__}")
+        posts = []
     if posts:
         background.add_task(_handle, posts)
     # 200 fast, whatever happens next: a non-200 makes Meta redeliver (a duplicate capture).

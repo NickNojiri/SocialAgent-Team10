@@ -961,7 +961,9 @@ def mark_not_a_place(event_id: str, body: GistActionBody, guild_id: str = "",
     spot = {"id": event_id, "metadata": meta, "document": document,
             "embedding": [float(x) for x in embedding] if embedding is not None else None}
     try:
-        entry = _gists.add(guild_id, url, {**gist, "image_url": meta.get("image_url")}, spot=spot)
+        # Keyed by the spot, not the url: every manual spot shares "manual://discord".
+        entry = _gists.add(guild_id, url, {**gist, "image_url": meta.get("image_url")}, spot=spot,
+                           key=f"spot:{event_id}")
     except GistError as exc:
         raise HTTPException(400, str(exc))
     sink.collection.delete(ids=[event_id])
@@ -975,19 +977,19 @@ def restore_gist(gid: str, body: GistActionBody, guild_id: str = "",
     """Undo "Not a place": put the spot back exactly as it was (votes included)."""
     authorize(guild_id, x_tenant_token, user_id=body.user_id)
     try:
-        entry = _gists.pop(guild_id, gid)
+        entry = _gists.get(guild_id, gid)
     except GistError as exc:
         raise HTTPException(400, str(exc))
     if entry is None:
         raise HTTPException(404, "not on the list anymore")
     spot = entry.get("spot")
     if not spot:
-        _gists.add(guild_id, entry["url"], entry)           # leave it where it was
         raise HTTPException(409, "this reel was never a spot — add it with Add manually")
     add = {"ids": [spot["id"]], "metadatas": [spot["metadata"]], "documents": [spot["document"]]}
     if spot.get("embedding"):
         add["embeddings"] = [spot["embedding"]]
     _sink_for(guild_id).collection.add(**add)
+    _gists.pop(guild_id, gid)    # only once the spot is back: the entry is its only other copy
     _log_tap(entry["url"], undo=True)
     meta = spot["metadata"]
     return {"id": spot["id"], "venue": meta.get("venue_name", "Unknown"), "category": meta.get("category", "other"),
