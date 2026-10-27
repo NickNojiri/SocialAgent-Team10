@@ -113,15 +113,49 @@ def _salvage(raw: str) -> Optional[dict]:
     return out or None
 
 
-def fallback_title(author: Optional[str]) -> str:
-    handle = (author or "").strip().lstrip("@")
-    return f"@{handle}'s reel" if handle else "A reel"
+_STRIP = re.compile(r"https?://\S+|www\.\S+|[#@][\w.]+")
 
 
-def clean_title(title, caption: Optional[str], author: Optional[str]) -> str:
-    """The model's title, or "@account's reel" when it's too weird to show: not text; under 2 or
-    over 10 words, or over 100 characters; a hashtag, @, link or emoji; mostly capitals; a description ("This video…"); or just
-    the caption's first line again."""
+def _plain_text(text) -> str:
+    """Text on one line, without links, #tags, @handles or emoji."""
+    if not isinstance(text, str):
+        return ""
+    text = _STRIP.sub(" ", text)
+    text = "".join(c for c in text
+                   if unicodedata.category(c) not in ("So", "Cf", "Cc", "Cs") and ord(c) < 0x1F000)
+    return " ".join(text.split())
+
+
+def plain_title(caption: Optional[str], transcript: Optional[str] = None) -> str:
+    """A title that doesn't try hard: the first few words of the caption (or of what's said),
+    else "A reel". For when the model's title is unusable or the model is down. Never the
+    poster's @handle: Nick, 2026-10-27, the card shouldn't read as being about the account."""
+    for source in (caption, transcript):
+        if not isinstance(source, str) or not source.strip():
+            continue
+        first = re.split(r"(?<=[.!?])\s|\n", source.strip())[0]
+        words = _plain_text(first).strip(" -–—:;,.!?\"'").split()
+        if len(words) >= 2:
+            title = " ".join(words[:6])[:60].rstrip(" ,.;:-")
+            return title[0].upper() + title[1:]
+    return "A reel"
+
+
+def placeholder_gist(caption: Optional[str], transcript: Optional[str] = None) -> dict:
+    """A not-a-place write-up made without the model (it failed or is busy), so a reel that was
+    read still gets a card instead of "I read it, but couldn't tell": a plain title and the
+    caption (or speech) itself, cut to a few lines."""
+    text = _plain_text(caption) or _plain_text(transcript)
+    if len(text) > 240:
+        text = text[:240].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
+    return {"title": plain_title(caption, transcript), "kind": "story", "summary": text}
+
+
+def clean_title(title, caption: Optional[str], author: Optional[str] = None) -> str:
+    """The model's title, or a plain one from the caption (plain_title) when it's too weird to
+    show: not text; under 2 or over 10 words, or over 100 characters; a hashtag, @, link or
+    emoji; mostly capitals; a description ("This video…"); or just the caption's first line
+    again."""
     text = " ".join(title.split()).strip("\"'“”‘’ ").rstrip(".") if isinstance(title, str) else ""
     words = text.split()
     letters = [c for c in text if c.isalpha()]
@@ -135,7 +169,7 @@ def clean_title(title, caption: Optional[str], author: Optional[str]) -> str:
         or text.casefold().startswith(_TITLE_LEADS)
         or (first_line and text.casefold() == first_line)
     )
-    return fallback_title(author) if weird else text
+    return plain_title(caption) if weird else text
 
 
 def describe_frames(frames: list[bytes], settings: IngestionSettings) -> Optional[str]:

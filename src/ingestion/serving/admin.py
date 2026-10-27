@@ -32,7 +32,7 @@ from src.ingestion.cli import (
 )
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline, result_line
-from src.ingestion.pipeline.summarizer import describe_frames, describe_post, fallback_title, summarize_place
+from src.ingestion.pipeline.summarizer import describe_frames, describe_post, plain_title, summarize_place
 from src.ingestion.serving import capture_stats
 from src.ingestion.serving import forget as data_purge
 from src.ingestion.serving.capture_limits import (
@@ -955,7 +955,7 @@ def mark_not_a_place(event_id: str, body: GistActionBody, guild_id: str = "",
     url = meta.get("source_url") or f"spot:{event_id}"
     author = meta.get("author_handle") or None
     gist = describe_post(document or meta.get("core_theme"), None, meta.get("summary"), author, _settings) or {
-        "title": fallback_title(author), "kind": "story",
+        "title": plain_title(meta.get("core_theme") or document), "kind": "story",
         "summary": meta.get("summary") or meta.get("core_theme") or "",
     }
     spot = {"id": event_id, "metadata": meta, "document": document,

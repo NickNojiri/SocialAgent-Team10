@@ -1098,7 +1098,7 @@ def build_gist_embed(gist: dict, url: Optional[str] = None, *, sharer: Optional[
     emoji, label = gist_kind(gist.get("kind"))
     link = url or gist.get("url") or None
     embed = discord.Embed(title=str(gist.get("title") or "A reel")[:256], color=_GIST_COLOR, url=link)
-    tag = f"{emoji} {label}" + (f" · @{gist['author']}" if gist.get("author") else "")
+    tag = f"{emoji} {label}"      # no @poster: the card is about the reel, not the account
     parts = [tag, str(gist.get("summary") or "")[:900]]
     if link:
         parts.append(f"▶ [Watch the reel]({link})")

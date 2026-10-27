@@ -27,6 +27,7 @@ from src.ingestion.config import IngestionSettings
 from src.ingestion.extractors.base import select_extractor
 from src.ingestion.pipeline.geo_enricher import GeoEnricher
 from src.ingestion.pipeline.llm_extractor import LlmFieldExtractor
+from src.ingestion.pipeline.summarizer import placeholder_gist
 from src.ingestion.pipeline.temporal_resolver import TemporalResolver
 from src.ingestion.pipeline.validator import build_record
 from src.ingestion.schemas.results import FetchStatus, IngestionResult, PostGist
@@ -311,15 +312,19 @@ class IngestionPipeline:
         if record is None:
             result = IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
             # Not a spot, but the reel was read: say what it's about anyway.
+            author = getattr(raw, "author_handle", None)
+            caption, transcript = getattr(raw, "caption", None), getattr(raw, "transcript", None)
+            out = None
             if self.post_summarizer is not None and self._llm_ok:
-                author = getattr(raw, "author_handle", None)
                 try:
-                    out = self.post_summarizer(
-                        getattr(raw, "caption", None), getattr(raw, "transcript", None), visual, author)
-                    if out:
-                        result.gist = PostGist(**out, author=author, image_url=getattr(raw, "image_url", None))
+                    out = self.post_summarizer(caption, transcript, visual, author)
                 except Exception as exc:
                     log.warning(f"[post summary] skipped: {type(exc).__name__}: {exc}")
+            if self.post_summarizer is not None and not out:
+                # The model failed or had nothing to add: a plain stand-in, never "couldn't tell".
+                out = placeholder_gist(caption, transcript)
+            if out:
+                result.gist = PostGist(**out, author=author, image_url=getattr(raw, "image_url", None))
             return result
 
         # Phase 2.5: a user-facing "quick description" from the audio (and what the video

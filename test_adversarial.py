@@ -307,4 +307,4 @@ def test_json_of_the_wrong_shape_never_reaches_a_card_as_a_repr(monkeypatch, rep
 def test_titles_of_any_shape_are_shown_safe(title):
     out = clean_title(title, "caption", "acct")
     assert isinstance(out, str) and "\n" not in out and len(out) <= 100
-    assert out == "@acct's reel" or isinstance(title, str)
+    assert "@" not in out and (out == "A reel" or isinstance(title, str))

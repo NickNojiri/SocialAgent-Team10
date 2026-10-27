@@ -63,7 +63,8 @@ async def test_partial_lines_name_a_not_a_place_reel_by_its_title():
 async def test_the_not_a_place_card_leads_with_what_its_about():
     embed = cards.build_gist_embed(GIST, URL_A, sharer="nick")
     assert embed.title == "I Married the Girl Who Broke My Heart" and embed.url == URL_A
-    assert embed.description.startswith("💬 Story · @darianthao\n\nHe tells how")
+    assert embed.description.startswith("💬 Story\n\nHe tells how")
+    assert "@darianthao" not in embed.description      # the card is about the reel, not the poster
     assert "Watch the reel" in embed.description
     assert embed.footer.text.startswith("💭 Not a place") and "shared by nick" in embed.footer.text
     assert "fail" not in (embed.description + embed.footer.text).lower()

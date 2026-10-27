@@ -14,7 +14,8 @@ import pytest
 import src.ingestion.pipeline.orchestrator as orchestrator
 from src.ingestion.config import IngestionSettings
 from src.ingestion.pipeline.orchestrator import IngestionPipeline
-from src.ingestion.pipeline.summarizer import clean_title, describe_frames, describe_post
+from src.ingestion.pipeline.summarizer import (clean_title, describe_frames, describe_post, placeholder_gist,
+                                               plain_title)
 from src.ingestion.pipeline.transcriber import Transcriber, extract_frames
 from src.ingestion.schemas.snapshot import RawPostSnapshot
 from src.ingestion.serving.failures import failures
@@ -112,10 +113,10 @@ class TestSummaries:
                                                                    "summary": "Cats."})))
         assert describe_post("my cats being weird lol", WEDDING, None, "x", SETTINGS)["kind"] == "story"
 
-    def test_not_json_still_gives_a_summary_under_the_account_name(self, monkeypatch):
+    def test_not_json_still_gives_a_summary_under_a_plain_title(self, monkeypatch):
         monkeypatch.setattr(httpx, "post", _FakeOllama("A wedding toast goes wrong."))
         gist = describe_post("wedding drama 😭", WEDDING, None, "darianthao", SETTINGS)
-        assert gist == {"title": "@darianthao's reel", "kind": "story", "summary": "A wedding toast goes wrong."}
+        assert gist == {"title": "Wedding drama", "kind": "story", "summary": "A wedding toast goes wrong."}
 
     def test_every_call_asks_for_the_extractors_context_size(self, monkeypatch):
         # A different num_ctx makes Ollama reload the model on every call (see _generate).
@@ -138,8 +139,24 @@ class TestTitleRules:
         "THIS IS THE CRAZIEST WEDDING", "This video shows a wedding", "Untitled reel",
         "this wedding got out of hand",              # the caption's first line again
     ])
-    def test_weird_titles_fall_back_to_the_account(self, title):
-        assert clean_title(title, "this wedding got out of hand\nmore text", "darianthao") == "@darianthao's reel"
+    def test_weird_titles_fall_back_to_the_caption_never_the_account(self, title):
+        assert clean_title(title, "this wedding got out of hand\nmore text", "darianthao") == \
+            "This wedding got out of hand"
+
+    @pytest.mark.parametrize("caption, transcript, title", [
+        ("@svet.lanapak Gryffin live in LA tonight!! 🎶 #edm", None, "Gryffin live in LA tonight"),
+        ("🔥🔥 #fyp @someone", "so today we're making the easiest pasta ever. it's great", "So today we're making the easiest"),
+        ("#fyp", None, "A reel"),
+        (None, None, "A reel"),
+    ])
+    def test_plain_title_never_tries_hard_or_names_the_account(self, caption, transcript, title):
+        assert plain_title(caption, transcript) == title
+
+    def test_placeholder_gist_has_no_handles_tags_or_emoji(self):
+        gist = placeholder_gist("@svet.lanapak Gryffin live in LA 🎶 #edm " + "so good " * 60, None)
+        assert gist["title"] == "Gryffin live in LA so good" and gist["kind"] == "story"
+        assert "@" not in gist["summary"] and "#" not in gist["summary"] and "🎶" not in gist["summary"]
+        assert len(gist["summary"]) <= 241 and gist["summary"].endswith("…")
 
     def test_a_good_title_is_kept_and_tidied(self):
         assert clean_title(' "I Married the Girl Who Broke My Heart." ', "caption", "x") == \
@@ -236,7 +253,7 @@ class TestPipeline:
         assert transcriber.asked == [] and result.gist.summary == "summary"
 
     @pytest.mark.asyncio
-    async def test_ollama_down_means_no_summary_and_no_frames(self, monkeypatch):
+    async def test_ollama_down_means_a_plain_placeholder_and_no_frames(self, monkeypatch):
         transcriber = _FakeTranscriber(WEDDING)
         monkeypatch.setattr(orchestrator, "_ollama_reachable", lambda settings: False)
         pipeline = IngestionPipeline(SETTINGS, authed_source=_Source("this wedding got out of hand"),
@@ -244,7 +261,20 @@ class TestPipeline:
                                      post_summarizer=lambda c, t, v, a: pytest.fail("summarized"),
                                      frame_describer=lambda f: pytest.fail("described"))
         result = (await pipeline.run(["https://www.instagram.com/reel/DenJ7IAIX2k/"])).results[0]
-        assert result.gist is None and transcriber.asked == []
+        assert transcriber.asked == []
+        assert result.gist.title == "This wedding got out of hand" and result.gist.kind == "story"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("summarizer", [lambda c, t, v, a: None,
+                                            lambda c, t, v, a: (_ for _ in ()).throw(RuntimeError("500"))])
+    async def test_a_failed_summary_still_gives_a_card_not_couldnt_tell(self, monkeypatch, summarizer):
+        # 2026-10-27: Ollama 500'd under VRAM pressure and the bot said "I read it, but couldn't tell".
+        result, _ = await _run("this wedding got out of hand 😭 #fyp", WEDDING, monkeypatch,
+                               post_summarizer=summarizer)
+        assert result.record is None
+        assert result.gist.title == "This wedding got out of hand"
+        assert "@" not in result.gist.title + result.gist.summary and "#" not in result.gist.summary
+        assert failures([result])[0]["gist"]["title"] == "This wedding got out of hand"
 
     def test_failures_leave_summary_out_when_there_is_none(self):
         from src.ingestion.schemas.results import FetchStatus, IngestionResult
