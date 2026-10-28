@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpotBot: reels to plans</title>
+<meta name="description" content="SpotBot turns the food and place reels your friends share into spot cards your Discord server can vote on and plan from.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1016; --bg2: #161824; --line: #262a3a; --ink: #f2f3f7; --ink2: #a6abbd; --ink3: #6f7590;
+    --accent: #4E5BD8; --accent2: #8F99FF; --warm: #FF8A4C;
+    --dc-bg: #313338; --dc-side: #2b2d31; --dc-embed: #2b2d31; --dc-ink: #dbdee1; --dc-ink2: #b5bac1; --dc-link: #00a8fc;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif; overflow-x: hidden; }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", Inter, sans-serif; line-height: 1.05; letter-spacing: -0.02em; margin: 0; }
+  a { color: var(--accent2); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  .eyebrow { font: 600 13px/1 Inter, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--accent2); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; transition: transform .15s, background .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #5d6ae6; }
+  .btn.ghost { color: var(--ink); border: 1px solid var(--line); }
+
+  /* nav */
+  nav { position: fixed; inset: 0 0 auto; z-index: 20; backdrop-filter: blur(12px); background: color-mix(in srgb, var(--bg) 70%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .logo { display: flex; align-items: center; gap: 10px; font: 800 20px "Bricolage Grotesque", sans-serif; color: var(--ink); text-decoration: none; }
+  .logo i { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--warm)); display: grid; place-items: center; font-style: normal; font-size: 16px; }
+  nav .links { display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { color: var(--ink2); text-decoration: none; }
+  nav .links a:hover { color: var(--ink); }
+  @media (max-width: 640px) { nav .links a:not(.gh) { display: none; } }
+
+  /* ── hero: a scroll-driven scene ── */
+  .hero { height: 330vh; position: relative; }
+  .stage { position: sticky; top: 0; height: 100vh; display: grid; grid-template-rows: auto 1fr; padding-top: 84px; overflow: hidden; }
+  .stage::before { content: ""; position: absolute; inset: -20% -10% auto; height: 80%; background: radial-gradient(50% 50% at 30% 40%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%), radial-gradient(40% 40% at 75% 60%, color-mix(in srgb, var(--warm) 22%, transparent), transparent 70%); filter: blur(30px); z-index: -1; }
+  .hero-copy { text-align: center; padding: 0 16px; }
+  .hero-copy h1 { font-size: clamp(38px, 7vw, 84px); font-weight: 800; }
+  .hero-copy h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent2), var(--warm)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero-copy p { color: var(--ink2); font-size: clamp(16px, 2vw, 19px); max-width: 560px; margin: 16px auto 22px; }
+  .hero-copy .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .scene { position: relative; display: flex; align-items: center; justify-content: center; gap: clamp(20px, 6vw, 90px); padding: 20px 16px 0; }
+
+  .phone { width: 210px; height: 420px; flex: none; border-radius: 34px; padding: 9px; background: #05060a; border: 1px solid #2c3040; box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); position: relative; }
+  .reel { position: relative; height: 100%; border-radius: 26px; overflow: hidden; background: linear-gradient(160deg, #3a1d12 0%, #8a3b17 35%, #e0832f 70%, #f5c46b 100%); }
+  .reel .bowl { position: absolute; left: 50%; top: 40%; width: 130px; height: 130px; translate: -50% -50%; border-radius: 50%; background: radial-gradient(circle at 50% 45%, #f7e3b5 0 22%, #e9b65c 23% 40%, #b8571f 41% 60%, #2a1208 61%); box-shadow: 0 0 0 10px #1b0d07, 0 20px 40px rgba(0,0,0,.5); animation: steam 4s ease-in-out infinite; }
+  @keyframes steam { 50% { transform: scale(1.04) rotate(2deg); } }
+  .reel .cap { position: absolute; left: 12px; right: 40px; bottom: 34px; font-size: 12px; line-height: 1.35; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .reel .cap b { display: block; margin-bottom: 3px; }
+  .reel .bar { position: absolute; left: 12px; right: 12px; bottom: 16px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.3); }
+  .reel .bar span { display: block; height: 100%; width: calc(var(--a, 0) * 100%); background: #fff; border-radius: 3px; }
+  .reel .side { position: absolute; right: 10px; bottom: 60px; display: grid; gap: 14px; font-size: 18px; }
+  .scan { position: absolute; inset: 0; opacity: var(--b, 0); pointer-events: none; }
+  .scan::after { content: ""; position: absolute; left: 0; right: 0; height: 40%; top: calc(var(--b, 0) * 120% - 40%); background: linear-gradient(transparent, color-mix(in srgb, var(--accent2) 45%, transparent), transparent); }
+  .chips { position: absolute; left: 20px; right: 20px; top: 22px; display: grid; gap: 7px; justify-items: start; z-index: 2; }
+  .chip { white-space: nowrap; font-size: 12px; padding: 6px 11px; border-radius: 999px; background: rgba(15,16,22,.72); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.14); color: #fff; opacity: 0; transform: translateY(-6px); transition: opacity .3s, transform .3s; }
+  .chip.on { opacity: 1; transform: none; }
+
+  .discord { width: min(440px, 52vw); height: 420px; flex: none; border-radius: 14px; overflow: hidden; background: var(--dc-bg); color: var(--dc-ink); box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); display: flex; flex-direction: column; font-size: 14px; }
+  .dc-top { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #1f2023; font-weight: 600; }
+  .dc-top span { color: #80848e; font-weight: 400; }
+  .dc-body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; }
+  .msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; }
+  .av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: 700; color: #fff; }
+  .who { font-weight: 600; font-size: 14px; }
+  .who small { font-weight: 400; color: #949ba4; font-size: 11px; margin-left: 6px; }
+  .who .tag { font-size: 10px; background: #5865f2; color: #fff; padding: 1px 5px; border-radius: 4px; margin-left: 5px; vertical-align: 1px; }
+  .link { color: var(--dc-link); word-break: break-all; }
+  .slot { min-height: 210px; }
+
+  /* a Discord embed, shaped like app/cards.py::build_spot_embed */
+  .embed { background: var(--dc-embed); border-left: 4px solid var(--c, #888780); border-radius: 4px; padding: 10px 14px 10px 12px; max-width: 400px; margin-top: 4px; }
+  .embed .t { font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .embed .d { color: var(--dc-ink); font-size: 13.5px; }
+  .embed .d a, .embed .f a { color: var(--dc-link); text-decoration: none; }
+  .embed .fields { display: flex; gap: 22px; margin-top: 8px; font-size: 13px; flex-wrap: wrap; }
+  .embed .fields b { display: block; color: #fff; font-size: 12.5px; }
+  .embed .foot { margin-top: 8px; font-size: 11.5px; color: var(--dc-ink2); }
+  .btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .btns span { font-size: 13px; padding: 4px 10px; border-radius: 4px; background: #4e5058; color: #fff; }
+  .btns span.up { background: #248046; }
+  .flying { position: relative; z-index: 3; will-change: transform; }
+
+  .phone, .discord { height: clamp(250px, calc(100vh - 430px), 420px); }
+  .phone { width: auto; aspect-ratio: 1 / 2; }
+  @media (min-width: 1100px) {
+    .stage { grid-template-columns: .85fr 1.15fr; grid-template-rows: 1fr; align-items: center; max-width: 1280px; margin: 0 auto; padding: 60px 24px 0; }
+    .hero-copy { text-align: left; padding: 0; }
+    .hero-copy h1 { font-size: clamp(48px, 5.2vw, 76px); }
+    .hero-copy p { margin-left: 0; }
+    .hero-copy .cta { justify-content: flex-start; }
+    .scene { padding: 0; gap: 48px; }
+    .phone, .discord { height: min(440px, calc(100vh - 140px)); }
+    .discord { width: 400px; }
+  }
+  .scroll-hint { position: absolute; bottom: 18px; left: 50%; translate: -50% 0; color: var(--ink3); font-size: 13px; opacity: calc(1 - var(--a, 0) * 4); }
+  @media (max-width: 760px) {
+    .scene { flex-direction: column; gap: 14px; padding-top: 6px; }
+    .phone { height: clamp(200px, calc(100vh - 640px), 260px); border-radius: 24px; padding: 6px; }
+    .reel { border-radius: 19px; }
+    .reel .bowl { width: 70px; height: 70px; }
+    .reel .cap { font-size: 9px; bottom: 20px; left: 9px; right: 9px; }
+    .reel .side { display: none; }
+    .chips { left: 8px; right: 8px; top: 10px; gap: 5px; }
+    .chip { font-size: 9.5px; padding: 3px 7px; white-space: normal; }
+    .discord { width: 100%; max-width: 420px; height: 290px; font-size: 13px; }
+    .slot { min-height: 0; }
+    .hero-copy p { margin: 10px auto 14px; }
+    .hero-copy .cta { display: none; }
+  }
+
+  /* ── sections ── */
+  section.block { padding: 110px 0; }
+  .head { max-width: 640px; margin-bottom: 44px; }
+  .head h2 { font-size: clamp(32px, 5vw, 54px); margin-top: 12px; }
+  .head p { color: var(--ink2); font-size: 18px; margin: 14px 0 0; }
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .step { background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; position: relative; }
+  .step .n { font: 800 64px/1 "Bricolage Grotesque", sans-serif; color: color-mix(in srgb, var(--accent) 45%, transparent); position: absolute; right: 18px; top: 12px; }
+  .step .ico { font-size: 34px; }
+  .step h3 { font-size: 23px; margin: 14px 0 8px; }
+  .step p { color: var(--ink2); margin: 0; }
+  .step:nth-child(2) { transition-delay: .12s; } .step:nth-child(3) { transition-delay: .24s; }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+
+  .demo { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
+  .demo .discord { width: 100%; height: 560px; }
+  .demo .dc-body { justify-content: flex-start; overflow-y: auto; scrollbar-width: none; }
+  .demo .msg { animation: pop .45s ease both; }
+  @keyframes pop { from { opacity: 0; transform: translateY(10px); } }
+  .replay { margin-top: 18px; background: none; border: 1px solid var(--line); color: var(--ink); padding: 10px 18px; border-radius: 999px; font: inherit; cursor: pointer; }
+  .replay:hover { border-color: var(--accent2); }
+  .demo ul { color: var(--ink2); padding-left: 20px; }
+  .demo li { margin: 8px 0; }
+  @media (max-width: 860px) { .demo { grid-template-columns: 1fr; } .demo .discord { height: 520px; } }
+
+  /* tie picker */
+  .picker { margin-top: 6px; background: linear-gradient(135deg, #2e2350, #1e2a52); border-radius: 10px; padding: 14px; text-align: center; position: relative; overflow: hidden; max-width: 400px; }
+  .picker .lbl { font-size: 12px; color: #c9c6ff; letter-spacing: .08em; text-transform: uppercase; }
+  .reelwin { height: 46px; overflow: hidden; margin: 8px auto; border-radius: 8px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); position: relative; }
+  .reelwin::before, .reelwin::after { content: ""; position: absolute; left: 0; right: 0; height: 12px; z-index: 1; }
+  .reelwin::before { top: 0; background: linear-gradient(#1c1838, transparent); }
+  .reelwin::after { bottom: 0; background: linear-gradient(transparent, #1c1838); }
+  .strip div { height: 46px; line-height: 46px; font: 700 19px "Bricolage Grotesque", sans-serif; color: #fff; }
+  .picker .won { font-weight: 600; color: #fff; min-height: 22px; }
+  .confetti { position: absolute; width: 7px; height: 11px; top: -12px; border-radius: 2px; animation: fall 1.6s ease-in forwards; }
+  @keyframes fall { to { transform: translateY(220px) rotate(540deg); opacity: 0; } }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; align-items: center; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+  .gistcard { background: var(--dc-bg); padding: 18px; border-radius: 14px; max-width: 440px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .stat { background: var(--bg2); padding: 28px 22px; }
+  .stat b { display: block; font: 800 clamp(40px, 5vw, 56px)/1 "Bricolage Grotesque", sans-serif; background: linear-gradient(90deg, var(--accent2), var(--warm)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat span { display: block; margin-top: 10px; color: var(--ink); font-weight: 600; }
+  .stat small { display: block; margin-top: 4px; color: var(--ink3); font-size: 13px; line-height: 1.45; }
+  @media (max-width: 860px) { .stats { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 460px) { .stats { grid-template-columns: 1fr; } }
+
+  .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .priv { padding: 24px; border-radius: var(--radius); border: 1px solid var(--line); }
+  .priv .ico { font-size: 28px; }
+  .priv h3 { font-size: 20px; margin: 10px 0 6px; }
+  .priv p { margin: 0; color: var(--ink2); }
+  @media (max-width: 800px) { .privacy { grid-template-columns: 1fr; } }
+
+  .final { text-align: center; padding: 120px 0 90px; position: relative; }
+  .final::before { content: ""; position: absolute; inset: 10% 20%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 30%, transparent), transparent); filter: blur(40px); z-index: -1; }
+  .final h2 { font-size: clamp(36px, 6vw, 70px); }
+  .final p { color: var(--ink2); font-size: 18px; margin: 16px auto 26px; max-width: 520px; }
+  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--ink3); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer a { color: var(--ink2); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero { height: auto; }
+    .stage { position: relative; height: auto; padding-bottom: 60px; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .reel .bowl, .demo .msg { animation: none; }
+    .scroll-hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#top"><i>📍</i>SpotBot</a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#demo">Demo</a>
+      <a href="#numbers">Numbers</a>
+      <a href="#privacy">Privacy</a>
+      <a class="gh" href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<!-- 1. Hero: scroll moves a reel into Discord as a spot card -->
+<header class="hero" id="top">
+  <div class="stage" id="stage">
+    <div class="hero-copy">
+      <h1>Stop sending reels.<br><em>Start going places.</em></h1>
+      <p>Your group chat is full of food reels nobody goes to. SpotBot turns each one into a spot card your Discord server can vote on, then plans the outing.</p>
+      <div class="cta">
+        <a class="btn primary" href="#demo">See it work</a>
+        <a class="btn ghost" href="https://github.com/NickNojiri/SocialAgent-Team10">View on GitHub</a>
+      </div>
+    </div>
+    <div class="scene">
+      <div class="phone" id="phone">
+        <div class="reel">
+          <div class="bowl"></div>
+          <div class="side">♡<br>💬<br>↗</div>
+          <div class="cap"><b>@a.food.account</b>the broth here is unreal 🍜 ramen night in long beach</div>
+          <div class="bar"><span></span></div>
+          <div class="scan"></div>
+        </div>
+        <div class="chips">
+          <div class="chip" data-at=".30">🎙️ Listening to the audio</div>
+          <div class="chip" data-at=".38">🔤 Reading the caption</div>
+          <div class="chip" data-at=".46">📍 Found: Jounetsu Ramen</div>
+        </div>
+      </div>
+
+      <div class="discord" aria-label="A Discord channel">
+        <div class="dc-top"># food-reels <span>· your server</span></div>
+        <div class="dc-body">
+          <div class="msg">
+            <div class="av" style="background:#e67e22">M</div>
+            <div><div class="who">maya <small>Today at 7:42 PM</small></div>
+              <div class="link">instagram.com/reel/…</div></div>
+          </div>
+          <div class="msg">
+            <div class="av" style="background:var(--accent)">📍</div>
+            <div class="slot"><div class="who">SpotBot<span class="tag">APP</span></div>
+              <div class="flying" id="fly">
+                <div class="embed" style="--c:#D85A30">
+                  <div class="t">🍽️ Jounetsu Ramen</div>
+                  <div class="d">📝 A ramen spot in Long Beach that the reel is all about.<br><br><a href="#">▶ Watch the reel</a></div>
+                  <div class="fields"><div><b>Where</b><a href="#">Find on map</a></div><div id="whoField" hidden><b>Who's in</b><span id="whoList"></span></div></div>
+                  <div class="foot">food drink · shared by maya · via Instagram</div>
+                </div>
+                <div class="btns"><span class="up">👍 <b id="heroVotes">0</b></span><span>👎</span><span>📅 Lock it in</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll-hint">Scroll ↓</div>
+  </div>
+</header>
+
+<!-- 2. How it works -->
+<section class="block" id="how">
+  <div class="wrap">
+    <div class="head reveal"><div class="eyebrow">How it works</div><h2>Three steps from "we should go" to going.</h2></div>
+    <div class="steps">
+      <div class="step reveal"><div class="n">1</div><div class="ico">📲</div><h3>Share a reel</h3><p>Paste an Instagram or TikTok link in your server, or DM it to SpotBot on Instagram.</p></div>
+      <div class="step reveal"><div class="n">2</div><div class="ico">🧠</div><h3>SpotBot reads it</h3><p>It listens to what's said, reads the caption and the text on screen, and works out which place it's about.</p></div>
+      <div class="step reveal"><div class="n">3</div><div class="ico">🗳️</div><h3>Vote, then plan</h3><p>Everyone taps 👍 on the spots they want. <code>/plan</code> picks one for the group, and a tie gets settled by the picker.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Live demo -->
+<section class="block" id="demo" style="background:linear-gradient(transparent, var(--bg2) 20%, var(--bg2) 80%, transparent)">
+  <div class="wrap demo">
+    <div class="reveal">
+      <div class="eyebrow">Demo</div>
+      <h2 style="font-size:clamp(32px,5vw,54px);margin-top:12px">Friday night, settled in a minute.</h2>
+      <p style="color:var(--ink2);font-size:18px">Two friends share two reels. The server votes. It's a tie, so SpotBot spins for it.</p>
+      <ul>
+        <li>Cards look the way the bot really draws them: the place, a short description, a map link and the buttons.</li>
+        <li>Votes are per person, so one friend can't stuff the ballot.</li>
+        <li>Ties get settled by a random pick, out in the open. <i>(The tie-breaker is the next feature we're building; this is how it will look.)</i></li>
+      </ul>
+      <button class="replay" id="replay">↻ Play it again</button>
+    </div>
+    <div class="discord reveal" aria-label="A demo Discord channel">
+      <div class="dc-top"># weekend-plans <span>· demo</span></div>
+      <div class="dc-body" id="demoBody"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Not a place -->
+<section class="block">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="eyebrow">Not every reel is a place</div>
+      <h2 style="font-size:clamp(32px,5vw,50px);margin-top:12px">Skits and memes don't break it.</h2>
+      <p style="color:var(--ink2);font-size:18px">Not every reel is a restaurant. When it isn't, SpotBot still says what it's about in a plain card and files it under 💭, out of the way of the spots you'll actually vote on.</p>
+    </div>
+    <div class="gistcard reveal">
+      <div class="msg">
+        <div class="av" style="background:var(--accent)">📍</div>
+        <div><div class="who">SpotBot<span class="tag">APP</span></div>
+          <div class="embed" style="--c:#888780">
+            <div class="t">This wedding got out of hand</div>
+            <div class="d">💬 Story<br><br>A toast at a wedding reception goes sideways, and the guests can't look away.<br><br><a href="#">▶ Watch the reel</a></div>
+            <div class="foot">💭 Not a place, so it's under 💭 in /catalog · shared by jordan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Numbers -->
+<section class="block" id="numbers">
+  <div class="wrap">
+    <div class="head reveal"><div class="eyebrow">By the numbers</div><h2>Measured, not guessed.</h2><p>We hand-labeled hundreds of real reels and test against a split the model never trains on.</p></div>
+    <div class="stats reveal">
+      <div class="stat"><b data-count="74">74%</b><span>Right place, 3 in 4 reels</span><small>Our trained model on 271 held-out dev reels. Hand-written rules alone: 62%.</small></div>
+      <div class="stat"><b>~0.3s</b><span>Per reel</span><small>On a laptop CPU, no LLM needed for the place name.</small></div>
+      <div class="stat"><b data-count="0">0</b><span>Posts sent to outside AI services</span><small>The language models and the database run on our own machine.</small></div>
+      <div class="stat"><b data-count="1196">1,196</b><span>Automated tests</span><small>Run on every change, including security checks on who can read and vote.</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Privacy -->
+<section class="block" id="privacy" style="padding-top:20px">
+  <div class="wrap">
+    <div class="head reveal"><div class="eyebrow">Privacy</div><h2>Your reels stay yours.</h2></div>
+    <div class="privacy">
+      <div class="priv reveal"><div class="ico">🖥️</div><h3>Runs locally</h3><p>Post text is read by models on our own computer, never sent to an outside AI company.</p></div>
+      <div class="priv reveal"><div class="ico">🚫</div><h3>No ads, no selling</h3><p>SpotBot only sees what you send it, and doesn't sell or share it.</p></div>
+      <div class="priv reveal"><div class="ico">🗑️</div><h3>Delete anytime</h3><p>A server admin can wipe the server's data with one command.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. Final CTA -->
+<section class="final">
+  <div class="wrap reveal">
+    <h2>Turn the group chat<br>into plans.</h2>
+    <p>SpotBot is a CSULB capstone project built by a four-person team. The code is open.</p>
+    <a class="btn primary" href="https://github.com/NickNojiri/SocialAgent-Team10">View on GitHub</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok or Discord.</span>
+    <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const range = (p, a, b) => clamp((p - a) / (b - a));
+
+  // ── hero: scroll progress drives the reel → card story ──
+  const hero = document.querySelector(".hero"), stage = document.getElementById("stage");
+  const phone = document.getElementById("phone"), fly = document.getElementById("fly");
+  const chips = [...document.querySelectorAll(".chip")];
+  const votes = document.getElementById("heroVotes"), whoField = document.getElementById("whoField"), whoList = document.getElementById("whoList");
+  const friends = ["maya", "jordan", "nick", "ari"];
+  let offset = null;
+
+  function measure() {
+    fly.style.transform = "none";
+    const p = phone.getBoundingClientRect(), f = fly.getBoundingClientRect();
+    offset = { x: (p.left + p.width / 2) - (f.left + f.width / 2), y: (p.top + p.height / 2) - (f.top + f.height / 2) };
+  }
+
+  function heroFrame() {
+    if (reduce) { fly.style.transform = "none"; chips.forEach(c => c.classList.add("on")); votes.textContent = 4; whoField.hidden = false; whoList.textContent = friends.join(", "); return; }
+    const r = hero.getBoundingClientRect();
+    const p = clamp(-r.top / (r.height - innerHeight));
+    stage.style.setProperty("--a", range(p, 0, .25));        // the reel plays
+    stage.style.setProperty("--b", range(p, .25, .5));       // SpotBot reads it
+    chips.forEach(c => c.classList.toggle("on", p >= +c.dataset.at));
+    if (!offset) measure();
+    const c = range(p, .5, .75), e = 1 - Math.pow(1 - c, 3);  // the card flies in
+    const s = .35 + .65 * e;
+    fly.style.transform = `translate(${offset.x * (1 - e)}px, ${offset.y * (1 - e)}px) scale(${s})`;
+    fly.style.opacity = c > 0 ? 1 : 0;
+    const n = Math.round(range(p, .78, .97) * friends.length);  // friends vote
+    votes.textContent = n;
+    whoField.hidden = n === 0;
+    whoList.textContent = friends.slice(0, n).join(", ");
+  }
+  addEventListener("scroll", () => requestAnimationFrame(heroFrame), { passive: true });
+  addEventListener("resize", () => { offset = null; heroFrame(); });
+  heroFrame();
+
+  // ── reveal on scroll ──
+  const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .15 });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+  // ── demo: a short scripted chat, ending in the tie picker ──
+  const body = document.getElementById("demoBody");
+  const SPOTS = {
+    ramen: { emoji: "🍽️", name: "Jounetsu Ramen", color: "#D85A30", cat: "food drink", desc: "A ramen spot in Long Beach that the reel is all about.", by: "maya" },
+    cafe: { emoji: "🍰", name: "Pura Vida", color: "#D4537E", cat: "cafe dessert", desc: "A Long Beach cafe the reel shows off, drinks and all.", by: "jordan" },
+  };
+  const av = (name, bg) => `<div class="av" style="background:${bg}">${name}</div>`;
+  const user = (n, bg, html) => `<div class="msg">${av(n[0].toUpperCase(), bg)}<div><div class="who">${n} <small>Today</small></div>${html}</div></div>`;
+  const bot = (html) => `<div class="msg">${av("📍", "var(--accent)")}<div><div class="who">SpotBot<span class="tag">APP</span></div>${html}</div></div>`;
+  const card = (k) => { const s = SPOTS[k]; return `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.name}</div><div class="d">📝 ${s.desc}<br><br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.by} · via Instagram</div></div><div class="btns"><span class="up">👍 <b data-v="${k}">0</b></span><span>👎</span><span>📅 Lock it in</span></div>`; };
+
+  let timers = [];
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const add = (html) => { body.insertAdjacentHTML("beforeend", html); body.scrollTop = body.scrollHeight; return body.lastElementChild; };
+  const vote = (k, n) => { const el = body.querySelector(`[data-v="${k}"]`); if (el) el.textContent = n; };
+
+  function play() {
+    timers.forEach(clearTimeout); timers = []; body.innerHTML = "";
+    later(200, () => add(user("maya", "#e67e22", `<div class="link">instagram.com/reel/…</div>`)));
+    later(1200, () => add(bot(card("ramen"))));
+    later(2400, () => add(user("jordan", "#16a085", `<div>ok but hear me out</div><div class="link">instagram.com/reel/…</div>`)));
+    later(3400, () => add(bot(card("cafe"))));
+    [[4300, "ramen", 1], [4700, "cafe", 1], [5100, "ramen", 2], [5500, "cafe", 2]].forEach(([t, k, n]) => later(t, () => vote(k, n)));
+    later(6300, () => add(user("nick", "#8e44ad", `<div style="color:#c9cdfb">/plan friday</div>`)));
+    later(7200, () => spin(add(bot(`<div>It's a tie, 2 👍 each. Spinning for it…</div>
+      <div class="picker"><div class="lbl">🎲 Tie-breaker</div><div class="reelwin"><div class="strip"></div></div><div class="won"></div></div>`))));
+  }
+
+  function spin(msg) {
+    const picker = msg.querySelector(".picker"), strip = msg.querySelector(".strip"), won = msg.querySelector(".won");
+    const names = [SPOTS.ramen.name, SPOTS.cafe.name];
+    const winner = names[Math.floor(Math.random() * 2)];       // a real coin flip
+    const seq = []; for (let i = 0; i < 18; i++) seq.push(names[i % 2]);
+    if (seq[seq.length - 1] !== winner) seq.push(winner);
+    strip.innerHTML = seq.map(n => `<div>${n}</div>`).join("");
+    const end = -(seq.length - 1) * 46;
+    if (reduce) { strip.style.transform = `translateY(${end}px)`; } else {
+      strip.animate([{ transform: "translateY(0)" }, { transform: `translateY(${end}px)` }], { duration: 2600, easing: "cubic-bezier(.15,.7,.2,1)", fill: "forwards" });
+    }
+    later(reduce ? 50 : 2700, () => {
+      won.textContent = `🎉 Friday: ${winner}`;
+      if (reduce) return;
+      const colors = ["#8F99FF", "#FF8A4C", "#F7D046", "#4ADE80", "#F472B6"];
+      for (let i = 0; i < 40; i++) {
+        const c = document.createElement("i");
+        c.className = "confetti";
+        c.style.left = Math.random() * 100 + "%";
+        c.style.background = colors[i % colors.length];
+        c.style.animationDelay = Math.random() * .4 + "s";
+        picker.appendChild(c);
+        setTimeout(() => c.remove(), 2200);
+      }
+    });
+  }
+
+  let played = false;
+  new IntersectionObserver((es) => { if (es[0].isIntersecting && !played) { played = true; play(); } }, { threshold: .35 }).observe(body);
+  document.getElementById("replay").addEventListener("click", play);
+})();
+</script>
+</body>
+</html>
