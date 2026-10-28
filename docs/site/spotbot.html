@@ -932,6 +932,7 @@ import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 const canvas = document.getElementById("city");
@@ -967,8 +968,8 @@ function start() {
 
   // ── light through the evening: 0 is golden hour, 1 is night ──
   const KEYS = [
-    { t: 0,   zen: "#5b80bd", hor: "#ffc48c", glow: "#fff0cc", glowK: 1,   sunC: "#ffc38a", sun: 2.7, hemiS: "#b4c8e8", hemiG: "#6e5c48", hemi: .9,  win: .04, lamp: 0,   fog: .0055, exp: .8,  bloom: .2,  thr: .92 },
-    { t: .35, zen: "#33508f", hor: "#ff8f5e", glow: "#ffb57a", glowK: .7,  sunC: "#ff8a50", sun: 1.1, hemiS: "#8b90c8", hemiG: "#3d2f33", hemi: .62, win: .4,  lamp: .45, fog: .007,  exp: .9,  bloom: .35, thr: .75 },
+    { t: 0,   zen: "#5b80bd", hor: "#ffc48c", glow: "#fff0cc", glowK: 1,   sunC: "#ffc38a", sun: 2.7, hemiS: "#b4c8e8", hemiG: "#6e5c48", hemi: .9,  win: .04, lamp: 0,   fog: .0036, exp: .8,  bloom: .2,  thr: .92 },
+    { t: .35, zen: "#33508f", hor: "#ff8f5e", glow: "#ffb57a", glowK: .7,  sunC: "#ff8a50", sun: 1.1, hemiS: "#8b90c8", hemiG: "#3d2f33", hemi: .62, win: .4,  lamp: .45, fog: .0055,  exp: .9,  bloom: .35, thr: .75 },
     { t: .6,  zen: "#141c48", hor: "#a8587a", glow: "#ff7a59", glowK: .25, sunC: "#ff7a50", sun: 0,   hemiS: "#5a5fb0", hemiG: "#151020", hemi: .45, win: .8,  lamp: .9,  fog: .009,  exp: 1,   bloom: .55, thr: .55 },
     { t: 1,   zen: "#03030a", hor: "#3b2140", glow: "#ff7a59", glowK: .08, sunC: "#ff7a50", sun: 0,   hemiS: "#6d5fd6", hemiG: "#05050a", hemi: .32, win: .9,  lamp: 1,   fog: .011,  exp: 1,   bloom: .6,  thr: .5 },
   ];
@@ -1005,7 +1006,7 @@ function start() {
   const hemi = new THREE.HemisphereLight(); scene.add(hemi);
   const sunL = new THREE.DirectionalLight(); scene.add(sunL, sunL.target);
   if (shadows) {
-    sunL.castShadow = true; sunL.shadow.mapSize.set(2048, 2048);
+    sunL.castShadow = true; sunL.shadow.mapSize.set(4096, 4096);
     Object.assign(sunL.shadow.camera, { left: -42, right: 42, top: 42, bottom: -42, near: 1, far: 320 });
     sunL.shadow.bias = -.0004; sunL.shadow.normalBias = .03; sunL.shadow.camera.updateProjectionMatrix();
   }
@@ -1054,7 +1055,7 @@ function start() {
                   warm: ["#d2b997", "#383d46", "#4b525b"], stucco: ["#ddd2c0", "#3b4450", "#505b67"] };
   const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; return t; };
   function facadeTex(cols, rows, lit, seed, style) {
-    const r = rand(seed), cw = 10, ch = 12, [frame, g1, g2] = STYLE[style], gap = style === "glass" ? 1 : 2;
+    const r = rand(seed), cw = 20, ch = 24, [frame, g1, g2] = STYLE[style], gap = style === "glass" ? 2 : 4;   // 2x the pixels per window, for crisp facades
     const [day, night] = [0, 1].map(() => { const c = document.createElement("canvas"); c.width = cols * cw; c.height = rows * ch; return c; });
     const gd = day.getContext("2d"), gn = night.getContext("2d");
     gd.fillStyle = frame; gd.fillRect(0, 0, day.width, day.height);
@@ -1104,6 +1105,13 @@ function start() {
     list.forEach(([x, z, w, h, d], i) => { dummy.position.set(x, h / 2, z); dummy.scale.set(w, h, d); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix); });
     scene.add(mesh);
   });
+  // rooftop clutter on the bigger buildings: AC units, stair housings, a parapet's shadow
+  const units = [];
+  lots.flat().forEach(([x, z, w, h, d]) => { if (h < .9) return; const n = 1 + Math.floor(R() * 3); for (let k = 0; k < n; k++) units.push([x + (R() - .5) * w * .6, h, z + (R() - .5) * d * .6, .12 + R() * .2, .06 + R() * .12]); });
+  const unitMesh = solid(new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: "#a7a49d", roughness: .7, metalness: .2 }), units.length));
+  units.forEach(([x, y, z, s, hh], i) => { dummy.position.set(x, y + hh / 2, z); dummy.scale.set(s, hh, s * (.8 + R() * .5)); dummy.updateMatrix(); unitMesh.setMatrixAt(i, dummy.matrix); });
+  dummy.scale.set(1, 1, 1);
+  scene.add(unitMesh);
   const roofGeo = new THREE.CylinderGeometry(.5, .5, 1, 3); roofGeo.rotateX(-Math.PI / 2); roofGeo.translate(0, .25, 0); roofGeo.scale(1 / .866, 1 / .75, 1);
   const WALLS = ["#e2d6c2", "#ece6d8", "#d0b998", "#c4b39c", "#e6d8c6", "#b9c1c4", "#d9c7b0"].map((c) => new THREE.Color(c));
   const ROOFS = ["#a3563a", "#8a4a36", "#6e6e72", "#93644c", "#5c5f66"].map((c) => new THREE.Color(c));
@@ -1153,29 +1161,81 @@ function start() {
 
   // ── freeways (think the 101 and the 110) and the four-level interchange where they cross ──
   const concrete = new THREE.MeshStandardMaterial({ color: "#a8a49b", roughness: .85, side: THREE.DoubleSide });
-  const FWY_Y = 1.25, IX = 20, IZ = -16;
+  const FWY_Y = 1.25, DECK = FWY_Y + .15, IX = 20, IZ = -16;              // DECK is the road surface
+  // painted asphalt: 2 lanes each way, dashed lane lines, solid edges, double yellow by the median
+  function laneCanvas(lanes) {
+    const c = document.createElement("canvas"); c.width = 512; c.height = 128;
+    const g = c.getContext("2d"), r = rand(lanes * 13);
+    g.fillStyle = "#38383e"; g.fillRect(0, 0, 512, 128);
+    for (let i = 0; i < 2600; i++) { g.fillStyle = r() < .5 ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.12)"; g.fillRect(r() * 512, r() * 128, 2, 2); }
+    g.fillStyle = "rgba(0,0,0,.18)"; for (const y of lanes === 4 ? [20, 46, 82, 108] : [34, 94]) g.fillRect(0, y - 6, 512, 12);   // worn tire tracks
+    g.fillStyle = "#e9e6dc"; g.fillRect(0, 6, 512, 3); g.fillRect(0, 119, 512, 3);
+    const dashes = lanes === 4 ? [33, 95] : [64];
+    for (const y of dashes) for (let x = 0; x < 512; x += 256) g.fillRect(x, y - 1, 120, 3);
+    if (lanes === 4) { g.fillStyle = "#e3b23c"; g.fillRect(0, 59, 512, 2); g.fillRect(0, 67, 512, 2); }
+    return c;
+  }
+  function laneTex(lanes, len, vertical) {
+    let c = laneCanvas(lanes);
+    if (vertical) { const v = document.createElement("canvas"); v.width = 128; v.height = 512; const g = v.getContext("2d"); g.translate(128, 0); g.rotate(Math.PI / 2); g.drawImage(c, 0, 0); c = v; }
+    const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    if (vertical) t.repeat.set(1, len / 4); else t.repeat.set(len / 4, 1);
+    return t;
+  }
+  const fwyLamps = [], posts = [];
+  const barrier = new THREE.MeshStandardMaterial({ color: "#c9c4b8", roughness: .8 });
   [[(WEST + X1) / 2, IZ, X1 - WEST, 2.4], [IX, (Z0 + Z1) / 2, 2.4, Z1 - Z0]].forEach(([x, z, w, d]) => {
-    const deck = solid(new THREE.Mesh(new THREE.BoxGeometry(w, .25, d), concrete)); deck.position.set(x, FWY_Y, z); scene.add(deck);
-    const along = w > d, a0 = along ? WEST : Z0, a1 = along ? X1 : Z1;
-    for (let s = a0; s <= a1; s += 4) { const pil = solid(new THREE.Mesh(new THREE.BoxGeometry(.4, FWY_Y, .4), concrete)); pil.position.set(along ? s : x, FWY_Y / 2, along ? z : s); scene.add(pil); }
+    const along = w > d, len = along ? w : d;
+    const road = new THREE.MeshStandardMaterial({ map: laneTex(4, len, !along), roughness: .85 });
+    const deck = solid(new THREE.Mesh(new THREE.BoxGeometry(w, .3, d), [concrete, concrete, road, concrete, concrete, concrete])); deck.position.set(x, FWY_Y, z); scene.add(deck);
+    for (const off of [-1.17, 0, 1.17]) {                                      // jersey barriers on both edges and down the median
+      const b = solid(new THREE.Mesh(new THREE.BoxGeometry(along ? len : off ? .06 : .1, .14, along ? (off ? .06 : .1) : len), barrier));
+      b.position.set(along ? x : x + off, DECK + .07, along ? z + off : z); scene.add(b);
+    }
+    const a0 = along ? WEST : Z0, a1 = along ? X1 : Z1;
+    for (let s = a0; s <= a1; s += 3.2) {
+      posts.push([along ? s : x, along ? z : s, along]);
+      fwyLamps.push(along ? s : x, DECK + 1.05, along ? z : s);
+    }
   });
-  function ribbon(curve, width, segs) {
-    const pos = [], idx = [], p = new THREE.Vector3(), t = new THREE.Vector3();
+  // T-shaped bents under the decks: a column and a cap beam
+  const cols = solid(new THREE.InstancedMesh(new THREE.BoxGeometry(.32, FWY_Y - .15, .32), concrete, posts.length));
+  const caps = solid(new THREE.InstancedMesh(new THREE.BoxGeometry(1, .18, 1), concrete, posts.length));
+  posts.forEach(([x, z, along], i) => {
+    dummy.position.set(x, (FWY_Y - .15) / 2, z); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); cols.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, FWY_Y - .24, z); dummy.scale.set(along ? .4 : 2.3, 1, along ? 2.3 : .4); dummy.updateMatrix(); caps.setMatrixAt(i, dummy.matrix);
+  });
+  dummy.scale.set(1, 1, 1);
+  scene.add(cols, caps);
+  // sweep a strip along a curve between two edges, each [offset to the side, height]
+  function sweep(curve, segs, a, b) {
+    const pos = [], uv = [], idx = [], p = new THREE.Vector3(), t = new THREE.Vector3(), prev = new THREE.Vector3();
+    let dist = 0;
     for (let i = 0; i <= segs; i++) {
       curve.getPointAt(i / segs, p); curve.getTangentAt(i / segs, t);
-      const sx = t.z, sz = -t.x, k = width / 2 / Math.hypot(sx, sz);
-      pos.push(p.x + sx * k, p.y, p.z + sz * k, p.x - sx * k, p.y, p.z - sz * k);
+      if (i) dist += p.distanceTo(prev); prev.copy(p);
+      const k = 1 / Math.hypot(t.z, t.x), sx = t.z * k, sz = -t.x * k;
+      [a, b].forEach(([off, dy], j) => { pos.push(p.x + sx * off, p.y + dy, p.z + sz * off); uv.push(j, dist / 4); });
       if (i < segs) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals(); return g;
   }
+  const rampRoad = new THREE.MeshStandardMaterial({ map: laneTex(2, 4, true), roughness: .85, side: THREE.DoubleSide });
+  rampRoad.map.repeat.set(1, 1);
   const ramps = [1.0, 2.1, .4, 1.5].map((lvl, k) => {
     const c = Math.cos(k * Math.PI / 2), s = Math.sin(k * Math.PI / 2);
     const pts = [[-10, 0, -1], [-5.5, .65, -1.1], [-2.6, 1.35, -2.6], [-1.1, 1.35, -5.5], [-1, .65, -9], [-1, 0, -12]].map(([x, y, z], i) =>
-      new THREE.Vector3(IX + x * c - z * s, FWY_Y + y + (i > 1 && i < 4 ? lvl : i === 1 || i === 4 ? lvl * .5 : 0), IZ + x * s + z * c));
+      new THREE.Vector3(IX + x * c - z * s, DECK + y + (i > 1 && i < 4 ? lvl : i === 1 || i === 4 ? lvl * .5 : 0), IZ + x * s + z * c));
     const curve = new THREE.CatmullRomCurve3(pts);
-    scene.add(solid(new THREE.Mesh(ribbon(curve, .9, 80), concrete)));
-    for (let u = .15; u < .9; u += .14) { const p = curve.getPointAt(u); const pil = solid(new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, p.y, 8), concrete)); pil.position.set(p.x, p.y / 2, p.z); scene.add(pil); }
+    scene.add(solid(new THREE.Mesh(sweep(curve, 90, [.5, 0], [-.5, 0]), rampRoad)));                          // the road
+    scene.add(solid(new THREE.Mesh(sweep(curve, 90, [.5, -.26], [-.5, -.26]), concrete)));                    // the underside
+    for (const sd of [.52, -.52]) scene.add(solid(new THREE.Mesh(sweep(curve, 90, [sd, -.26], [sd, .14]), barrier)));   // sides with a barrier lip
+    for (let u = .12; u < .92; u += .1) {
+      const p = curve.getPointAt(u);
+      const pil = solid(new THREE.Mesh(new THREE.CylinderGeometry(.13, .16, p.y - .26, 10), concrete)); pil.position.set(p.x, (p.y - .26) / 2, p.z); scene.add(pil);
+      fwyLamps.push(p.x, p.y + .9, p.z);
+    }
     return curve;
   });
 
@@ -1183,8 +1243,8 @@ function start() {
   const cars = [];
   ZL.forEach((z) => { if (R() < .35) return; for (const off of [-.3, .3]) for (let n = 0; n < 2 + R() * 3; n++) cars.push({ kind: "x", line: z + off, y: .06, dir: off > 0 ? 1 : -1, speed: 1.6 + R() * 1.8, phase: R() * 500 }); });
   XL.forEach((x) => { if (R() < .35) return; for (const off of [-.3, .3]) for (let n = 0; n < 2 + R() * 3; n++) cars.push({ kind: "z", line: x + off, y: .06, dir: off > 0 ? -1 : 1, speed: 1.6 + R() * 1.8, phase: R() * 500 }); });
-  [["x", IZ], ["z", IX]].forEach(([kind, line]) => { for (const off of [-.8, -.35, .35, .8]) for (let n = 0; n < 18; n++) cars.push({ kind, line: line + off, y: FWY_Y + .18, dir: off > 0 ? 1 : -1, speed: 4 + R() * 2.5, phase: R() * 500 }); });
-  ramps.forEach((curve, k) => { const len = curve.getLength(); for (let n = 0; n < 6; n++) cars.push({ kind: "c", curve, len, dir: 1, speed: 3 + R(), phase: R() * len }); });
+  [["x", IZ], ["z", IX]].forEach(([kind, line]) => { for (const off of [-.8, -.35, .35, .8]) for (let n = 0; n < 22; n++) cars.push({ kind, line: line + off, y: DECK, dir: off > 0 ? 1 : -1, speed: 4 + R() * 2.5, phase: R() * 500, trail: 4 }); });
+  ramps.forEach((curve, k) => { const len = curve.getLength(); for (let n = 0; n < 7; n++) cars.push({ kind: "c", curve, len, dir: 1, speed: 3 + R(), phase: R() * len, trail: 3 }); });
   const CAR = ["#e8e8ea", "#1b1c20", "#a9adb3", "#7d828a", "#b3262b", "#2a4d8f", "#f4f4f4", "#3a3d42"].map((c) => new THREE.Color(c));
   const carBody = new THREE.InstancedMesh(new THREE.BoxGeometry(.15, .09, .32), new THREE.MeshStandardMaterial({ roughness: .35, metalness: .5 }), cars.length);
   cars.forEach((c, i) => carBody.setColorAt(i, CAR[i % CAR.length]));
@@ -1196,18 +1256,19 @@ function start() {
   function driveCars(time) {
     cars.forEach((c, i) => {
       let a;
-      if (c.kind === "c") { const u = (((c.phase + time * c.speed) % c.len) + c.len) % c.len / c.len; c.curve.getPointAt(u, cp); c.curve.getTangentAt(u, ct); cp.y += .18; a = Math.atan2(ct.x, ct.z); }
+      if (c.kind === "c") { const u = (((c.phase + time * c.speed) % c.len) + c.len) % c.len / c.len; c.curve.getPointAt(u, cp); c.curve.getTangentAt(u, ct); cp.y += .01; a = Math.atan2(ct.x, ct.z); }
       else {
         const [lo, hi] = c.kind === "x" ? [WEST, X1 + 2] : [Z0 - 2, Z1 + 2], len = hi - lo, s = (((c.phase + time * c.speed * c.dir) % len) + len) % len + lo;
         if (c.kind === "x") { cp.set(s, c.y, c.line); a = c.dir * Math.PI / 2; } else { cp.set(c.line, c.y, s); a = c.dir > 0 ? 0 : Math.PI; }
       }
-      const fx = Math.sin(a) * .17, fz = Math.cos(a) * .17;
-      dummy.rotation.set(0, a, 0);
+      const fx = Math.sin(a) * .17, fz = Math.cos(a) * .17, tr = c.trail || 1;   // fast traffic leaves a light streak
+      dummy.rotation.set(0, a, 0); dummy.scale.set(1, 1, 1);
       dummy.position.copy(cp).setY(cp.y + .045); dummy.updateMatrix(); carBody.setMatrixAt(i, dummy.matrix);
+      dummy.scale.set(1, 1, tr);
       dummy.position.set(cp.x + fx, cp.y + .05, cp.z + fz); dummy.updateMatrix(); headMesh.setMatrixAt(i, dummy.matrix);
-      dummy.position.set(cp.x - fx, cp.y + .05, cp.z - fz); dummy.updateMatrix(); tailMesh.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(cp.x - fx * tr, cp.y + .05, cp.z - fz * tr); dummy.updateMatrix(); tailMesh.setMatrixAt(i, dummy.matrix);
     });
-    dummy.rotation.set(0, 0, 0);
+    dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
     carBody.instanceMatrix.needsUpdate = headMesh.instanceMatrix.needsUpdate = tailMesh.instanceMatrix.needsUpdate = true;
   }
 
@@ -1216,6 +1277,7 @@ function start() {
   const lamps = [];
   ZL.forEach((z) => { for (let t = WEST + .6; t <= X1 + 2; t += 1.4) for (const sd of [-.78, .78]) if (terrain(t, z + sd) < .1) lamps.push(t, .35, z + sd); });
   XL.forEach((x) => { for (let t = Z0; t <= Z1 + 2; t += 1.4) for (const sd of [-.78, .78]) if (terrain(x + sd, t) < .1) lamps.push(x + sd, .35, t); });
+  lamps.push(...fwyLamps);                                             // tall sodium lamps over the freeways
   const lampGeo = new THREE.BufferGeometry(); lampGeo.setAttribute("position", new THREE.Float32BufferAttribute(lamps, 3));
   const lampMat = new THREE.PointsMaterial({ size: .55, map: sprite, color: "#ffab5e", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
   scene.add(new THREE.Points(lampGeo, lampMat));
@@ -1419,8 +1481,19 @@ function start() {
   const v3 = new THREE.Vector3();
   SPOT.project = (x, y, z) => { v3.set(x, y + 1.1, z).project(camera); return { x: (v3.x + 1) / 2 * innerWidth, y: (1 - v3.y) / 2 * innerHeight, ok: v3.z < 1 }; };
 
-  const composer = new EffectComposer(renderer);
+  // render into a multisampled target so edges stay smooth through the post effects
+  const pr = renderer.getPixelRatio();
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { samples: small ? 2 : 4, type: THREE.HalfFloatType }));
   composer.addPass(new RenderPass(scene, camera));
+  // ambient occlusion: contact shadows where walls meet streets and buildings crowd together
+  let gtao = null;
+  if (!small) {
+    gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+    gtao.updateGtaoMaterial({ radius: .9, distanceExponent: 1.4, thickness: 1.5, scale: 1.2, samples: 16 });
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    gtao.blendIntensity = .9;
+    composer.addPass(gtao);
+  }
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .4, .5, .6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -1470,7 +1543,7 @@ function start() {
   }
   addEventListener("resize", () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight, false); composer.setSize(innerWidth, innerHeight);
+    renderer.setSize(innerWidth, innerHeight, false); composer.setSize(innerWidth, innerHeight); gtao?.setSize(innerWidth, innerHeight);
     measure();
   });
   addEventListener("load", measure);
