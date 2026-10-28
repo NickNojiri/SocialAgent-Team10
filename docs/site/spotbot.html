@@ -7,59 +7,86 @@
 <meta name="description" content="SpotBot turns the food and place reels your friends share into spot cards your Discord server can vote on and plan from.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: dark;
-    --bg: #0f1016; --bg2: #161824; --line: #262a3a; --ink: #f2f3f7; --ink2: #a6abbd; --ink3: #6f7590;
-    --accent: #4E5BD8; --accent2: #8F99FF; --warm: #FF8A4C; --live: #f23f43;
-    --dc-bg: #313338; --dc-embed: #2b2d31; --dc-ink: #dbdee1; --dc-ink2: #b5bac1; --dc-link: #00a8fc;
-    --radius: 18px;
+    --bg: #06060c; --panel: rgba(14, 13, 30, .62); --line: rgba(255,255,255,.09);
+    --ink: #f6f6ff; --ink2: #b9bce0; --ink3: #7d80a8;
+    --violet: #7C5CFF; --pink: #FF3D8B; --orange: #FF8A4C; --cyan: #22D3EE; --lime: #A3E635; --yellow: #FFD23F;
+    --grad: linear-gradient(100deg, var(--violet), var(--pink) 55%, var(--orange));
+    --dc-bg: #313338; --dc-embed: #2b2d31; --dc-ink: #dbdee1; --dc-ink2: #b5bac1; --dc-link: #00a8fc; --live: #f23f43;
+    --radius: 22px;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif; overflow-x: hidden; }
-  h1, h2, h3 { font-family: "Bricolage Grotesque", Inter, sans-serif; line-height: 1.05; letter-spacing: -0.02em; margin: 0; }
-  a { color: var(--accent2); }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
-  .eyebrow { font: 600 13px/1 Inter, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--accent2); }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; transition: transform .15s, background .15s; }
-  .btn:hover { transform: translateY(-1px); }
-  .btn.primary { background: var(--accent); color: #fff; }
-  .btn.primary:hover { background: #5d6ae6; }
-  .btn.ghost { color: var(--ink); border: 1px solid var(--line); }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", Inter, sans-serif; line-height: 1.02; letter-spacing: -0.025em; margin: 0; }
+  a { color: var(--cyan); }
+  .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 12px/1 Inter, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--cyan); }
+  .eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--grad); border-radius: 2px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border-radius: 999px; font-weight: 700; text-decoration: none; transition: transform .2s, box-shadow .2s; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn.primary { background: var(--grad); color: #fff; box-shadow: 0 10px 40px -8px color-mix(in srgb, var(--pink) 70%, transparent); }
+  .btn.primary:hover { box-shadow: 0 16px 50px -6px color-mix(in srgb, var(--pink) 90%, transparent); }
+  .btn.ghost { color: var(--ink); border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.04); backdrop-filter: blur(10px); }
+  .glass { background: var(--panel); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); border: 1px solid var(--line); border-radius: var(--radius); }
 
-  /* scroll progress + nav */
-  .progress { position: fixed; top: 0; left: 0; height: 3px; width: 100%; z-index: 30; transform-origin: 0 50%; transform: scaleX(var(--sp, 0)); background: linear-gradient(90deg, var(--accent2), var(--warm)); }
-  nav { position: fixed; inset: 0 0 auto; z-index: 20; backdrop-filter: blur(12px); background: color-mix(in srgb, var(--bg) 70%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
-  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  /* the 3D city lives behind everything */
+  #city { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+  .vignette { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(6,6,12,.75) 100%), linear-gradient(transparent 70%, rgba(6,6,12,.6)); }
+  .page { position: relative; z-index: 1; }
+
+  /* progress bar, nav, chapter rail */
+  .progress { position: fixed; top: 0; left: 0; height: 3px; width: 100%; z-index: 40; transform-origin: 0 50%; transform: scaleX(var(--sp, 0)); background: var(--grad); box-shadow: 0 0 12px var(--pink); }
+  nav { position: fixed; inset: 0 0 auto; z-index: 30; }
+  nav .bar { max-width: 1240px; margin: 12px auto 0; padding: 0 16px; }
+  nav .in { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 10px 0 16px; border-radius: 999px; }
   .logo { display: flex; align-items: center; gap: 10px; font: 800 20px "Bricolage Grotesque", sans-serif; color: var(--ink); text-decoration: none; }
-  .logo i { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--warm)); display: grid; place-items: center; font-style: normal; font-size: 16px; }
-  nav .links { display: flex; gap: 22px; font-size: 14px; }
-  nav .links a { color: var(--ink2); text-decoration: none; }
-  nav .links a:hover { color: var(--ink); }
-  @media (max-width: 640px) { nav .links a:not(.gh) { display: none; } }
+  .logo i { width: 30px; height: 30px; border-radius: 10px; background: var(--grad); display: grid; place-items: center; font-style: normal; font-size: 15px; box-shadow: 0 0 20px color-mix(in srgb, var(--pink) 60%, transparent); }
+  nav .links { display: flex; gap: 6px; font-size: 14px; }
+  nav .links a { color: var(--ink2); text-decoration: none; padding: 7px 12px; border-radius: 999px; }
+  nav .links a:hover { color: var(--ink); background: rgba(255,255,255,.06); }
+  nav .links a.gh { color: #fff; background: rgba(255,255,255,.08); }
+  @media (max-width: 700px) { nav .links a:not(.gh) { display: none; } }
 
-  .livedot { display: inline-flex; align-items: center; gap: 6px; font: 700 11px/1 Inter, sans-serif; letter-spacing: .1em; color: #fff; background: var(--live); padding: 4px 8px; border-radius: 5px; }
+  .rail { position: fixed; right: 22px; top: 50%; translate: 0 -50%; z-index: 30; display: grid; gap: 14px; }
+  .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; text-decoration: none; color: var(--ink3); font: 600 12px Inter, sans-serif; }
+  .rail a span { opacity: 0; transform: translateX(6px); transition: .25s; white-space: nowrap; }
+  .rail a:hover span, .rail a.on span { opacity: 1; transform: none; color: var(--ink); }
+  .rail i { width: 16px; height: 16px; border-radius: 50%; flex: none; background: conic-gradient(var(--pink) calc(var(--p, 0) * 1turn), rgba(255,255,255,.16) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); transition: transform .25s; }
+  .rail a.on i { transform: scale(1.35); }
+  .rail a.done i { background: var(--lime); }
+  @media (max-width: 900px) { .rail { display: none; } }
+
+  .livedot { display: inline-flex; align-items: center; gap: 6px; font: 700 11px/1 Inter, sans-serif; letter-spacing: .1em; color: #fff; background: var(--live); padding: 4px 8px; border-radius: 5px; box-shadow: 0 0 16px color-mix(in srgb, var(--live) 70%, transparent); }
   .livedot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: blink 1.2s ease-in-out infinite; }
   @keyframes blink { 50% { opacity: .25; } }
 
-  /* ── hero: page scroll swipes the phone through reels; each lands in Discord as a card ── */
-  .hero { height: 560vh; position: relative; }
-  .stage { position: sticky; top: 0; height: 100vh; display: grid; grid-template-rows: auto 1fr; padding-top: 84px; overflow: hidden; }
-  .stage::before { content: ""; position: absolute; inset: -20% -10% auto; height: 80%; background: radial-gradient(50% 50% at 30% 40%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%), radial-gradient(40% 40% at 75% 60%, color-mix(in srgb, var(--glow, var(--warm)) 26%, transparent), transparent 70%); filter: blur(30px); z-index: -1; transition: background .6s; }
-  .hero-copy { text-align: center; padding: 0 16px; }
-  .hero-copy h1 { font-size: clamp(38px, 7vw, 84px); font-weight: 800; }
-  .hero-copy h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent2), var(--warm)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .hero-copy p { color: var(--ink2); font-size: clamp(16px, 2vw, 19px); max-width: 560px; margin: 16px auto 22px; }
-  .hero-copy .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .scene { position: relative; display: flex; align-items: center; justify-content: center; gap: clamp(20px, 6vw, 90px); padding: 20px 16px 0; }
+  /* scroll scenes: a tall wrapper with a sticky, full-screen stage inside */
+  .scene { position: relative; }
+  .sticky { position: sticky; top: 0; height: 100vh; overflow: hidden; display: flex; align-items: center; }
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  .scene h2 { font-size: clamp(34px, 5.4vw, 64px); margin-top: 14px; text-shadow: 0 4px 40px rgba(0,0,0,.6); }
+  .lede { color: var(--ink2); font-size: clamp(16px, 1.6vw, 19px); margin: 16px 0 0; max-width: 520px; text-shadow: 0 2px 20px rgba(0,0,0,.7); }
 
-  .phone { flex: none; aspect-ratio: 1 / 2; border-radius: 34px; padding: 9px; background: #05060a; border: 1px solid #2c3040; box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); position: relative; }
-  .screen { position: relative; height: 100%; border-radius: 26px; overflow: hidden; background: #000; }
+  /* ── 1. hero ── */
+  .hero .sticky { display: grid; grid-template-rows: auto 1fr; padding-top: 96px; }
+  .hero-copy { text-align: center; padding: 0 16px; }
+  .hero-copy h1 { font-size: clamp(40px, 7vw, 92px); font-weight: 800; text-shadow: 0 6px 50px rgba(0,0,0,.55); }
+  .hero-copy p { color: var(--ink2); font-size: clamp(16px, 2vw, 19px); max-width: 560px; margin: 18px auto 24px; text-shadow: 0 2px 20px rgba(0,0,0,.8); }
+  .hero-copy .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .stagebox { position: relative; display: flex; align-items: center; justify-content: center; gap: clamp(20px, 6vw, 80px); padding: 20px 16px 0; perspective: 1400px; }
+
+  .phone { flex: none; aspect-ratio: 1 / 2; border-radius: 36px; padding: 9px; background: linear-gradient(145deg, #2a2840, #08080f 40%, #1a1830); position: relative;
+           box-shadow: 0 40px 90px -20px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 60px -10px color-mix(in srgb, var(--glow, var(--orange)) 55%, transparent);
+           transform: rotateY(var(--ry, -16deg)) rotateX(var(--rx, 6deg)); transform-style: preserve-3d; transition: box-shadow .5s; }
+  .phone::after { content: ""; position: absolute; inset: 9px; border-radius: 28px; pointer-events: none; z-index: 4; background: linear-gradient(115deg, rgba(255,255,255,.18), transparent 32%, transparent 70%, rgba(255,255,255,.06)); }
+  .screen { position: relative; height: 100%; border-radius: 28px; overflow: hidden; background: #000; }
   .feed { position: absolute; inset: 0 0 auto; will-change: transform; }
   .slide { position: relative; overflow: hidden; }
-  .slide .food { position: absolute; left: 50%; top: 42%; translate: -50% -50%; font-size: clamp(54px, 9vh, 96px); filter: drop-shadow(0 18px 24px rgba(0,0,0,.45)); animation: bob 3.4s ease-in-out infinite; }
-  @keyframes bob { 50% { transform: translateY(-8px) rotate(-4deg) scale(1.04); } }
+  .slide .food { position: absolute; left: 50%; top: 42%; translate: -50% -50%; font-size: clamp(54px, 9vh, 100px); filter: drop-shadow(0 20px 26px rgba(0,0,0,.5)); animation: bob 3.4s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(-4deg) scale(1.05); } }
   .slide .cap { position: absolute; left: 12px; right: 40px; bottom: 30px; font-size: 12px; line-height: 1.35; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
   .slide .cap b { display: block; margin-bottom: 3px; }
   .slide .bar { position: absolute; left: 12px; right: 12px; bottom: 14px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.3); }
@@ -67,21 +94,23 @@
   .slide .side { position: absolute; right: 10px; bottom: 60px; display: grid; gap: 14px; font-size: 18px; color: #fff; }
   .topbar { position: absolute; inset: 0 0 auto; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; font: 700 14px Inter, sans-serif; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
   .scan { position: absolute; inset: 0; opacity: var(--so, 0); pointer-events: none; z-index: 1; }
-  .scan::after { content: ""; position: absolute; left: 0; right: 0; height: 40%; top: calc(var(--sy, 0) * 140% - 40%); background: linear-gradient(transparent, color-mix(in srgb, var(--accent2) 55%, transparent), transparent); }
+  .scan::after { content: ""; position: absolute; left: 0; right: 0; height: 40%; top: calc(var(--sy, 0) * 140% - 40%); background: linear-gradient(transparent, rgba(34,211,238,.6), transparent); mix-blend-mode: screen; }
   .chips { position: absolute; left: 14px; right: 14px; top: 46px; display: grid; gap: 7px; justify-items: start; z-index: 2; }
-  .chip { white-space: nowrap; font-size: 12px; padding: 6px 11px; border-radius: 999px; background: rgba(15,16,22,.72); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.14); color: #fff; opacity: 0; transform: translateY(-6px) scale(.96); transition: opacity .25s, transform .25s; }
+  .chip { white-space: nowrap; font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px; background: rgba(10,10,20,.72); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.16); color: #fff; opacity: 0; transform: translateY(-6px) scale(.96); transition: opacity .25s, transform .25s; }
   .chip.on { opacity: 1; transform: none; }
+  .chip.found { background: linear-gradient(100deg, var(--violet), var(--pink)); border-color: transparent; box-shadow: 0 6px 20px -4px var(--pink); }
 
-  .discord { flex: none; border-radius: 14px; overflow: hidden; background: var(--dc-bg); color: var(--dc-ink); box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); display: flex; flex-direction: column; font-size: 14px; }
+  .discord { flex: none; border-radius: 16px; overflow: hidden; background: var(--dc-bg); color: var(--dc-ink); display: flex; flex-direction: column; font-size: 14px;
+             box-shadow: 0 40px 90px -20px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.08); }
+  .hero .discord { transform: rotateY(var(--dy, 14deg)) rotateX(4deg); }
   .dc-top { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #1f2023; font-weight: 600; }
   .dc-top span { color: #80848e; font-weight: 400; }
   .dc-top .livedot { margin-left: auto; }
   .dc-body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; }
   .hero .dc-body { -webkit-mask-image: linear-gradient(transparent, #000 18%); mask-image: linear-gradient(transparent, #000 18%); }
-  .msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; }
+  .msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; animation: pop .35s ease both; }
   .msg[hidden] { display: none; }
-  .hero .msg { animation: pop .35s ease both; }
-  @keyframes pop { from { opacity: 0; transform: translateY(10px); } }
+  @keyframes pop { from { opacity: 0; transform: translateY(12px) scale(.98); } }
   .av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: 700; color: #fff; }
   .who { font-weight: 600; font-size: 14px; }
   .who small { font-weight: 400; color: #949ba4; font-size: 11px; margin-left: 6px; }
@@ -99,165 +128,226 @@
   .btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .btns span { font-size: 13px; padding: 4px 10px; border-radius: 4px; background: #4e5058; color: #fff; }
   .btns span.up { background: #248046; }
-  .btns span.up.bump { animation: bump .3s ease; }
-  @keyframes bump { 50% { transform: scale(1.18); } }
-  .flying { position: relative; z-index: 3; will-change: transform; transform-origin: 50% 50%; }
+  .bump { animation: bump .35s ease; }
+  @keyframes bump { 40% { transform: scale(1.22); } }
+  .flying { position: relative; z-index: 3; will-change: transform; }
 
-  .phone, .discord { height: clamp(250px, calc(100vh - 430px), 420px); }
-  .discord { width: min(440px, 52vw); }
+  .phone, .hero .discord { height: clamp(250px, calc(100vh - 440px), 420px); }
+  .hero .discord { width: min(440px, 52vw); }
   @media (min-width: 1100px) {
-    .stage { grid-template-columns: .85fr 1.15fr; grid-template-rows: 1fr; align-items: center; max-width: 1280px; margin: 0 auto; padding: 60px 24px 0; }
+    .hero .sticky { grid-template-columns: .85fr 1.15fr; grid-template-rows: 1fr; align-items: center; max-width: 1280px; margin: 0 auto; padding: 70px 70px 0 24px; }
     .hero-copy { text-align: left; padding: 0; }
-    .hero-copy h1 { font-size: clamp(48px, 5.2vw, 76px); }
+    .hero-copy h1 { font-size: clamp(50px, 5.4vw, 82px); }
     .hero-copy p { margin-left: 0; }
     .hero-copy .cta { justify-content: flex-start; }
-    .scene { padding: 0; gap: 48px; }
-    .phone, .discord { height: min(460px, calc(100vh - 140px)); }
-    .discord { width: 400px; }
+    .stagebox { padding: 0; gap: 44px; }
+    .phone, .hero .discord { height: min(470px, calc(100vh - 150px)); }
+    .hero .discord { width: 400px; }
   }
-  .scroll-hint { position: absolute; bottom: 18px; left: 50%; translate: -50% 0; color: var(--ink3); font-size: 13px; opacity: calc(1 - var(--a, 0)); }
-  .reelcount { position: absolute; bottom: 18px; right: 24px; color: var(--ink3); font: 600 13px Inter, sans-serif; }
+  .hint { position: absolute; bottom: 20px; left: 50%; translate: -50% 0; color: var(--ink2); font-size: 13px; opacity: calc(1 - var(--a, 0)); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .hint::after { content: ""; width: 2px; height: 26px; border-radius: 2px; background: linear-gradient(var(--pink), transparent); animation: drip 1.4s ease-in-out infinite; }
+  @keyframes drip { 0% { transform: scaleY(0); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 51% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+  .reelcount { position: absolute; bottom: 22px; left: 24px; font: 700 13px Inter, sans-serif; color: var(--ink2); display: flex; gap: 6px; align-items: center; }
+  .reelcount b { display: inline-block; width: 22px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; position: relative; }
+  .reelcount b::after { content: ""; position: absolute; inset: 0; width: calc(var(--f, 0) * 100%); background: var(--grad); }
   @media (max-width: 760px) {
-    .scene { flex-direction: column; gap: 14px; padding-top: 6px; }
+    .stagebox { flex-direction: column; gap: 14px; padding-top: 6px; }
     .phone { height: clamp(200px, calc(100vh - 640px), 260px); border-radius: 24px; padding: 6px; }
+    .phone::after { inset: 6px; border-radius: 19px; }
     .screen { border-radius: 19px; }
     .slide .cap { font-size: 9px; bottom: 20px; left: 9px; right: 9px; }
     .slide .side, .topbar { display: none; }
     .chips { left: 8px; right: 8px; top: 10px; gap: 5px; }
     .chip { font-size: 9.5px; padding: 3px 7px; white-space: normal; }
-    .discord { width: 100%; max-width: 420px; height: 290px; font-size: 13px; }
+    .hero .discord { width: 100%; max-width: 420px; height: 290px; font-size: 13px; }
     .hero-copy p { margin: 10px auto 14px; }
     .hero-copy .cta, .reelcount { display: none; }
   }
 
-  /* ── sections ── */
-  section.block { padding: 110px 0; }
-  .head { max-width: 640px; margin-bottom: 44px; }
-  .head h2 { font-size: clamp(32px, 5vw, 54px); margin-top: 12px; }
-  .head p { color: var(--ink2); font-size: 18px; margin: 14px 0 0; }
-  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
-  .reveal.tilt { transform: perspective(900px) rotateX(22deg) translateY(50px) scale(.96); transform-origin: 50% 100%; }
-  .reveal.in { opacity: 1; transform: none; }
+  /* ── 2. how it works: a 3D carousel that dwells on each step ── */
+  .how .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .steplist { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 10px; }
+  .steplist li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; color: var(--ink3); transition: .3s; }
+  .steplist li b { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font: 800 18px "Bricolage Grotesque", sans-serif; background: rgba(255,255,255,.06); }
+  .steplist li .pb { grid-column: 2; height: 3px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .steplist li .pb i { display: block; height: 100%; width: calc(var(--f, 0) * 100%); background: var(--grad); }
+  .steplist li.on { color: var(--ink); background: rgba(255,255,255,.05); }
+  .steplist li.on b { background: var(--grad); color: #fff; box-shadow: 0 6px 24px -6px var(--pink); }
+  .carousel { height: 470px; perspective: 1200px; display: grid; place-items: center; }
+  .ring { position: relative; width: 300px; height: 380px; transform-style: preserve-3d; will-change: transform; }
+  .face { position: absolute; inset: 0; padding: 26px; border-radius: 26px; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column;
+          background: linear-gradient(160deg, rgba(40,34,90,.92), rgba(14,13,30,.94)); border: 1px solid rgba(255,255,255,.12);
+          box-shadow: 0 30px 80px -20px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.12); transition: filter .3s; }
+  .face .orb { width: 74px; height: 74px; border-radius: 22px; display: grid; place-items: center; font-size: 38px; box-shadow: 0 14px 40px -8px var(--o1); background: linear-gradient(135deg, var(--o1), var(--o2)); }
+  .face .num { position: absolute; right: 22px; top: 14px; font: 800 80px/1 "Bricolage Grotesque", sans-serif; color: rgba(255,255,255,.07); }
+  .face h3 { font-size: 28px; margin: 22px 0 8px; }
+  .face p { color: var(--ink2); margin: 0; font-size: 15px; }
+  .face .viz { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+  .face .viz span { font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); }
+  .face .viz .go { background: #248046; border-color: transparent; }
+  @media (max-width: 860px) { .how .grid { grid-template-columns: 1fr; gap: 0; } .steplist { display: none; } .carousel { height: 400px; } .ring { width: 250px; height: 330px; } }
 
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .step { background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; position: relative; }
-  .step .n { font: 800 64px/1 "Bricolage Grotesque", sans-serif; color: color-mix(in srgb, var(--accent) 45%, transparent); position: absolute; right: 18px; top: 12px; }
-  .step .ico { font-size: 34px; }
-  .step h3 { font-size: 23px; margin: 14px 0 8px; }
-  .step p { color: var(--ink2); margin: 0; }
-  .step:nth-child(2) { transition-delay: .12s; } .step:nth-child(3) { transition-delay: .24s; }
-  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
-
-  /* live feed wall */
-  .wallhead { display: flex; align-items: end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; }
-  .ticker { display: flex; align-items: center; gap: 12px; font: 600 15px Inter, sans-serif; color: var(--ink2); }
-  .ticker b { font: 800 28px "Bricolage Grotesque", sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; }
-  .wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; height: 640px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
-  .col { transform: translateY(calc(var(--s, 0) * var(--dir) * 220px)); will-change: transform; }
+  /* ── 3. live feed wall, tilted like a table and flattening as you scroll ── */
+  .live .sticky { flex-direction: column; justify-content: center; padding-top: 70px; }
+  .wallhead { display: flex; align-items: end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+  .ticker { display: flex; align-items: center; gap: 12px; padding: 12px 18px; font: 600 14px Inter, sans-serif; color: var(--ink2); }
+  .ticker b { font: 800 30px "Bricolage Grotesque", sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .wallstage { perspective: 1300px; }
+  .wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; height: min(58vh, 560px); overflow: hidden; transform: rotateX(calc(var(--wx, 30) * 1deg)) scale(var(--ws, .9)); transform-origin: 50% 70%;
+          -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
+  .col { transform: translateY(calc(var(--off, 0) * 1px)); will-change: transform; }
   .track { animation: drift var(--dur) linear infinite; }
   .col:nth-child(2) .track { animation-direction: reverse; }
-  .wall:hover .track { animation-play-state: paused; }
   @keyframes drift { to { transform: translateY(-50%); } }
-  .mini { background: var(--dc-embed); border-left: 4px solid var(--c); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; color: var(--dc-ink); position: relative; transition: box-shadow .3s, transform .3s; }
+  .mini { background: rgba(43,45,49,.94); border-left: 4px solid var(--c); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; color: var(--dc-ink); position: relative; transition: box-shadow .3s, transform .3s;
+          box-shadow: 0 10px 30px -12px rgba(0,0,0,.8); }
   .mini .t { font-weight: 700; color: #fff; }
   .mini .m { font-size: 12.5px; color: var(--dc-ink2); margin-top: 2px; }
   .mini .row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12.5px; }
   .mini .v { background: #248046; color: #fff; padding: 2px 9px; border-radius: 4px; }
   .mini .src { color: var(--dc-ink2); }
   .mini.gist .v { background: #4e5058; }
-  .mini.ping { box-shadow: 0 0 0 2px var(--accent2), 0 10px 40px -6px color-mix(in srgb, var(--accent2) 60%, transparent); transform: scale(1.03); }
-  .mini.ping::after { content: "NEW"; position: absolute; top: 10px; right: 10px; font: 700 10px Inter, sans-serif; letter-spacing: .08em; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; }
-  .note { color: var(--ink3); font-size: 13px; margin-top: 14px; }
-  @media (max-width: 800px) { .wall { grid-template-columns: 1fr 1fr; height: 560px; } .col:nth-child(3) { display: none; } }
+  .mini.ping { box-shadow: 0 0 0 2px var(--pink), 0 14px 50px -6px var(--pink); transform: scale(1.04); }
+  .mini.ping::after { content: "NEW"; position: absolute; top: 10px; right: 10px; font: 800 10px Inter, sans-serif; letter-spacing: .08em; background: var(--grad); color: #fff; padding: 3px 7px; border-radius: 5px; }
+  .note { color: var(--ink3); font-size: 13px; margin-top: 12px; text-align: center; }
+  @media (max-width: 800px) { .wall { grid-template-columns: 1fr 1fr; } .col:nth-child(3) { display: none; } }
 
-  .demo { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
-  .demo .discord { width: 100%; height: 560px; }
-  .demo .dc-body { justify-content: flex-start; overflow-y: auto; scrollbar-width: none; }
-  .demo .msg { animation: pop .45s ease both; }
-  .replay { margin-top: 18px; background: none; border: 1px solid var(--line); color: var(--ink); padding: 10px 18px; border-radius: 999px; font: inherit; cursor: pointer; }
-  .replay:hover { border-color: var(--accent2); }
-  .demo ul { color: var(--ink2); padding-left: 20px; }
-  .demo li { margin: 8px 0; }
-  @media (max-width: 860px) { .demo { grid-template-columns: 1fr; } .demo .discord { height: 520px; } }
+  /* ── 4. demo chat, played by scrolling ── */
+  .demo .grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 50px; align-items: center; }
+  .timeline { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 4px; }
+  .timeline li { display: flex; align-items: center; gap: 12px; color: var(--ink3); font-weight: 500; transition: color .25s; }
+  .timeline li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; flex: none; transition: .25s; }
+  .timeline li.on { color: var(--ink); }
+  .timeline li.on::before { background: var(--pink); border-color: var(--pink); box-shadow: 0 0 12px var(--pink); }
+  .timebar { margin-top: 18px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; max-width: 360px; }
+  .timebar i { display: block; height: 100%; width: calc(var(--t, 0) * 100%); background: var(--grad); }
+  .demo .discord { width: 100%; height: min(78vh, 600px); transform: perspective(1400px) rotateY(-8deg) rotateX(3deg); }
+  .demo .dc-body { justify-content: flex-start; overflow: hidden; }
+  .soon { display: inline-block; margin-top: 16px; font-size: 13px; color: var(--ink3); }
+  @media (max-width: 860px) { .demo .grid { grid-template-columns: 1fr; gap: 16px; } .demo .timeline, .demo .lede { display: none; } .demo .discord { height: 66vh; transform: none; } }
 
   /* tie picker */
-  .picker { margin-top: 6px; background: linear-gradient(135deg, #2e2350, #1e2a52); border-radius: 10px; padding: 14px; text-align: center; position: relative; overflow: hidden; max-width: 400px; }
-  .picker .lbl { font-size: 12px; color: #c9c6ff; letter-spacing: .08em; text-transform: uppercase; }
-  .reelwin { height: 46px; overflow: hidden; margin: 8px auto; border-radius: 8px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); position: relative; }
+  .picker { margin-top: 6px; background: linear-gradient(135deg, #3a1f7a, #7a1f5a); border-radius: 12px; padding: 14px; text-align: center; position: relative; overflow: hidden; max-width: 400px; box-shadow: 0 10px 40px -10px var(--pink); }
+  .picker .lbl { font-size: 12px; font-weight: 700; color: #ffd6ec; letter-spacing: .1em; text-transform: uppercase; }
+  .reelwin { height: 46px; overflow: hidden; margin: 8px auto; border-radius: 8px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.15); position: relative; }
   .reelwin::before, .reelwin::after { content: ""; position: absolute; left: 0; right: 0; height: 12px; z-index: 1; }
-  .reelwin::before { top: 0; background: linear-gradient(#1c1838, transparent); }
-  .reelwin::after { bottom: 0; background: linear-gradient(transparent, #1c1838); }
-  .strip div { height: 46px; line-height: 46px; font: 700 19px "Bricolage Grotesque", sans-serif; color: #fff; }
-  .picker .won { font-weight: 600; color: #fff; min-height: 22px; }
+  .reelwin::before { top: 0; background: linear-gradient(#2a1650, transparent); }
+  .reelwin::after { bottom: 0; background: linear-gradient(transparent, #2a1650); }
+  .strip div { height: 46px; line-height: 46px; font: 800 19px "Bricolage Grotesque", sans-serif; color: #fff; }
+  .picker .won { font-weight: 700; color: #fff; min-height: 22px; transition: transform .3s; }
+  .picker .won.pop { animation: bump .5s ease; }
   .confetti { position: absolute; width: 7px; height: 11px; top: -12px; border-radius: 2px; animation: fall 1.6s ease-in forwards; }
   @keyframes fall { to { transform: translateY(220px) rotate(540deg); opacity: 0; } }
 
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; align-items: center; }
-  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
-  .gistcard { background: var(--dc-bg); padding: 18px; border-radius: 14px; max-width: 440px; }
+  /* ── 5. not a place: a reel that flips into its card ── */
+  .np .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; align-items: center; }
+  .flipbox { perspective: 1400px; display: grid; place-items: center; }
+  .flip { position: relative; width: 340px; height: 440px; transform-style: preserve-3d; transform: rotateY(calc(var(--fl, 0) * 1deg)) rotateX(calc(var(--fx, 0) * 1deg)); will-change: transform; }
+  .fside { position: absolute; inset: 0; border-radius: 26px; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 40px 90px -20px rgba(0,0,0,.85); }
+  .fside.front { background: linear-gradient(160deg, #2a1650, #6b2f8f 45%, #e077a5 85%); }
+  .fside.front .food { position: absolute; left: 50%; top: 40%; translate: -50% -50%; font-size: 110px; animation: bob 3.4s ease-in-out infinite; }
+  .fside.front .cap { position: absolute; left: 18px; right: 18px; bottom: 26px; color: #fff; font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .fside.front .verdict { position: absolute; left: 18px; top: 18px; padding: 8px 14px; border-radius: 999px; background: rgba(10,10,20,.75); border: 1px solid rgba(255,255,255,.18); font-weight: 700; font-size: 13px; opacity: var(--vo, 0); transform: translateY(calc((1 - var(--vo, 0)) * -8px)); }
+  .fside.back { transform: rotateY(180deg); background: var(--dc-bg); padding: 20px; display: flex; flex-direction: column; justify-content: center; }
+  .fside.back .filed { margin-top: 16px; align-self: flex-start; padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; color: #fff; background: linear-gradient(100deg, #5b5f6b, #8a8f9c); opacity: var(--bo, 0); transform: translateX(calc((1 - var(--bo, 0)) * -14px)); }
+  @media (max-width: 860px) { .np .grid { grid-template-columns: 1fr; gap: 16px; } .flip { width: 280px; height: 360px; } .np .lede { display: none; } }
 
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .stat { background: var(--bg2); padding: 28px 22px; }
-  .stat b { display: block; font: 800 clamp(40px, 5vw, 56px)/1 "Bricolage Grotesque", sans-serif; background: linear-gradient(90deg, var(--accent2), var(--warm)); -webkit-background-clip: text; background-clip: text; color: transparent; font-variant-numeric: tabular-nums; }
-  .stat span { display: block; margin-top: 10px; color: var(--ink); font-weight: 600; }
+  /* ── 6. numbers ── */
+  .nums .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 34px; }
+  .stat { opacity: 0; transform: translateY(40px) rotateX(30deg); transform-origin: 50% 100%; }
+  .stat .in { height: 100%; padding: 26px 22px; border-radius: 22px; transition: transform .15s; transform: perspective(900px) rotateX(var(--ty, 0deg)) rotateY(var(--tx, 0deg)); }
+  .stat b { display: block; font: 800 clamp(42px, 5vw, 62px)/1 "Bricolage Grotesque", sans-serif; font-variant-numeric: tabular-nums; }
+  .stat span { display: block; margin-top: 12px; color: var(--ink); font-weight: 700; }
   .stat small { display: block; margin-top: 4px; color: var(--ink3); font-size: 13px; line-height: 1.45; }
-  @media (max-width: 860px) { .stats { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 460px) { .stats { grid-template-columns: 1fr; } }
+  .bars { margin-top: 22px; padding: 22px 24px; display: grid; gap: 14px; }
+  .bars .row { display: grid; grid-template-columns: 150px 1fr 60px; gap: 14px; align-items: center; font-weight: 600; font-size: 14px; }
+  .bars .track2 { height: 14px; border-radius: 14px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .bars .track2 i { display: block; height: 100%; border-radius: 14px; width: calc(var(--w, 0) * 1%); }
+  .bars .rules i { background: #5b5f6b; }
+  .bars .ml i { background: var(--grad); box-shadow: 0 0 20px var(--pink); }
+  .bars .val { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 860px) { .nums .stats { grid-template-columns: 1fr 1fr; gap: 10px; } .stat .in { padding: 18px 16px; } .bars .row { grid-template-columns: 90px 1fr 46px; } }
 
-  .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .priv { padding: 24px; border-radius: var(--radius); border: 1px solid var(--line); }
-  .priv .ico { font-size: 28px; }
-  .priv h3 { font-size: 20px; margin: 10px 0 6px; }
+  /* ── 7. privacy + end ── */
+  .after { position: relative; padding: 120px 0 0; }
+  .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
+  .priv { padding: 26px; transform: perspective(900px) rotateX(var(--ty, 0deg)) rotateY(var(--tx, 0deg)); transition: transform .15s; }
+  .priv .ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 26px; background: linear-gradient(135deg, var(--o1), var(--o2)); box-shadow: 0 10px 30px -8px var(--o1); }
+  .priv h3 { font-size: 22px; margin: 16px 0 6px; }
   .priv p { margin: 0; color: var(--ink2); }
-  .priv:nth-child(2) { transition-delay: .1s; } .priv:nth-child(3) { transition-delay: .2s; }
   @media (max-width: 800px) { .privacy { grid-template-columns: 1fr; } }
-
-  .final { text-align: center; padding: 120px 0 90px; position: relative; }
-  .final::before { content: ""; position: absolute; inset: 10% 20%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 30%, transparent), transparent); filter: blur(40px); z-index: -1; }
-  .final h2 { font-size: clamp(36px, 6vw, 70px); }
-  .final p { color: var(--ink2); font-size: 18px; margin: 16px auto 26px; max-width: 520px; }
-  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--ink3); font-size: 14px; }
+  .reveal { opacity: 0; transform: perspective(900px) translateY(50px) rotateX(18deg); transform-origin: 50% 100%; transition: opacity .8s ease, transform .8s cubic-bezier(.2,.8,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .final { text-align: center; padding: 160px 0 120px; }
+  .final h2 { font-size: clamp(40px, 7vw, 96px); text-shadow: 0 6px 60px rgba(0,0,0,.6); }
+  .final p { color: var(--ink2); font-size: 18px; margin: 18px auto 30px; max-width: 520px; }
+  footer { position: relative; border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--ink3); font-size: 14px; background: rgba(6,6,12,.7); backdrop-filter: blur(10px); }
   footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   footer a { color: var(--ink2); }
 
+  /* dark backdrops so text stays readable over the glowing city */
+  .how .sticky, .demo .sticky, .np .sticky { background: linear-gradient(90deg, rgba(6,6,12,.86) 0%, rgba(6,6,12,.6) 45%, rgba(6,6,12,.25) 100%); }
+  .live .sticky, .nums .sticky { background: radial-gradient(90% 80% at 50% 50%, rgba(6,6,12,.72), rgba(6,6,12,.45)); }
+  .hero .sticky { background: linear-gradient(90deg, rgba(6,6,12,.7), rgba(6,6,12,.15) 55%, transparent); }
+  @media (max-width: 860px) { .how .sticky, .demo .sticky, .np .sticky { background: rgba(6,6,12,.62); } }
+  .after { background: linear-gradient(rgba(6,6,12,.2), rgba(6,6,12,.6) 30%, rgba(6,6,12,.35)); }
+
   @media (prefers-reduced-motion: reduce) {
-    .hero { height: auto; }
-    .stage { position: relative; height: auto; padding-bottom: 60px; }
-    .reveal, .reveal.tilt { opacity: 1; transform: none; transition: none; }
-    .slide .food, .msg, .track, .livedot::before { animation: none !important; }
-    .wall { height: auto; max-height: 640px; }
-    .scroll-hint, .reelcount { display: none; }
+    .scene { height: auto !important; }
+    .sticky { position: relative; height: auto; min-height: 100vh; padding: 100px 0; }
+    .reveal, .stat { opacity: 1 !important; transform: none !important; transition: none; }
+    .slide .food, .fside.front .food, .msg, .track, .livedot::before, .hint::after { animation: none !important; }
+    .hint, .reelcount { display: none; }
   }
 </style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
 </head>
 <body>
+<canvas id="city" aria-hidden="true"></canvas>
+<div class="vignette"></div>
 <div class="progress" id="progress"></div>
 
 <nav>
-  <div class="wrap">
-    <a class="logo" href="#top"><i>📍</i>SpotBot</a>
-    <div class="links">
-      <a href="#how">How it works</a>
-      <a href="#live">Live feed</a>
-      <a href="#demo">Demo</a>
-      <a href="#numbers">Numbers</a>
-      <a class="gh" href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub ↗</a>
+  <div class="bar">
+    <div class="in glass">
+      <a class="logo" href="#top"><i>📍</i>SpotBot</a>
+      <div class="links">
+        <a href="#how">How it works</a>
+        <a href="#live">Live feed</a>
+        <a href="#demo">Demo</a>
+        <a href="#numbers">Numbers</a>
+        <a class="gh" href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub ↗</a>
+      </div>
     </div>
   </div>
 </nav>
 
+<div class="rail" id="rail">
+  <a href="#top"><span>Reel to card</span><i></i></a>
+  <a href="#how"><span>How it works</span><i></i></a>
+  <a href="#live"><span>Live feed</span><i></i></a>
+  <a href="#demo"><span>Demo</span><i></i></a>
+  <a href="#np"><span>Not a place</span><i></i></a>
+  <a href="#numbers"><span>Numbers</span><i></i></a>
+</div>
+
+<main class="page">
+
 <!-- 1. Hero: scrolling swipes through reels; each lands in the chat as a spot card -->
-<header class="hero" id="top">
-  <div class="stage" id="stage">
+<section class="scene hero" id="top" data-scene="hero" style="height:560vh">
+  <div class="sticky" id="stage">
     <div class="hero-copy">
-      <h1>Stop sending reels.<br><em>Start going places.</em></h1>
+      <h1>Stop sending reels.<br><span class="grad">Start going places.</span></h1>
       <p>Your group chat is full of food reels nobody goes to. SpotBot turns each one into a spot card your Discord server can vote on, then plans the outing.</p>
       <div class="cta">
         <a class="btn primary" href="#demo">See it work</a>
         <a class="btn ghost" href="https://github.com/NickNojiri/SocialAgent-Team10">View on GitHub</a>
       </div>
     </div>
-    <div class="scene">
+    <div class="stagebox">
       <div class="phone" id="phone">
         <div class="screen">
           <div class="topbar"><span>Reels</span><span>📷</span></div>
@@ -266,7 +356,7 @@
           <div class="chips">
             <div class="chip">🎙️ Listening to the audio</div>
             <div class="chip">🔤 Reading the caption</div>
-            <div class="chip" id="foundChip">📍 Found it</div>
+            <div class="chip found" id="foundChip">📍 Found it</div>
           </div>
         </div>
       </div>
@@ -275,72 +365,106 @@
         <div class="dc-body" id="heroBody"></div>
       </div>
     </div>
-    <div class="scroll-hint">Scroll to swipe through reels ↓</div>
-    <div class="reelcount" id="reelcount">Reel 1 of 3</div>
+    <div class="hint">Scroll to swipe</div>
+    <div class="reelcount" id="reelcount"></div>
   </div>
-</header>
+</section>
 
 <!-- 2. How it works -->
-<section class="block" id="how">
-  <div class="wrap">
-    <div class="head reveal"><div class="eyebrow">How it works</div><h2>Three steps from "we should go" to going.</h2></div>
-    <div class="steps">
-      <div class="step reveal tilt"><div class="n">1</div><div class="ico">📲</div><h3>Share a reel</h3><p>Paste an Instagram or TikTok link in your server, or DM it to SpotBot on Instagram.</p></div>
-      <div class="step reveal tilt"><div class="n">2</div><div class="ico">🧠</div><h3>SpotBot reads it</h3><p>It listens to what's said, reads the caption and the text on screen, and works out which place it's about.</p></div>
-      <div class="step reveal tilt"><div class="n">3</div><div class="ico">🗳️</div><h3>Vote, then plan</h3><p>Everyone taps 👍 on the spots they want. <code>/plan</code> picks one for the group.</p></div>
+<section class="scene how" id="how" data-scene="how" style="height:320vh">
+  <div class="sticky">
+    <div class="wrap grid">
+      <div>
+        <div class="eyebrow">How it works</div>
+        <h2>Three steps from<br><span class="grad">"we should go"</span> to going.</h2>
+        <ol class="steplist" id="steplist">
+          <li><b>1</b><span>Share a reel</span><div class="pb"><i></i></div></li>
+          <li><b>2</b><span>SpotBot reads it</span><div class="pb"><i></i></div></li>
+          <li><b>3</b><span>Vote, then plan</span><div class="pb"><i></i></div></li>
+        </ol>
+      </div>
+      <div class="carousel">
+        <div class="ring" id="ring">
+          <div class="face" style="--o1:#FF3D8B;--o2:#FF8A4C"><div class="num">1</div><div class="orb">📲</div><h3>Share a reel</h3><p>Paste an Instagram or TikTok link in your server, or DM it to SpotBot on Instagram.</p><div class="viz"><span>instagram.com/reel/… ↵</span></div></div>
+          <div class="face" style="--o1:#7C5CFF;--o2:#22D3EE"><div class="num">2</div><div class="orb">🧠</div><h3>SpotBot reads it</h3><p>It listens to what's said, reads the caption and the on-screen text, and works out the place.</p><div class="viz"><span>🎙️ speech</span><span>🔤 caption</span><span>🖼️ on-screen text</span></div></div>
+          <div class="face" style="--o1:#A3E635;--o2:#22D3EE"><div class="num">3</div><div class="orb">🗳️</div><h3>Vote, then plan</h3><p>Everyone taps 👍 on the spots they want, and <code>/plan</code> picks one for the group.</p><div class="viz"><span class="go">👍 4</span><span>👎</span><span>📅 Lock it in</span></div></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- 3. Live feed wall -->
-<section class="block" id="live" style="padding-top:40px">
-  <div class="wrap">
-    <div class="wallhead reveal">
-      <div class="head" style="margin:0"><div class="eyebrow">Live feed</div><h2>Every reel, a card.</h2><p>As fast as your friends send them. Places go to the vote; skits and memes get a 💭 card and stay out of the way.</p></div>
-      <div class="ticker"><span class="livedot">LIVE</span><span><b id="made">0</b> cards made</span></div>
+<section class="scene live" id="live" data-scene="live" style="height:300vh">
+  <div class="sticky">
+    <div class="wrap">
+      <div class="wallhead">
+        <div><div class="eyebrow">Live feed</div><h2>Every reel, <span class="grad">a card.</span></h2></div>
+        <div class="ticker glass"><span class="livedot">LIVE</span><span><b id="made">0</b> cards made</span></div>
+      </div>
+      <div class="wallstage"><div class="wall" id="wall"></div></div>
+      <p class="note">A simulation, using real places from the reels we hand-labeled.</p>
     </div>
-    <div class="wall reveal" id="wall"></div>
-    <p class="note">A simulation, using real places from the reels we hand-labeled. Hover to pause.</p>
   </div>
 </section>
 
-<!-- 4. Demo chat -->
-<section class="block" id="demo" style="background:linear-gradient(transparent, var(--bg2) 20%, var(--bg2) 80%, transparent)">
-  <div class="wrap demo">
-    <div class="reveal">
-      <div class="eyebrow">Demo</div>
-      <h2 style="font-size:clamp(32px,5vw,54px);margin-top:12px">Friday night, settled in a minute.</h2>
-      <p style="color:var(--ink2);font-size:18px">Two friends share two reels. The server votes. It's a tie, so SpotBot spins for it.</p>
-      <ul>
-        <li>Cards look the way the bot really draws them: the place, a short description, a map link and the buttons.</li>
-        <li>Votes are per person, so one friend can't stuff the ballot.</li>
-        <li>Ties get settled by a random pick, out in the open. <i>(The tie-breaker is the next feature we're building; this is how it will look.)</i></li>
-      </ul>
-      <button class="replay" id="replay">↻ Play it again</button>
-    </div>
-    <div class="discord reveal tilt" aria-label="A demo Discord channel">
-      <div class="dc-top"># weekend-plans <span>· demo</span></div>
-      <div class="dc-body" id="demoBody"></div>
+<!-- 4. Demo chat, played by scrolling -->
+<section class="scene demo" id="demo" data-scene="demo" style="height:440vh">
+  <div class="sticky">
+    <div class="wrap grid">
+      <div>
+        <div class="eyebrow">Demo</div>
+        <h2>Friday night,<br><span class="grad">settled by scrolling.</span></h2>
+        <p class="lede">Two friends share two reels, the server votes, and a tie gets spun for. Keep scrolling to play it.</p>
+        <ol class="timeline" id="timeline">
+          <li data-at=".04">Maya shares a reel</li>
+          <li data-at=".12">SpotBot makes a card</li>
+          <li data-at=".22">Jordan shares another</li>
+          <li data-at=".38">The server votes</li>
+          <li data-at=".56">It's a tie → /plan</li>
+          <li data-at=".64">SpotBot spins for it</li>
+          <li data-at=".9">Friday is set 🎉</li>
+        </ol>
+        <div class="timebar" id="timebar"><i></i></div>
+        <span class="soon">The tie-breaker spin is the next feature we're building; this is how it will look.</span>
+      </div>
+      <div class="discord" aria-label="A demo Discord channel">
+        <div class="dc-top"># weekend-plans <span>· demo</span></div>
+        <div class="dc-body" id="demoBody"></div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- 5. Not a place -->
-<section class="block">
-  <div class="wrap split">
-    <div class="reveal">
-      <div class="eyebrow">Not every reel is a place</div>
-      <h2 style="font-size:clamp(32px,5vw,50px);margin-top:12px">Skits and memes don't break it.</h2>
-      <p style="color:var(--ink2);font-size:18px">When a reel isn't about a place, SpotBot still says what it's about in a plain card and files it under 💭, out of the way of the spots you'll actually vote on.</p>
-    </div>
-    <div class="gistcard reveal tilt">
-      <div class="msg">
-        <div class="av" style="background:var(--accent)">📍</div>
-        <div><div class="who">SpotBot<span class="tag">APP</span></div>
-          <div class="embed" style="--c:#888780">
-            <div class="t">This wedding got out of hand</div>
-            <div class="d">💬 Story<br><br>A toast at a wedding reception goes sideways, and the guests can't look away.<br><br><a href="#">▶ Watch the reel</a></div>
-            <div class="foot">💭 Not a place, so it's under 💭 in /catalog · shared by jordan</div>
+<section class="scene np" id="np" data-scene="np" style="height:260vh">
+  <div class="sticky">
+    <div class="wrap grid">
+      <div>
+        <div class="eyebrow">Not every reel is a place</div>
+        <h2>Skits and memes<br><span class="grad">don't break it.</span></h2>
+        <p class="lede">When a reel isn't about a place, SpotBot still says what it's about in a plain card and files it under 💭, out of the way of the spots you'll vote on.</p>
+      </div>
+      <div class="flipbox">
+        <div class="flip" id="flip">
+          <div class="fside front">
+            <div class="verdict">🤔 No place in this one</div>
+            <div class="food">💍</div>
+            <div class="cap"><b>@demo.weddings</b><br>this wedding got out of hand 😭</div>
+            <div class="scan" id="npScan"></div>
+          </div>
+          <div class="fside back">
+            <div class="msg">
+              <div class="av" style="background:var(--violet)">📍</div>
+              <div><div class="who">SpotBot<span class="tag">APP</span></div>
+                <div class="embed" style="--c:#888780">
+                  <div class="t">This wedding got out of hand</div>
+                  <div class="d">💬 Story<br><br>A toast at a wedding reception goes sideways, and the guests can't look away.<br><br><a href="#">▶ Watch the reel</a></div>
+                  <div class="foot">💭 Not a place · shared by jordan</div>
+                </div>
+              </div>
+            </div>
+            <div class="filed">💭 Filed under Not a place</div>
           </div>
         </div>
       </div>
@@ -349,45 +473,51 @@
 </section>
 
 <!-- 6. Numbers -->
-<section class="block" id="numbers">
-  <div class="wrap">
-    <div class="head reveal"><div class="eyebrow">By the numbers</div><h2>Measured, not guessed.</h2><p>We hand-labeled hundreds of real reels and test against a split the model never trains on.</p></div>
-    <div class="stats reveal tilt" id="stats">
-      <div class="stat"><b data-count="74" data-suffix="%">74%</b><span>Right place, 3 in 4 reels</span><small>Our trained model on 271 held-out dev reels. Hand-written rules alone: 62%.</small></div>
-      <div class="stat"><b>~0.3s</b><span>Per reel</span><small>On a laptop CPU, no LLM needed for the place name.</small></div>
-      <div class="stat"><b>0</b><span>Posts sent to outside AI services</span><small>The language models and the database run on our own machine.</small></div>
-      <div class="stat"><b data-count="1196">1,196</b><span>Automated tests</span><small>Run on every change, including security checks on who can read and vote.</small></div>
+<section class="scene nums" id="numbers" data-scene="numbers" style="height:260vh">
+  <div class="sticky">
+    <div class="wrap">
+      <div class="eyebrow">By the numbers</div>
+      <h2>Measured, <span class="grad">not guessed.</span></h2>
+      <div class="stats" id="stats">
+        <div class="stat"><div class="in glass"><b class="grad" data-to="74" data-suffix="%">0%</b><span>Right place, 3 in 4 reels</span><small>Our trained model on 271 held-out dev reels.</small></div></div>
+        <div class="stat"><div class="in glass"><b class="grad" data-to="0.3" data-dec="1" data-prefix="~" data-suffix="s">~0.0s</b><span>Per reel</span><small>On a laptop CPU, no LLM needed for the place name.</small></div></div>
+        <div class="stat"><div class="in glass"><b class="grad" data-from="100" data-to="0">100</b><span>…make that 0 posts sent out</span><small>The language models and the database run on our own machine.</small></div></div>
+        <div class="stat"><div class="in glass"><b class="grad" data-to="1196">0</b><span>Automated tests</span><small>Including checks on who can read and vote.</small></div></div>
+      </div>
+      <div class="bars glass" id="bars">
+        <div class="row rules"><span>Hand-written rules</span><div class="track2"><i></i></div><span class="val">0%</span></div>
+        <div class="row ml"><span>SpotBot's model</span><div class="track2"><i></i></div><span class="val">0%</span></div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- 7. Privacy -->
-<section class="block" id="privacy" style="padding-top:20px">
+<!-- 7. Privacy + final -->
+<section class="after" id="privacy">
   <div class="wrap">
-    <div class="head reveal"><div class="eyebrow">Privacy</div><h2>Your reels stay yours.</h2></div>
+    <div class="reveal"><div class="eyebrow">Privacy</div><h2 style="font-size:clamp(34px,5.4vw,64px);margin-top:14px">Your reels <span class="grad">stay yours.</span></h2></div>
     <div class="privacy">
-      <div class="priv reveal tilt"><div class="ico">🖥️</div><h3>Runs locally</h3><p>Post text is read by models on our own computer, never sent to an outside AI company.</p></div>
-      <div class="priv reveal tilt"><div class="ico">🚫</div><h3>No ads, no selling</h3><p>SpotBot only sees what you send it, and doesn't sell or share it.</p></div>
-      <div class="priv reveal tilt"><div class="ico">🗑️</div><h3>Delete anytime</h3><p>A server admin can wipe the server's data with one command.</p></div>
+      <div class="priv glass reveal" data-tilt style="--o1:#7C5CFF;--o2:#22D3EE"><div class="ico">🖥️</div><h3>Runs locally</h3><p>Post text is read by models on our own computer, never sent to an outside AI company.</p></div>
+      <div class="priv glass reveal" data-tilt style="--o1:#FF3D8B;--o2:#FF8A4C"><div class="ico">🚫</div><h3>No ads, no selling</h3><p>SpotBot only sees what you send it, and doesn't sell or share it.</p></div>
+      <div class="priv glass reveal" data-tilt style="--o1:#A3E635;--o2:#22D3EE"><div class="ico">🗑️</div><h3>Delete anytime</h3><p>A server admin can wipe the server's data with one command.</p></div>
     </div>
   </div>
+  <div class="final">
+    <div class="wrap reveal">
+      <h2>Turn the group chat<br><span class="grad">into plans.</span></h2>
+      <p>SpotBot is a CSULB capstone project built by a four-person team. The code is open.</p>
+      <a class="btn primary" href="https://github.com/NickNojiri/SocialAgent-Team10">View on GitHub</a>
+    </div>
+  </div>
+  <footer>
+    <div class="wrap">
+      <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok or Discord.</span>
+      <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a></span>
+    </div>
+  </footer>
 </section>
 
-<!-- 8. Final CTA -->
-<section class="final">
-  <div class="wrap reveal">
-    <h2>Turn the group chat<br>into plans.</h2>
-    <p>SpotBot is a CSULB capstone project built by a four-person team. The code is open.</p>
-    <a class="btn primary" href="https://github.com/NickNojiri/SocialAgent-Team10">View on GitHub</a>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap">
-    <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok or Discord.</span>
-    <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a></span>
-  </div>
-</footer>
+</main>
 
 <script>
 (() => {
@@ -395,7 +525,11 @@
   const clamp = (x) => Math.max(0, Math.min(1, x));
   const range = (p, a, b) => clamp((p - a) / (b - a));
   const ease = (x) => 1 - Math.pow(1 - x, 3);
+  const smooth = (x) => x * x * (3 - 2 * x);
   const $ = (id) => document.getElementById(id);
+  const bump = (el) => { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); };
+  // Shared with the 3D city (module script below): how far through each scene we are.
+  const SPOT = window.SPOT = { hero: 0, how: 0, live: 0, demo: 0, np: 0, numbers: 0 };
 
   // Real places from the hand-labeled reels; demo handles are made up.
   const REELS = [
@@ -403,84 +537,92 @@
       handle: "@demo.foodie", cap: "the broth here is unreal 🍜 ramen night in long beach",
       venue: "Jounetsu Ramen", emoji: "🍽️", cat: "food drink", color: "#D85A30",
       desc: "A ramen spot in Long Beach that the reel is all about.", sharer: "maya", sc: "#e67e22", votes: 4 },
-    { food: "🧋", bg: "linear-gradient(160deg,#3b1530,#8f2f62 40%,#e077a5 75%,#f7c6da)", glow: "#F472B6",
+    { food: "🧋", bg: "linear-gradient(160deg,#3b1530,#8f2f62 40%,#e077a5 75%,#f7c6da)", glow: "#FF3D8B",
       handle: "@demo.cafes", cap: "found my new study spot ☕ long beach",
       venue: "Pura Vida", emoji: "🍰", cat: "cafe dessert", color: "#D4537E",
       desc: "A Long Beach cafe the reel shows off, drinks and all.", sharer: "jordan", sc: "#16a085", votes: 3 },
-    { food: "🌮", bg: "linear-gradient(160deg,#10301c,#1d6b3a 40%,#8cc152 75%,#f2d94e)", glow: "#8cc152",
+    { food: "🌮", bg: "linear-gradient(160deg,#10301c,#1d6b3a 40%,#8cc152 75%,#f2d94e)", glow: "#A3E635",
       handle: "@demo.eats", cap: "late night tacos in anaheim hit different 🌮",
       venue: "Taco Land", emoji: "🍽️", cat: "food drink", color: "#D85A30",
       desc: "A taco spot in Anaheim that the reel is all about.", sharer: "ari", sc: "#c0392b", votes: 5 },
   ];
-
   const cardHTML = (s, id) => `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="d">📝 ${s.desc}<br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.sharer} · via Instagram</div></div><div class="btns"><span class="up" id="${id}">👍 <b>0</b></span><span>👎</span><span>📅 Lock it in</span></div>`;
   const av = (t, bg) => `<div class="av" style="background:${bg}">${t}</div>`;
+  const scenes = [...document.querySelectorAll("[data-scene]")];
+  const progressOf = (el) => { if (reduce) return 1; const r = el.getBoundingClientRect(); return clamp(-r.top / Math.max(1, r.height - innerHeight)); };
 
-  // ── progress bar ──
-  const bar = $("progress");
-  const setProgress = () => bar.style.setProperty("--sp", scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight));
-
-  // ── hero ──
-  const hero = document.querySelector(".hero"), stage = $("stage"), phone = $("phone"), feed = $("feed"), scan = $("scan");
-  const heroBody = $("heroBody"), chips = [...document.querySelectorAll(".chip")], foundChip = $("foundChip"), reelcount = $("reelcount");
-  const N = REELS.length, SEG = .3;           // each reel gets 30% of the hero's scroll; the last 10% is for votes
+  // ── 1. hero ──
+  const stage = $("stage"), phone = $("phone"), feed = $("feed"), scan = $("scan"), heroBody = $("heroBody");
+  const chips = [...document.querySelectorAll(".hero .chip")], foundChip = $("foundChip"), reelcount = $("reelcount");
+  const N = REELS.length, SEG = .3;              // each reel gets 30% of the hero's scroll; the last 10% is for votes
   feed.style.height = `${N * 100}%`;
   feed.innerHTML = REELS.map((r, i) => `<div class="slide" style="height:${100 / N}%;background:${r.bg}"><div class="food">${r.food}</div><div class="side">♡<br>💬<br>↗</div><div class="cap"><b>${r.handle}</b>${r.cap}</div><div class="bar"><span id="bar${i}"></span></div></div>`).join("");
   heroBody.innerHTML = REELS.map((r, i) =>
     `<div class="msg" id="share${i}" hidden>${av(r.sharer[0].toUpperCase(), r.sc)}<div><div class="who">${r.sharer} <small>just now</small></div><div class="link">instagram.com/reel/…</div></div></div>` +
-    `<div class="msg" id="post${i}" hidden>${av("📍", "var(--accent)")}<div><div class="who">SpotBot<span class="tag">APP</span></div><div class="flying" id="fly${i}">${cardHTML(r, "hv" + i)}</div></div></div>`).join("");
+    `<div class="msg" id="post${i}" hidden>${av("📍", "var(--violet)")}<div><div class="who">SpotBot<span class="tag">APP</span></div><div class="flying" id="fly${i}">${cardHTML(r, "hv" + i)}</div></div></div>`).join("");
+  reelcount.innerHTML = REELS.map((_, i) => `<b id="rc${i}"></b>`).join("") + `<span id="rcText"></span>`;
   const lastVotes = REELS.map(() => 0);
 
-  function heroFrame() {
-    let p;
-    if (reduce) p = 1; else { const r = hero.getBoundingClientRect(); p = clamp(-r.top / (r.height - innerHeight)); }
-    stage.style.setProperty("--a", range(p, 0, .04));
-    const cur = Math.min(N - 1, Math.floor(p / SEG));
-    const t = range(p, cur * SEG, (cur + 1) * SEG);   // progress through the current reel
-
-    // swipe up to the next reel at the start of each segment
+  function hero(p) {
+    stage.style.setProperty("--a", range(p, 0, .03));
+    const cur = Math.min(N - 1, Math.floor(p / SEG)), t = range(p, cur * SEG, (cur + 1) * SEG);
     let pos = 0;
     for (let i = 1; i < N; i++) pos += ease(range(p, i * SEG, i * SEG + .05));
     feed.style.transform = `translateY(${-pos * 100 / N}%)`;
-    stage.style.setProperty("--glow", REELS[cur].glow);
-    reelcount.textContent = `Reel ${cur + 1} of ${N}`;
-
-    REELS.forEach((r, i) => { $("bar" + i).style.width = range(p, i * SEG + .03, i * SEG + .22) * 100 + "%"; });
-
-    // SpotBot reads it: a scan line sweeps, then the chips light up one by one
+    phone.style.setProperty("--glow", REELS[cur].glow);
+    phone.style.setProperty("--ry", `${-16 + 26 * p}deg`);
+    phone.style.setProperty("--rx", `${6 - 4 * Math.sin(p * Math.PI * 3)}deg`);
+    document.querySelector(".hero .discord").style.setProperty("--dy", `${14 - 20 * p}deg`);
+    REELS.forEach((r, i) => {
+      const f = range(p, i * SEG + .03, i * SEG + .22);
+      $("bar" + i).style.width = f * 100 + "%";
+      $("rc" + i).style.setProperty("--f", range(p, i * SEG, (i + 1) * SEG));
+    });
+    $("rcText").textContent = `Reel ${cur + 1} of ${N}`;
     const sweep = range(t, .2, .55);
     scan.style.setProperty("--sy", sweep);
     scan.style.setProperty("--so", Math.sin(Math.PI * sweep));
     foundChip.textContent = "📍 Found: " + REELS[cur].venue;
     chips.forEach((c, k) => c.classList.toggle("on", t >= .28 + .1 * k && t < .97));
-
-    // the share and the card appear in the chat; the card flies in from the phone
     REELS.forEach((r, i) => {
       const share = $("share" + i), post = $("post" + i), fly = $("fly" + i);
-      const ti = range(p, i * SEG, (i + 1) * SEG);
-      share.hidden = !(reduce || ti >= .5 || p >= (i + 1) * SEG);
-      post.hidden = !(reduce || ti >= .6 || p >= (i + 1) * SEG);
+      const ti = range(p, i * SEG, (i + 1) * SEG), past = p >= (i + 1) * SEG;
+      share.hidden = !(ti >= .5 || past);
+      post.hidden = !(ti >= .6 || past);
       const c = reduce ? 1 : ease(range(ti, .6, .92));
       if (!post.hidden && c < 1) {
         fly.style.transform = "none";
         const ph = phone.getBoundingClientRect(), f = fly.getBoundingClientRect();
         const dx = (ph.left + ph.width / 2) - (f.left + f.width / 2), dy = (ph.top + ph.height / 2) - (f.top + f.height / 2);
-        fly.style.transform = `translate(${dx * (1 - c)}px, ${dy * (1 - c)}px) scale(${.3 + .7 * c}) rotate(${(1 - c) * -8}deg)`;
+        fly.style.transform = `perspective(900px) translate(${dx * (1 - c)}px, ${dy * (1 - c)}px) scale(${.3 + .7 * c}) rotateY(${(1 - c) * -50}deg) rotateZ(${(1 - c) * -10}deg)`;
         fly.style.opacity = .4 + .6 * c;
       } else { fly.style.transform = "none"; fly.style.opacity = 1; }
-      // friends vote once it lands
       const landed = i * SEG + .92 * SEG;
-      const v = reduce ? r.votes : Math.round(range(p, landed, landed + .1) * r.votes);
-      if (v !== lastVotes[i]) {
-        const el = $("hv" + i);
-        el.querySelector("b").textContent = v;
-        el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
-        lastVotes[i] = v;
-      }
+      const v = Math.round(range(p, landed, landed + .1) * r.votes);
+      if (v !== lastVotes[i]) { const el = $("hv" + i); el.querySelector("b").textContent = v; bump(el); lastVotes[i] = v; }
     });
   }
 
-  // ── live feed wall: three columns drifting, nudged by scroll ──
+  // ── 2. how it works: dwell on each face, then snap to the next ──
+  const ring = $("ring"), faces = [...ring.children], steps = [...$("steplist").children];
+  function how(p) {
+    const x = p * 2.15, k = Math.min(2, Math.floor(x)), f = x - Math.floor(x);
+    const pos = Math.min(2, k + smooth(range(f, .55, 1)));
+    const R = innerWidth < 860 ? 420 : 560, STEP = innerWidth < 860 ? 40 : 34;
+    faces.forEach((el, i) => {
+      el.style.transform = `rotateY(${i * STEP}deg) translateZ(${R}px)`;
+      const d = Math.abs(pos - i);
+      el.style.filter = `brightness(${1 - Math.min(.6, d * .6)}) saturate(${1 - Math.min(.5, d * .5)})`; el.style.opacity = 1 - Math.min(.65, d * .45);
+    });
+    ring.style.transform = `translateZ(${-R}px) rotateY(${-pos * STEP}deg) rotateX(${Math.sin(p * Math.PI) * 6}deg)`;
+    const active = Math.round(pos);
+    steps.forEach((li, i) => {
+      li.classList.toggle("on", i === active);
+      li.querySelector(".pb i").style.width = clamp(x - i) * 100 + "%";
+    });
+  }
+
+  // ── 3. live feed wall ──
   const PLACES = [
     ["Sidecar Doughnuts", "Costa Mesa", "cafe_dessert"], ["Hapa Bakery", "Fullerton", "cafe_dessert"], ["RNT Coffee", "Fullerton", "cafe_dessert"],
     ["Outpost Kitchen", "Costa Mesa", "food_drink"], ["Sushi District", "Costa Mesa", "food_drink"], ["Blue Ribbon Corn Dogs", "Anaheim", "food_drink"],
@@ -491,7 +633,7 @@
     ["Pura Vida", "Long Beach", "cafe_dessert"], ["Taco Land", "Anaheim", "food_drink"], ["Ufoodie Malatang", "Anaheim", "food_drink"],
   ];
   const GISTS = ["Gym fail compilation", "Cat vs. cucumber", "This wedding got out of hand", "Easiest pasta ever", "Dance trend, part 4"];
-  const KIND = { food_drink: ["🍽️", "#D85A30", "food drink"], cafe_dessert: ["🍰", "#D4537E", "cafe dessert"], outdoors: ["🏞️", "#1D9E75", "outdoors"] };
+  const KIND = { food_drink: ["🍽️", "#FF8A4C", "food drink"], cafe_dessert: ["🍰", "#FF3D8B", "cafe dessert"], outdoors: ["🏞️", "#22D3EE", "outdoors"] };
   const SOURCES = ["via Instagram", "via Instagram", "via TikTok"];
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const mini = (k) => {
@@ -502,105 +644,312 @@
   const wall = $("wall");
   wall.innerHTML = [0, 1, 2].map((c) => {
     const items = Array.from({ length: 9 }, (_, j) => mini(c * 7 + j * 3 + c)).join("");
-    return `<div class="col" style="--dir:${c % 2 ? 1 : -1}"><div class="track" style="--dur:${38 + c * 9}s">${items}${items}</div></div>`;
+    return `<div class="col" style="--dir:${c % 2 ? 1 : -1}"><div class="track" style="--dur:${34 + c * 8}s">${items}${items}</div></div>`;
   }).join("");
-  const wallFrame = () => {
-    const r = wall.getBoundingClientRect();
-    wall.style.setProperty("--s", ((innerHeight - r.top) / (innerHeight + r.height) - .5).toFixed(3));
-  };
-  let made = 0, wallOn = false, pinger = null;
-  const madeEl = $("made");
-  function ping() {
-    const minis = [...wall.querySelectorAll(".mini")].filter((m) => { const r = m.getBoundingClientRect(), w = wall.getBoundingClientRect(); return r.top > w.top + 80 && r.bottom < w.bottom - 80; });
-    if (minis.length) { const m = pick(minis); m.classList.add("ping"); setTimeout(() => m.classList.remove("ping"), 1400); }
-    madeEl.textContent = (++made).toLocaleString();
-    pinger = setTimeout(ping, 700 + Math.random() * 900);
+  const cols = [...wall.children], madeEl = $("made");
+  let made = 0, pinger = null;
+  function live(p) {
+    wall.style.setProperty("--wx", (34 * (1 - smooth(range(p, 0, .45)))).toFixed(2));
+    wall.style.setProperty("--ws", (.86 + .14 * smooth(range(p, 0, .45))).toFixed(3));
+    cols.forEach((c, i) => c.style.setProperty("--off", ((i % 2 ? 1 : -1) * p * 700).toFixed(1)));
   }
-  new IntersectionObserver(([e]) => {
-    wallOn = e.isIntersecting;
-    clearTimeout(pinger);
-    if (wallOn && !reduce) ping();
-  }, { threshold: .2 }).observe(wall);
+  function ping() {
+    const w = wall.getBoundingClientRect();
+    const minis = [...wall.querySelectorAll(".mini")].filter((m) => { const r = m.getBoundingClientRect(); return r.top > w.top + 60 && r.bottom < w.bottom - 60 && r.left >= w.left - 1 && r.right <= w.right + 1; });
+    if (minis.length) { const m = pick(minis); m.classList.add("ping"); setTimeout(() => m.classList.remove("ping"), 1300); }
+    madeEl.textContent = (++made).toLocaleString();
+    bump(madeEl);
+    pinger = setTimeout(ping, 500 + Math.random() * 700);
+  }
+  new IntersectionObserver(([e]) => { clearTimeout(pinger); if (e.isIntersecting && !reduce) ping(); }, { threshold: .1 }).observe(wall);
 
-  // ── scroll loop ──
+  // ── 4. demo chat, scrubbed by scroll ──
+  const body = $("demoBody"), DEMO = { ramen: REELS[0], cafe: REELS[1] };
+  const user = (n, bg, html) => `<div class="msg">${av(n[0].toUpperCase(), bg)}<div><div class="who">${n} <small>Today</small></div>${html}</div></div>`;
+  const bot = (html) => `<div class="msg">${av("📍", "var(--violet)")}<div><div class="who">SpotBot<span class="tag">APP</span></div>${html}</div></div>`;
+  const names = [DEMO.ramen.venue, DEMO.cafe.venue];
+  const winner = names[Math.floor(Math.random() * 2)];           // a real coin flip, once per visit
+  const seq = []; for (let i = 0; i < 22; i++) seq.push(names[i % 2]);
+  if (seq[seq.length - 1] !== winner) seq.push(winner);
+  const EVENTS = [
+    [.04, user("maya", "#e67e22", `<div class="link">instagram.com/reel/…</div>`)],
+    [.12, bot(cardHTML(DEMO.ramen, "dv-ramen"))],
+    [.22, user("jordan", "#16a085", `<div>ok but hear me out</div><div class="link">instagram.com/reel/…</div>`)],
+    [.30, bot(cardHTML(DEMO.cafe, "dv-cafe"))],
+    [.56, user("nick", "#8e44ad", `<div style="color:#c9cdfb">/plan friday</div>`)],
+    [.62, bot(`<div>It's a tie, 2 👍 each. Spinning for it…</div><div class="picker" id="picker"><div class="lbl">🎲 Tie-breaker</div><div class="reelwin"><div class="strip" id="strip">${seq.map((n) => `<div>${n}</div>`).join("")}</div></div><div class="won" id="won"></div></div>`)],
+  ];
+  body.innerHTML = EVENTS.map(([, html]) => html).join("");
+  const msgs = [...body.children];
+  msgs.forEach((m) => (m.hidden = true));
+  const tl = [...$("timeline").children], timebar = $("timebar");
+  const dv = { ramen: 0, cafe: 0 };
+  let shown = 0, armed = true;
+  function demo(t) {
+    let n = 0;
+    EVENTS.forEach(([at], i) => { const on = t >= at; msgs[i].hidden = !on; if (on) n++; });
+    if (n !== shown) { shown = n; body.scrollTop = body.scrollHeight; }
+    const votes = { ramen: (t >= .38) + (t >= .46), cafe: (t >= .42) + (t >= .50) };
+    for (const k in votes) if (votes[k] !== dv[k]) { const el = $("dv-" + k); el.querySelector("b").textContent = votes[k]; bump(el); dv[k] = votes[k]; }
+    const end = -(seq.length - 1) * 46;
+    $("strip").style.transform = `translateY(${ease(range(t, .64, .9)) * end}px)`;
+    const won = $("won");
+    won.textContent = t >= .9 ? `🎉 Friday: ${winner}` : "";
+    if (t >= .9 && armed) { armed = false; won.classList.add("pop"); confetti($("picker")); }
+    if (t < .86) { armed = true; won.classList.remove("pop"); }
+    tl.forEach((li) => li.classList.toggle("on", t >= +li.dataset.at));
+    timebar.style.setProperty("--t", t);
+  }
+  function confetti(el) {
+    if (reduce) return;
+    const colors = ["#7C5CFF", "#FF3D8B", "#FF8A4C", "#FFD23F", "#A3E635", "#22D3EE"];
+    for (let i = 0; i < 46; i++) {
+      const c = document.createElement("i");
+      c.className = "confetti";
+      c.style.left = Math.random() * 100 + "%";
+      c.style.background = colors[i % colors.length];
+      c.style.animationDelay = Math.random() * .4 + "s";
+      el.appendChild(c);
+      setTimeout(() => c.remove(), 2200);
+    }
+  }
+
+  // ── 5. not a place: scan, verdict, flip, filed ──
+  const flip = $("flip"), npScan = $("npScan");
+  function np(p) {
+    const sweep = range(p, .05, .35);
+    npScan.style.setProperty("--sy", sweep);
+    npScan.style.setProperty("--so", Math.sin(Math.PI * sweep));
+    flip.style.setProperty("--vo", range(p, .3, .4));
+    flip.style.setProperty("--fl", (180 * smooth(range(p, .42, .72))).toFixed(2));
+    flip.style.setProperty("--fx", (Math.sin(range(p, .42, .72) * Math.PI) * 10).toFixed(2));
+    flip.style.setProperty("--bo", range(p, .78, .9));
+  }
+
+  // ── 6. numbers: tiles rise one by one, values run with the scroll ──
+  const stats = [...$("stats").children], bars = [...$("bars").children];
+  function numbers(p) {
+    stats.forEach((s, k) => {
+      const t = range(p, .05 + k * .1, .3 + k * .1), e = ease(t);
+      s.style.opacity = e;
+      s.style.transform = `translateY(${(1 - e) * 40}px) rotateX(${(1 - e) * 30}deg)`;
+      const b = s.querySelector("b"), d = b.dataset;
+      const from = +(d.from || 0), to = +d.to, v = from + (to - from) * e;
+      b.textContent = (d.prefix || "") + (d.dec ? v.toFixed(+d.dec) : Math.round(v).toLocaleString()) + (d.suffix || "");
+    });
+    [[62, .5], [74.2, .6]].forEach(([to, at], i) => {
+      const e = ease(range(p, at, at + .25));
+      bars[i].querySelector("i").style.setProperty("--w", to * e);
+      bars[i].querySelector(".val").textContent = (to * e).toFixed(i ? 1 : 0) + "%";
+    });
+  }
+
+  // ── chapter rail, progress bar, and the one scroll loop that drives it all ──
+  const railLinks = [...$("rail").children], bar = $("progress");
+  const RENDER = { hero, how, live, demo, np, numbers };
   let queued = false;
-  const frame = () => { queued = false; setProgress(); heroFrame(); if (wallOn) wallFrame(); };
+  function frame() {
+    queued = false;
+    bar.style.setProperty("--sp", scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight));
+    scenes.forEach((el, i) => {
+      const r = el.getBoundingClientRect(), p = progressOf(el), name = el.dataset.scene;
+      SPOT[name] = p;
+      const near = r.bottom > -innerHeight && r.top < innerHeight * 2;
+      if (near || reduce) RENDER[name](p);
+      const a = railLinks[i];
+      a.firstElementChild.nextElementSibling.style.setProperty("--p", p);
+      a.classList.toggle("on", r.top <= innerHeight * .5 && r.bottom > innerHeight * .5);
+      a.classList.toggle("done", p >= 1);
+    });
+  }
   addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(frame); } }, { passive: true });
   addEventListener("resize", frame);
   frame();
 
-  // ── reveal on scroll, and count the numbers up ──
-  const io = new IntersectionObserver((es) => es.forEach((e) => {
-    if (!e.isIntersecting) return;
-    e.target.classList.add("in"); io.unobserve(e.target);
-    if (e.target.id === "stats" && !reduce) countUp();
-  }), { threshold: .15 });
+  // ── reveal + pointer tilt for the cards at the end ──
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .15 });
   document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
-  function countUp() {
-    document.querySelectorAll("[data-count]").forEach((el) => {
-      const to = +el.dataset.count, suffix = el.dataset.suffix || "", t0 = performance.now();
-      const step = (now) => {
-        const k = ease(clamp((now - t0) / 1400));
-        el.textContent = Math.round(to * k).toLocaleString() + suffix;
-        if (k < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
+  document.querySelectorAll("[data-tilt], .stat .in").forEach((el) => {
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      el.style.setProperty("--tx", `${x * 14}deg`); el.style.setProperty("--ty", `${-y * 14}deg`);
     });
-  }
-
-  // ── demo: a short scripted chat, ending in the tie picker ──
-  const body = $("demoBody");
-  const DEMO = { ramen: REELS[0], cafe: REELS[1] };
-  const user = (n, bg, html) => `<div class="msg">${av(n[0].toUpperCase(), bg)}<div><div class="who">${n} <small>Today</small></div>${html}</div></div>`;
-  const bot = (html) => `<div class="msg">${av("📍", "var(--accent)")}<div><div class="who">SpotBot<span class="tag">APP</span></div>${html}</div></div>`;
-
-  let timers = [];
-  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
-  const add = (html) => { body.insertAdjacentHTML("beforeend", html); body.scrollTop = body.scrollHeight; return body.lastElementChild; };
-  const vote = (k, n) => { const el = $("dv-" + k); if (el) { el.querySelector("b").textContent = n; el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); } };
-
-  function play() {
-    timers.forEach(clearTimeout); timers = []; body.innerHTML = "";
-    later(200, () => add(user("maya", "#e67e22", `<div class="link">instagram.com/reel/…</div>`)));
-    later(1200, () => add(bot(cardHTML(DEMO.ramen, "dv-ramen"))));
-    later(2400, () => add(user("jordan", "#16a085", `<div>ok but hear me out</div><div class="link">instagram.com/reel/…</div>`)));
-    later(3400, () => add(bot(cardHTML(DEMO.cafe, "dv-cafe"))));
-    [[4300, "ramen", 1], [4700, "cafe", 1], [5100, "ramen", 2], [5500, "cafe", 2]].forEach(([t, k, n]) => later(t, () => vote(k, n)));
-    later(6300, () => add(user("nick", "#8e44ad", `<div style="color:#c9cdfb">/plan friday</div>`)));
-    later(7200, () => spin(add(bot(`<div>It's a tie, 2 👍 each. Spinning for it…</div>
-      <div class="picker"><div class="lbl">🎲 Tie-breaker</div><div class="reelwin"><div class="strip"></div></div><div class="won"></div></div>`))));
-  }
-
-  function spin(msg) {
-    const picker = msg.querySelector(".picker"), strip = msg.querySelector(".strip"), won = msg.querySelector(".won");
-    const names = [DEMO.ramen.venue, DEMO.cafe.venue];
-    const winner = names[Math.floor(Math.random() * 2)];       // a real coin flip
-    const seq = []; for (let i = 0; i < 18; i++) seq.push(names[i % 2]);
-    if (seq[seq.length - 1] !== winner) seq.push(winner);
-    strip.innerHTML = seq.map((n) => `<div>${n}</div>`).join("");
-    const end = -(seq.length - 1) * 46;
-    if (reduce) strip.style.transform = `translateY(${end}px)`;
-    else strip.animate([{ transform: "translateY(0)" }, { transform: `translateY(${end}px)` }], { duration: 2600, easing: "cubic-bezier(.15,.7,.2,1)", fill: "forwards" });
-    later(reduce ? 50 : 2700, () => {
-      won.textContent = `🎉 Friday: ${winner}`;
-      if (reduce) return;
-      const colors = ["#8F99FF", "#FF8A4C", "#F7D046", "#4ADE80", "#F472B6"];
-      for (let i = 0; i < 40; i++) {
-        const c = document.createElement("i");
-        c.className = "confetti";
-        c.style.left = Math.random() * 100 + "%";
-        c.style.background = colors[i % colors.length];
-        c.style.animationDelay = Math.random() * .4 + "s";
-        picker.appendChild(c);
-        setTimeout(() => c.remove(), 2200);
-      }
-    });
-  }
-
-  let played = false;
-  new IntersectionObserver(([e]) => { if (e.isIntersecting && !played) { played = true; play(); } }, { threshold: .35 }).observe(body);
-  $("replay").addEventListener("click", play);
+    el.addEventListener("pointerleave", () => { el.style.setProperty("--tx", "0deg"); el.style.setProperty("--ty", "0deg"); });
+  });
 })();
+</script>
+
+<!-- The 3D city behind the page: pins drop as reels are found; the camera flies with the scroll. -->
+<script type="module">
+import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const canvas = document.getElementById("city");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const small = innerWidth < 760;
+const SPOT = window.SPOT || {};
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const range = (p, a, b) => clamp((p - a) / (b - a));
+const smooth = (x) => x * x * (3 - 2 * x);
+
+function rand(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function bounce(x) { const n = 7.5625, d = 2.75; if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; }
+
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" }); }
+catch (e) { canvas.remove(); }
+if (renderer) start();
+
+function start() {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
+  renderer.setSize(innerWidth, innerHeight, false);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#06060c");
+  scene.fog = new THREE.FogExp2("#08071a", .036);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+  const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .1, 300);
+
+  scene.add(new THREE.HemisphereLight("#9d8cff", "#0b0b18", .7));
+  const key = new THREE.DirectionalLight("#ffffff", 1.4); key.position.set(10, 18, 8); scene.add(key);
+  const rim = new THREE.DirectionalLight("#ff3d8b", 1.1); rim.position.set(-14, 6, -10); scene.add(rim);
+
+  // ground and glowing streets (grid lines every 2 units; blocks sit between them)
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: "#07071a", roughness: .55, metalness: .5 }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const grid = new THREE.GridHelper(84, 42, "#7C5CFF", "#3a2f7a");
+  grid.position.y = .015; grid.material.transparent = true; grid.material.opacity = .55; scene.add(grid);
+
+  // buildings: one instanced mesh, plus neon caps on some roofs for the bloom to catch
+  const R = rand(7), cells = [];
+  for (let gx = -10; gx < 10; gx++) for (let gz = -10; gz < 10; gz++) {
+    const x = gx * 2 + 1, z = gz * 2 + 1, d = Math.hypot(x, z);
+    if (R() < .14 || d > 21) continue;
+    const h = .35 + Math.pow(R(), 2.2) * 5.5 * (1.25 - d / 26);
+    cells.push({ x, z, h });
+  }
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const bMat = new THREE.MeshStandardMaterial({ color: "#1a1838", roughness: .28, metalness: .75 });
+  const blds = new THREE.InstancedMesh(box, bMat, cells.length);
+  const neon = ["#7C5CFF", "#FF3D8B", "#22D3EE", "#FF8A4C", "#A3E635"].map((c) => new THREE.Color(c));
+  const capsList = cells.filter(() => R() < .32);
+  const caps = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false }), capsList.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), tint = new THREE.Color();
+  cells.forEach((c, i) => {
+    m.compose(new THREE.Vector3(c.x, c.h / 2, c.z), q, new THREE.Vector3(1.35, c.h, 1.35));
+    blds.setMatrixAt(i, m);
+    blds.setColorAt(i, tint.set("#1a1838").lerp(new THREE.Color("#2b2260"), R() * .6));
+  });
+  capsList.forEach((c, i) => {
+    m.compose(new THREE.Vector3(c.x, c.h + .03, c.z), q, new THREE.Vector3(1.37, .06, 1.37));
+    caps.setMatrixAt(i, m);
+    caps.setColorAt(i, neon[i % neon.length].clone().multiplyScalar(.95));
+  });
+  scene.add(blds, caps);
+
+  // pins: glossy heads, a light beam for the reels found in the hero, a pulse ring on landing
+  const headGeo = new THREE.SphereGeometry(.34, 48, 32), tipGeo = new THREE.ConeGeometry(.2, .62, 32), dotGeo = new THREE.SphereGeometry(.12, 24, 16);
+  const ringGeo = new THREE.RingGeometry(.32, .42, 64), beamGeo = new THREE.CylinderGeometry(.05, .05, 30, 16, 1, true);
+  function makePin(color, x, z, beam) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: .7, roughness: .18, metalness: .1, clearcoat: 1, clearcoatRoughness: .08 });
+    const head = new THREE.Mesh(headGeo, mat); head.position.y = 1.02;
+    const tip = new THREE.Mesh(tipGeo, mat); tip.rotation.x = Math.PI; tip.position.y = .6;
+    const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: "#ffffff" })); dot.position.set(0, 1.06, .27);
+    const body = new THREE.Group(); body.add(head, tip, dot); g.add(body);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, toneMapped: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = .03; g.add(ring);
+    let b = null;
+    if (beam) { b = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); b.position.y = 15; g.add(b); }
+    g.position.set(x, 0, z); g.visible = false; scene.add(g);
+    return { g, body, ring, beam: b, phase: Math.random() * 6.28 };
+  }
+  const heroPins = [["#FF8A4C", -4, 2], ["#FF3D8B", 2, -2], ["#A3E635", 6, 4]].map(([c, x, z]) => makePin(c, x, z, true));
+  const P = rand(21), taken = new Set(["-4,2", "2,-2", "6,4"]), livePins = [];
+  while (livePins.length < (small ? 24 : 40)) {
+    const x = (Math.floor(P() * 19) - 9) * 2, z = (Math.floor(P() * 19) - 9) * 2;
+    if (taken.has(x + "," + z)) continue;
+    taken.add(x + "," + z);
+    livePins.push(makePin(neon[livePins.length % neon.length], x, z, false));
+  }
+
+  function drop(pin, t, time) {
+    pin.g.visible = t > 0;
+    if (!pin.g.visible) return;
+    const landed = t >= 1;
+    pin.body.position.y = (1 - bounce(t)) * 12 + (landed ? Math.sin(time * 2 + pin.phase) * .08 : 0);
+    pin.body.rotation.y = time * .9 + pin.phase;
+    const k = landed ? (time * .7 + pin.phase) % 1 : range(t, .55, 1);
+    pin.ring.scale.setScalar(1 + k * 4);
+    pin.ring.material.opacity = (1 - k) * .85;
+    if (pin.beam) pin.beam.material.opacity = landed ? .32 + Math.sin(time * 3 + pin.phase) * .06 : t * .2;
+  }
+
+  // camera stops along the page; between them the camera eases
+  const STOPS = [
+    ["top",     [0, 7, 17],   [0, .5, 0]],
+    ["heroEnd", [-7, 6, 10],  [1, .5, -1]],
+    ["how",     [16, 15, 15], [0, 0, 0]],
+    ["live",    [0, 32, 16],  [0, 0, 0]],
+    ["liveEnd", [-9, 24, 12], [0, 0, 0]],
+    ["demo",    [9, 4, 11],   [0, 1.5, 0]],
+    ["np",      [-12, 6, -10], [0, 1, 0]],
+    ["numbers", [0, 13, 15],  [0, 0, 0]],
+    ["end",     [0, 34, 26],  [0, 0, 0]],
+  ];
+  let ys = [];
+  function measure() {
+    const top = (id) => document.getElementById(id).getBoundingClientRect().top + scrollY;
+    const end = (id) => top(id) + document.getElementById(id).offsetHeight - innerHeight;
+    const at = { top: 0, heroEnd: end("top"), how: top("how"), live: top("live"), liveEnd: end("live"), demo: top("demo"), np: top("np"), numbers: top("numbers"),
+                 end: document.documentElement.scrollHeight - innerHeight };
+    ys = STOPS.map(([k]) => at[k]);
+  }
+  measure();
+  const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
+  function placeCamera(time) {
+    const y = scrollY;
+    let i = 0;
+    while (i < ys.length - 2 && y > ys[i + 1]) i++;
+    const f = smooth(range(y, ys[i], ys[i + 1]));
+    camPos.copy(a.fromArray(STOPS[i][1])).lerp(b.fromArray(STOPS[i + 1][1]), f);
+    camLook.copy(a.fromArray(STOPS[i][2])).lerp(b.fromArray(STOPS[i + 1][2]), f);
+    if (!reduce) { camPos.x += Math.sin(time * .15) * .6; camPos.y += Math.sin(time * .21) * .25; }
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  }
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), small ? .5 : .62, .5, .32);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+
+  function render(now) {
+    const time = now / 1000;
+    placeCamera(time);
+    const h = SPOT.hero ?? 0, lv = SPOT.live ?? 0;
+    heroPins.forEach((pin, i) => drop(pin, reduce ? 1 : range(h, i * .3 + .14, i * .3 + .21), time));
+    livePins.forEach((pin, k) => { const s = k / livePins.length * .75; drop(pin, reduce ? 1 : range(lv, s, s + .12), time); });
+    caps.material.color.setScalar(.85 + Math.sin(time * 1.3) * .15);
+    composer.render();
+  }
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight, false); composer.setSize(innerWidth, innerHeight);
+    measure();
+  });
+  addEventListener("load", measure);
+  if (reduce) { const once = () => render(0); addEventListener("scroll", () => requestAnimationFrame(once), { passive: true }); once(); }
+  else renderer.setAnimationLoop((t) => render(t));
+}
 </script>
 </body>
 </html>
