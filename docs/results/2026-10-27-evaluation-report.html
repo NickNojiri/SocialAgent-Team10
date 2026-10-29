@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SpotBot Evaluation Report</title>
+<style>
+  @page { size: Letter; margin: 0.5in 0.6in; }
+  :root { --ink:#16181d; --ink2:#4a5161; --ink3:#7a8191; --line:#d9dde4; --accent:#4E5BD8; --soft:#B9BFE9; --grey:#9AA0AE; --ok:#1F7A45; --okbg:#E3F1E8; --warn:#B5541E; --warnbg:#FBE6DC; }
+  * { box-sizing:border-box; }
+  body { font: 10pt/1.42 "Segoe UI", system-ui, sans-serif; color:var(--ink); margin:0; background:#fff; }
+  h1 { font-size:21pt; margin:0 0 2px; letter-spacing:-0.3px; }
+  h2 { font-size:12.5pt; margin:14px 0 6px; padding-bottom:3px; border-bottom:1.5px solid var(--line); break-after:avoid; }
+  .sub { color:var(--ink2); margin:0 0 10px; }
+  .answer { border-left:4px solid var(--ok); background:var(--okbg); padding:9px 13px; border-radius:0 8px 8px 0; margin:8px 0 10px; }
+  .answer b.big { font-size:11.5pt; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:4px 0 2px; }
+  .kpi { border:1px solid var(--line); border-radius:8px; padding:8px 11px; }
+  .kpi b { display:block; font-size:18pt; line-height:1.1; }
+  .kpi span { color:var(--ink2); font-size:9pt; }
+  table { width:100%; border-collapse:collapse; font-size:9.5pt; }
+  th, td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--ink2); font-weight:600; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr.win td { background:var(--okbg); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; break-inside:avoid; }
+  .cap { font-size:8.5pt; color:var(--ink3); margin-top:2px; }
+  .note { border-left:4px solid var(--warn); background:var(--warnbg); padding:7px 12px; border-radius:0 8px 8px 0; margin:8px 0; }
+  ul { margin:4px 0; padding-left:18px; }
+  li { margin:2px 0; }
+  p { margin:4px 0; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:4px 0; font-size:9.5pt; }
+  dt { font-weight:600; }
+  dd { margin:0; color:var(--ink2); }
+  svg text { font-family:"Segoe UI", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>SpotBot evaluation report</h1>
+<p class="sub">October 27, 2026 · How well does SpotBot figure out which place a reel is about? · Written for the whole team. Terms are explained at the end.</p>
+
+<div class="answer">
+  <b class="big">Short answer:</b> our trained model gets the right place for <b>about 3 in 4 reels (74%)</b>, against <b>62%</b> for the hand-written rules SpotBot uses today. That's <b>33 more reels right out of 271</b>, and the gain is far too big to be luck. We recommend making it the default.
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b>74.2%</b><span>best model that needs no LLM (M2 v5, trained longer)</span></div>
+  <div class="kpi"><b>62.0%</b><span>today's rule parser on the same reels</span></div>
+  <div class="kpi"><b>+33</b><span>more reels right out of 271 (it fixes 38, breaks 5)</span></div>
+  <div class="kpi"><b>~0.3 s</b><span>per reel on a laptop CPU, vs ~15 s for asking an LLM</span></div>
+</div>
+
+<h2>Which approach works best</h2>
+<div class="two" style="grid-template-columns:1.3fr 1fr">
+  <div>
+    <svg viewBox="0 0 440 214" width="100%" role="img" aria-label="Share of 271 dev reels each approach gets right">
+      <g font-size="10" fill="#16181d">
+        <text x="0" y="14" font-weight="700">M2 v6 + LLM hint</text>
+        <text x="0" y="38" font-weight="700">M2 v5, trained longer ★</text>
+        <text x="0" y="62">M2 v5, bigger model</text>
+        <text x="0" y="86">M2 + LLM as judge</text>
+        <text x="0" y="110">M2 v5, standard</text>
+        <text x="0" y="134">LLM alone (llama3.1:8b)</text>
+        <text x="0" y="158">Rule parser (today)</text>
+        <text x="0" y="182">M2 before training</text>
+      </g>
+      <rect x="140" y="3" width="224.7" height="15" fill="#4E5BD8" rx="2"/>
+      <rect x="140" y="27" width="222.6" height="15" fill="#1F7A45" rx="2"/>
+      <rect x="140" y="51" width="218.1" height="15" fill="#4E5BD8" rx="2"/>
+      <rect x="140" y="75" width="216.9" height="15" fill="#4E5BD8" rx="2"/>
+      <rect x="140" y="99" width="216.3" height="15" fill="#4E5BD8" rx="2"/>
+      <rect x="140" y="123" width="200.4" height="15" fill="#B9BFE9" rx="2"/>
+      <rect x="140" y="147" width="186" height="15" fill="#9AA0AE" rx="2"/>
+      <rect x="140" y="171" width="91.8" height="15" fill="#B9BFE9" rx="2"/>
+      <line x1="326" y1="0" x2="326" y2="190" stroke="#B5541E" stroke-dasharray="3 3"/>
+      <g font-size="9.5" font-weight="600" fill="#16181d">
+        <text x="369" y="15">74.9%</text><text x="367" y="39">74.2%</text><text x="363" y="63">72.7%</text>
+        <text x="362" y="87">72.3%</text><text x="361" y="111">72.1%</text><text x="345" y="135">66.8%</text>
+        <text x="331" y="159">62.0%</text><text x="237" y="183">30.6%</text>
+      </g>
+      <g font-size="9" fill="#4a5161">
+        <rect x="140" y="199" width="9" height="9" fill="#1F7A45"/><text x="152" y="207">recommended</text>
+        <rect x="222" y="199" width="9" height="9" fill="#4E5BD8"/><text x="234" y="207">our trained model</text>
+        <rect x="320" y="199" width="9" height="9" fill="#9AA0AE"/><text x="332" y="207">rules</text>
+        <rect x="364" y="199" width="9" height="9" fill="#B9BFE9"/><text x="376" y="207">other</text>
+      </g>
+    </svg>
+    <p class="cap">Right place, out of the same 271 dev reels. Dashed line: today's rule parser. Rows with several training runs show their average.</p>
+  </div>
+  <div>
+    <p style="margin-top:0"><b>What M2 is:</b> a small AI model we trained ourselves. For each reel it looks at every name the reel offers (the location tag, @mentions, the caption, speech, text on screen) and picks the one most likely to be the place, or "no place".</p>
+    <p><b>Training is what makes it work.</b> The same model before we trained it gets only 30.6%.</p>
+    <p><b>v6 is 2 reels better than the ★ model,</b> but it needs an LLM's guess as an input, which takes about 15 s per reel. That 2-reel gap is within noise. <b>The ★ model gets nearly the same result in about 0.3 s, with no LLM.</b></p>
+    <p><b>An LLM alone does worse than our model</b> (66.8%), and it's the slowest option.</p>
+  </div>
+</div>
+
+<h2>Is the improvement real?</h2>
+<div class="two">
+  <div>
+    <table>
+      <tr><th>On these reels</th><th class="n">Rules</th><th class="n">★ model</th><th class="n">p-value</th></tr>
+      <tr class="win"><td><b>All 271 dev reels</b></td><td class="n">62.0%</td><td class="n"><b>74.2%</b></td><td class="n">0.0000003</td></tr>
+      <tr><td>230 labeled by a person</td><td class="n">62.6%</td><td class="n">76.5%</td><td class="n">0.00000007</td></tr>
+      <tr><td>165 Nick checked by hand</td><td class="n">58.8%</td><td class="n">74.5%</td><td class="n">0.0000009</td></tr>
+      <tr><td>106 original dev reels</td><td class="n">67.0%</td><td class="n">73.6%</td><td class="n">0.09</td></tr>
+    </table>
+    <p class="cap">The p-value is the chance of a gain this large if the model were really no better. Under 0.05 counts as real. The original 106 alone are too few to be sure, which is why the dev set was enlarged.</p>
+  </div>
+  <div>
+    <p style="margin-top:0"><b>Yes.</b> On the full dev set the model fixes 38 reels the rules got wrong and breaks only 5 the rules got right. The likely range of the gain is <b>+7.7 to +16.6 points</b>.</p>
+    <p>The gain also holds on the reels a person labeled, so it isn't an artifact of machine-made labels.</p>
+    <p><b>When a near-miss counts</b> ("Casa Loma" vs "Casa Loma Tacos"), the model gets 220 of 271 (81%), against 194 for the rules.</p>
+  </div>
+</div>
+
+<h2 style="break-before:page; margin-top:0">What we tried on the way</h2>
+<table>
+  <tr><th>Change to M2</th><th class="n">Right (of 271)</th><th>Takeaway</th></tr>
+  <tr class="win"><td>Train 5 rounds through the data instead of 3 (★)</td><td class="n">201 · 74.2%</td><td>Longer training helped most</td></tr>
+  <tr><td>Standard recipe, 3 separate runs</td><td class="n">190–198 · 70.1–73.1%</td><td>Runs vary by a few reels. Average more than one run before trusting a gap</td></tr>
+  <tr><td>A model about 2× bigger (bge-reranker-base)</td><td class="n">195–199 · 72.0–73.4%</td><td>No better than the small model, and slower</td></tr>
+  <tr><td>Faster learning rate (3e-5)</td><td class="n">191 · 70.5%</td><td>Worse</td></tr>
+  <tr><td>Slower learning rate (1e-5), 5 rounds</td><td class="n">185 · 68.3%</td><td>Worse: learns too slowly</td></tr>
+  <tr><td>Ask an LLM to pick when M2 and the rules disagree</td><td class="n">193–199 · 71.2–73.4%</td><td>Small help, costs 1–2.5 s per reel</td></tr>
+</table>
+
+<h2>"Not a place": catching reels that aren't somewhere to go</h2>
+<div class="two">
+  <div>
+    <table>
+      <tr><th style="width:52%"></th><th class="n">Caught (of 14)</th><th class="n">Real places lost</th></tr>
+      <tr><td>Rules only</td><td class="n">4</td><td class="n"><b>0</b></td></tr>
+      <tr><td>Rules + llama3.2 (live bot today)</td><td class="n">5</td><td class="n">2</td></tr>
+      <tr><td>Rules + llama3.1:8b</td><td class="n"><b>8</b></td><td class="n">5</td></tr>
+    </table>
+    <p class="cap">106 original dev reels, 14 of which are not a place. Run on Oct 26.</p>
+  </div>
+  <div>
+    <p style="margin-top:0">Recipes, memes and ads should get a "not a place" card instead of a spot. The bigger LLM catches twice as many, but it also throws out 5 real spots. Losing a real spot is worse than letting a meme through, so <b>this part isn't solved yet</b>. We need more not-a-place examples to train on.</p>
+  </div>
+</div>
+
+<div class="note"><b>Fair-test rules we kept:</b> every number here is on the <b>dev</b> set. The <b>test</b> set (204 reels nobody has looked at) is saved for one final measurement after we pick the model, so the number we report isn't one we tuned toward. Reels are split by creator, so no account appears in both training and dev. One honest caveat: the ★ setting was picked from 3 tries on dev, so one more training run should confirm it before the test read.</div>
+
+<h2>Recommendation and next steps</h2>
+<ul>
+  <li><b>Make M2 v5 (trained 5 rounds) the venue picker,</b> with the rule parser as a fallback when the model isn't confident. It's fast enough to run on every paste.</li>
+  <li><b>Confirm it:</b> run one more training with a different seed. If it lands within 2–3 reels, freeze it and read the test set once.</li>
+  <li><b>Retrain with full speech</b> (finished this morning: 626 reels, 330 with speech), and <b>keep labeling</b>: accuracy was still climbing with the last batch of labels.</li>
+</ul>
+
+<h2>Terms</h2>
+<dl>
+  <dt>Dev set</dt><dd>271 reels we compare versions on: 106 original plus 165 Nick confirmed by hand. 230 have a label a person checked.</dd>
+  <dt>Test set</dt><dd>204 reels held back for one final, honest score. Not read yet.</dd>
+  <dt>LLM</dt><dd>A large language model run locally in Ollama (llama, qwen). Nothing leaves the machine.</dd>
+  <dt>Seed</dt><dd>A training run's random start. Different seeds give slightly different models.</dd>
+</dl>
+
+</body>
+</html>
