@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06060c">
 <title>SpotBot: reels to plans</title>
 <meta name="description" content="SpotBot turns the food and place reels your friends share into spot cards your Discord server can vote on and plan from.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,7 +39,8 @@
   .glass { background: var(--panel); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); border: 1px solid var(--line); border-radius: var(--radius); }
 
   /* the 3D city lives behind everything */
-  #city { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+  html { background: var(--bg); }
+  #city { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; z-index: 0; display: block; }   /* lvh: the whole screen with Safari's bars tucked away */
   .vignette { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(130% 100% at 50% 45%, transparent 60%, rgba(6,6,12,.45) 100%); }
   .page { position: relative; z-index: 1; }
 
@@ -74,7 +76,8 @@
   /* scroll scenes: a tall wrapper with a sticky, full-screen stage inside */
   .scene { position: relative; }
   .sticky { position: sticky; top: 0; height: 100vh; overflow: hidden; display: flex; align-items: center; }
-  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }   /* clear of an iPhone's notch on its side */
+  nav .bar { padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; }
   .scene h2 { font-size: clamp(34px, 5.4vw, 64px); margin-top: 14px; text-shadow: 0 4px 40px rgba(0,0,0,.6); }
   .lede { color: var(--ink2); font-size: clamp(16px, 1.6vw, 19px); margin: 16px 0 0; max-width: 520px; text-shadow: 0 2px 20px rgba(0,0,0,.7); }
 
@@ -122,6 +125,7 @@
   /* ── 1. hero ── */
   .hero .sticky { display: grid; grid-template-rows: auto 1fr; padding-top: 96px; }
   .hero-copy { text-align: center; padding: 0 16px; }
+  .trails { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }   /* under the phone and the chat: the trail comes out from behind the card */
   .hero-copy h1 { font-size: clamp(40px, 7vw, 92px); font-weight: 800; text-shadow: 0 6px 50px rgba(0,0,0,.55); }
   .hero-copy p { color: var(--ink2); font-size: clamp(16px, 2vw, 19px); max-width: 560px; margin: 18px auto 24px; text-shadow: 0 2px 20px rgba(0,0,0,.8); }
   .hero-copy .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
@@ -463,6 +467,7 @@
 <!-- 1. Hero: scrolling swipes through reels; each lands in the chat as a spot card -->
 <section class="scene hero" id="reels" data-scene="hero" style="height:560vh">
   <div class="sticky" id="stage">
+    <canvas class="trails" id="trails" aria-hidden="true"></canvas>
     <div class="hero-copy">
       <h1>Stop sending reels.<br><span class="grad">Start going places.</span></h1>
       <p>Reels in. Spot cards out. Your server votes.</p>
@@ -747,7 +752,7 @@
     iphone.style.translate = `-50% ${(1 - rise) * 18}vh`;
     introLayout();
   }
-  SPOT.onFrame = () => { if (introP > 0 && introP < 1) introLayout(); };
+  SPOT.onFrame = () => { if (introP > 0 && introP < 1) introLayout(); heroTrail(); };
   // the phone keeps the time: it runs from golden hour into the evening as the sun goes down
   const iclock = $("iclock");
   SPOT.onTod = (t) => { const m = 18 * 60 + 52 + Math.round(t * 98), h = Math.floor(m / 60) % 12 || 12; iclock.textContent = `${h}:${String(m % 60).padStart(2, "0")}`; };
@@ -765,6 +770,7 @@
   const lastVotes = REELS.map(() => 0);
 
   function hero(p) {
+    heroP = p;
     stage.style.setProperty("--a", range(p, 0, .03));
     const cur = Math.min(N - 1, Math.floor(p / SEG)), t = range(p, cur * SEG, (cur + 1) * SEG);
     let pos = 0;
@@ -802,6 +808,28 @@
       const v = Math.round(range(p, landed, landed + .1) * r.votes);
       if (v !== lastVotes[i]) { const el = $("hv" + i); el.querySelector("b").textContent = v; bump(el); lastVotes[i] = v; }
     });
+  }
+
+  // a light trail from the card that just landed in the chat to its pin in the city, a spark running along it:
+  // the reel became a place. The 3D script puts each pin's head in REELS[i].pos and calls this every frame.
+  const trails = $("trails"), tg = trails.getContext("2d");
+  let heroP = 0, trailOn = false;
+  function heroTrail() {
+    const i = Math.min(N - 1, Math.floor(heroP / SEG)), r = REELS[i], ti = range(heroP, i * SEG, (i + 1) * SEG);
+    const a = reduce || !SPOT.project || !r?.pos ? 0 : range(ti, .62, .72) * (1 - range(ti, .9, 1));
+    if (!a && !trailOn) return;
+    const w = innerWidth, h = innerHeight, dpr = Math.min(2, devicePixelRatio);
+    if (trails.width !== Math.round(w * dpr) || trails.height !== Math.round(h * dpr)) { trails.width = Math.round(w * dpr); trails.height = Math.round(h * dpr); }
+    tg.setTransform(dpr, 0, 0, dpr, 0, 0); tg.clearRect(0, 0, w, h); trailOn = false;
+    const E = a && SPOT.project(...r.pos), c = $("fly" + i).getBoundingClientRect();
+    if (!a || !E.ok || !c.width) return;
+    const sx = c.left + c.width / 2, sy = c.top, ex = E.x, ey = E.y, cx = (sx + ex) / 2, cy = Math.min(sy, ey) - 120;
+    const grad = tg.createLinearGradient(sx, sy, ex, ey); grad.addColorStop(0, r.glow + "00"); grad.addColorStop(.3, r.glow); grad.addColorStop(1, "#ffffff");
+    tg.globalAlpha = a; tg.lineCap = "round"; tg.lineWidth = 3; tg.strokeStyle = grad; tg.shadowColor = r.glow; tg.shadowBlur = 18;
+    tg.beginPath(); tg.moveTo(sx, sy); tg.quadraticCurveTo(cx, cy, ex, ey); tg.stroke();
+    const u = (performance.now() / 900) % 1, qx = (1 - u) ** 2 * sx + 2 * (1 - u) * u * cx + u * u * ex, qy = (1 - u) ** 2 * sy + 2 * (1 - u) * u * cy + u * u * ey;
+    tg.fillStyle = "#fff"; tg.beginPath(); tg.arc(qx, qy, 4, 0, 6.283); tg.fill();
+    tg.globalAlpha = 1; tg.shadowBlur = 0; trailOn = true;
   }
 
   // ── 2. how it works: dwell on each face, then snap to the next ──
@@ -1017,8 +1045,11 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const canvas = document.getElementById("city");
+// the city's size is the canvas's, which CSS keeps at the phone's full screen (lvh) so Safari's toolbars sliding away never uncover it
+const CW = () => canvas.clientWidth || innerWidth, CH = () => canvas.clientHeight || innerHeight;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const small = (innerWidth || screen.width) < 760;                   // a tab opened hidden can report a 0-wide window at load
 const SPOT = window.SPOT || (window.SPOT = {});
@@ -1036,7 +1067,7 @@ if (renderer) start().catch((e) => { console.error("city:", e); });
 
 async function start() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
-  renderer.setSize(innerWidth, innerHeight, false);
+  renderer.setSize(CW(), CH(), false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   const shadows = !small;
   renderer.shadowMap.enabled = shadows;
@@ -1060,6 +1091,10 @@ async function start() {
     melrose: [34.066, -118.372, 34.090, -118.340] })
     .map(([s, w, n, e]) => { const [x0, z0] = LL(n, w), [x1, z1] = LL(s, e); return [x0, z0, x1, z1]; });
   const inZone = (x, z) => ZONES.some(([x0, z0, x1, z1]) => x > x0 && x < x1 && z > z0 && z < z1);
+  // where LA lines its streets with tall palms: the Beverly Hills flats, Sunset through West Hollywood, Santa Monica
+  const PALMZ = [[34.060, -118.415, 34.085, -118.385], [34.088, -118.395, 34.100, -118.330], [34.005, -118.505, 34.035, -118.480]]
+    .map(([s, w, n, e]) => { const [x0, z0] = LL(n, w), [x1, z1] = LL(s, e); return [x0, z0, x1, z1]; });
+  const inPalm = (x, z) => PALMZ.some(([x0, z0, x1, z1]) => x > x0 && x < x1 && z > z0 && z < z1);
 
   // named spots
   const DT = LL(34.0505, -118.2550);                                    // the Financial District
@@ -1094,7 +1129,7 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2("#ffc48c", .001);
-  const camera = new THREE.PerspectiveCamera(innerHeight > innerWidth ? 55 : 42, innerWidth / innerHeight, .05, 9000);   // a wider lens on a tall phone screen
+  const camera = new THREE.PerspectiveCamera(CH() > CW() ? 55 : 42, CW() / CH(), .05, 9000);   // a wider lens on a tall phone screen
   const R = rand(7), dummy = new THREE.Object3D(), col = new THREE.Color();
   const solid = (m) => { m.castShadow = m.receiveShadow = shadows; return m; };
 
@@ -1396,7 +1431,11 @@ async function start() {
         let dx = r.pts[j * 2] - r.pts[j * 2 - 2], dz = r.pts[j * 2 + 1] - r.pts[j * 2 - 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
         const zone = inZone(x, z);
         for (const sd of [1, -1]) {
-          if (k === 1 && zone && (r.t === 4 || r.t === 5) && PR() < .5) palms.push([x - dz * (w + 2) * sd, z + dx * (w + 2) * sd]);
+          const pz = inPalm(x, z);
+          if (k === 1 && (r.t === 4 || r.t === 5) && (pz || zone) && PR() < (pz ? .95 : .5)) {
+            palms.push([x - dz * (w + 2) * sd, z + dx * (w + 2) * sd, pz]);
+            if (pz) palms.push([x + dx * step / 2 - dz * (w + 2) * sd, z + dz * step / 2 + dx * (w + 2) * sd, pz]);   // twice as close on the palm streets
+          }
           if (zone) continue;
           const off = k === 2 ? w + 9 : w + 13, hx = x - dz * off * sd, hz = z + dx * off * sd;
           const key = occ(hx, hz);
@@ -1407,7 +1446,8 @@ async function start() {
           const d = near(hx, hz);
           if (k === 2) {
             houses.push([hx, g0, hz, Math.atan2(dx, dz), d]);
-            if (PR() < .7) trees.push([x - dz * (w + 3) * sd, z + dx * (w + 3) * sd, d]);
+            if (pz && !small) palms.push([x - dz * (w + 3) * sd, z + dx * (w + 3) * sd, pz]);
+            else if (PR() < .7) trees.push([x - dz * (w + 3) * sd, z + dx * (w + 3) * sd, d]);
           } else shops.push([hx, g0, hz, Math.atan2(dx, dz), d]);
         }
       }
@@ -1433,11 +1473,13 @@ async function start() {
     const tr = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Tr.length); tr.receiveShadow = shadows;
     Tr.forEach(([x, z], i) => { const s = 3 + PR() * 3; dummy.rotation.set(0, PR() * 6, 0); dummy.position.set(x * U, (hAt(x, z) + s * 1.1) * U, z * U); dummy.scale.set(s * U, s * .9 * U, s * U); dummy.updateMatrix(); tr.setMatrixAt(i, dummy.matrix); tr.setColorAt(i, GREENS[i % GREENS.length]); });
     const trunk = solid(new THREE.InstancedMesh(new THREE.CylinderGeometry(.03, .05, 1, 6), new THREE.MeshStandardMaterial({ color: "#7a6650", roughness: 1 }), palms.length || 1));
-    const frond = solid(new THREE.InstancedMesh(new THREE.ConeGeometry(.45, .35, 7), new THREE.MeshStandardMaterial({ color: "#4d6b3a", roughness: 1, flatShading: true }), palms.length || 1));
-    palms.forEach(([x, z], i) => {
-      const g0 = hAt(x, z), h = 16 + PR() * 8;
+    // a crown of nine fronds, each drooping from the top of the trunk
+    const leaf = (k) => { const g = new THREE.BoxGeometry(.07, .006, .38); g.translate(0, 0, .19); g.rotateX(.5); g.rotateY(k / 9 * Math.PI * 2); return g; };
+    const frond = solid(new THREE.InstancedMesh(mergeGeometries(Array.from({ length: 9 }, (_, k) => leaf(k))), new THREE.MeshStandardMaterial({ color: "#4d6b3a", roughness: 1, flatShading: true }), palms.length || 1));
+    palms.forEach(([x, z, pz], i) => {
+      const g0 = hAt(x, z), h = pz ? 24 + PR() * 8 : 16 + PR() * 8;      // the famous ones stand taller
       dummy.rotation.set(0, 0, 0); dummy.position.set(x * U, (g0 + h / 2) * U, z * U); dummy.scale.set(1, h * U, 1); dummy.updateMatrix(); trunk.setMatrixAt(i, dummy.matrix);
-      dummy.rotation.set(0, PR() * 6, 0); dummy.position.set(x * U, (g0 + h + .5) * U, z * U);   // a drooping umbrella of fronds dummy.scale.set(1, 1, 1); dummy.updateMatrix(); frond.setMatrixAt(i, dummy.matrix);
+      dummy.rotation.set(0, PR() * 6, 0); dummy.position.set(x * U, (g0 + h + .3) * U, z * U); dummy.scale.setScalar(pz ? 1.2 : 1); dummy.updateMatrix(); frond.setMatrixAt(i, dummy.matrix);
     });
     trunk.count = frond.count = palms.length;
     dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1);
@@ -1655,6 +1697,7 @@ async function start() {
   const turn = (p, a, dt) => { let d = a - p.a; d -= Math.round(d / 6.2832) * 6.2832; p.a += d * Math.min(1, dt * 6); };
   function step(p, dt) {
     const w = p.walk;
+    if (p.friend) return;                                               // scroll walks them (friends())
     if (w) {
       w.s = ((w.s + w.v * dt) % w.len + w.len) % w.len;
       p.x = w.ax + w.dx * w.s - w.dz * w.off; p.z = w.az + w.dz * w.s + w.dx * w.off;
@@ -1664,6 +1707,46 @@ async function start() {
       if (d > .02) { p.x += dx / d * mv; p.z += dz / d * mv; p.ph += mv * 4.33; turn(p, Math.atan2(dx, dz), dt); p.go = Math.min(1, p.go + dt * 4); }
       if (d - mv < .03) { p.path.shift(); if (!p.path.length) { const f = p.done; p.done = null; f?.(); } }
     } else { p.go = Math.max(0, p.go - dt * 4); if (p.face !== undefined) turn(p, p.face, dt); }
+  }
+  // the nearest main street to a point: where on it, which way it runs, how wide it is
+  const nearRoad = ([px, pz]) => {
+    let best = Infinity, out = null;
+    for (const r of roads) if (r.t >= 4 && r.layer === 0) for (let j = 0; j < r.n - 1; j++) {
+      const ax = r.pts[j * 2], az = r.pts[j * 2 + 1], dx = r.pts[j * 2 + 2] - ax, dz = r.pts[j * 2 + 3] - az, l2 = dx * dx + dz * dz || 1;
+      const s = clamp(((px - ax) * dx + (pz - az) * dz) / l2), qx = ax + dx * s, qz = az + dz * s, d = Math.hypot(px - qx, pz - qz);
+      if (d < best) { best = d; const l = Math.sqrt(l2); out = { pt: [qx, qz], dir: [dx / l, dz / l], w: WIDTH[r.t] / 2 }; }
+    }
+    return out;
+  };
+  // taco trucks parked at the kerb, on the side of the street the camera looks at, with a few people waiting at the window
+  const TRUCKS = [[P(-24, 0), STORE], ...(SPOT.REELS || []).filter((_, i) => i !== 1).map((s) => [LL(...s.ll), LL(...s.ll), 28])].map(([p, side, shift = 0]) => {
+    const R = nearRoad(p); if (!R) return null;
+    let n = [-R.dir[1], R.dir[0]]; if (n[0] * (side[0] - R.pt[0]) + n[1] * (side[1] - R.pt[1]) < 0) n = [-n[0], -n[1]];
+    const x = R.pt[0] + R.dir[0] * shift + n[0] * (R.w - 1.6), z = R.pt[1] + R.dir[1] * shift + n[1] * (R.w - 1.6);
+    [-1.2, 0, 1.3].forEach((d, k) => { const cx = x + R.dir[0] * d + n[0] * 3.4, cz = z + R.dir[1] * d + n[1] * 3.4; person({ x: cx, z: cz, a: Math.atan2(-n[0], -n[1]) + (k - 1) * .3 }); });
+    return { x, z, dir: R.dir, n };
+  }).filter(Boolean);
+  // the friends from the demo, walking to the place the server picked as you scroll down to it; a badge over each
+  const FRIENDS = [["M", "#e67e22", -1], ["J", "#16a085", -1], ["N", "#8e44ad", 1], ["A", "#c0392b", 1]].map(([who, c, from], i) => {
+    const meet = P(-1.4 - i * .8, 11.1), pts = [P(from * (60 + i * 8), LANE - .25 + (i % 2) * .5), P(-1.4 - i * .8, LANE), meet];
+    const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const g = cv.getContext("2d"); g.fillStyle = c; g.beginPath(); g.arc(64, 64, 56, 0, 6.283); g.fill(); g.lineWidth = 8; g.strokeStyle = "#fff"; g.stroke();
+    g.fillStyle = "#fff"; g.font = "800 66px Inter, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(who, 64, 68);
+    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(cv), toneMapped: false })); badge.scale.setScalar(.09); scene.add(badge);
+    return { p: person({ friend: true, hide: true }), pts, cum, len: cum[cum.length - 1], d: 0, badge };
+  });
+  function friends() {
+    const pl = reduce ? 1 : SPOT.place ?? 0;
+    FRIENDS.forEach((f, i) => {
+      const p = f.p, u = smooth(range(pl, .1 + i * .05, .48 + i * .05)), d = u * f.len;
+      let k = 0; while (k < f.pts.length - 2 && d > f.cum[k + 1]) k++;
+      const a = f.pts[k], b = f.pts[k + 1], t = clamp((d - f.cum[k]) / ((f.cum[k + 1] - f.cum[k]) || 1)), moved = Math.abs(d - f.d);
+      f.d = d; p.x = lerp(a[0], b[0], t); p.z = lerp(a[1], b[1], t); p.hide = pl <= 0;
+      if (moved > 1e-3) { p.a = Math.atan2(b[0] - a[0], b[1] - a[1]); p.ph += moved * 4.33; p.go = Math.min(1, p.go + .25); }
+      else { p.go = Math.max(0, p.go - .06); if (u >= 1) p.a = Math.atan2(DOOR[0] - p.x, DOOR[1] - p.z); }
+      f.badge.visible = !p.hide; f.badge.position.set(p.x * U, hAt(p.x, p.z) * U + .24, p.z * U);
+    });
   }
   // a figure: body, head, and arms and legs that swing from the hip and shoulder as they walk
   const SKIN = ["#8d5524", "#c68642", "#e0ac69", "#f1c27d", "#ffdbac", "#5c3a21"].map((c) => new THREE.Color(c));
@@ -1696,9 +1779,188 @@ async function start() {
   let walkT = 0;
   function walkPeople(time) {
     const dt = Math.min(.1, Math.max(0, time - walkT)); walkT = time;
-    doorway(dt);
+    doorway(dt); friends();
     folk.forEach((p, i) => { step(p, dt); pose(p, i, time); });
     pBody.instanceMatrix.needsUpdate = pHead.instanceMatrix.needsUpdate = pLeg.instanceMatrix.needsUpdate = pArm.instanceMatrix.needsUpdate = true;
+  }
+
+  // ── LA on a Friday night: each of these runs every frame with (time, how dark it is) ──
+  const night = [];
+  const key = (k) => ys[PATH.findIndex((p) => p[0] === k)];             // where on the page a camera key sits
+  let marineK = 0;
+  // a beam of light, brightest at its lamp: a cone from 0 down to -1, aimed and stretched by its mesh
+  const unitBeam = (() => { const g = new THREE.CylinderGeometry(.02, 1, 1, 24, 1, true); g.translate(0, -.5, 0); return g; })();
+  const shine = (c) => new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { c: { value: new THREE.Color(c) }, o: { value: 0 } },
+    vertexShader: "varying float vV; void main(){ vV = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: "uniform vec3 c; uniform float o; varying float vV; void main(){ gl_FragColor = vec4(c * o * pow(vV, 2.0), 1.0); }" });
+  const DOWN = new THREE.Vector3(0, -1, 0), tv1 = new THREE.Vector3(), tv2 = new THREE.Vector3();
+  const additive = (o) => ({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, ...o });
+  // an LAPD helicopter circling downtown, its searchlight sweeping the streets
+  {
+    const heli = new THREE.Group(), dark = new THREE.MeshStandardMaterial({ color: "#1d2128", roughness: .5, metalness: .4 });
+    heli.add(new THREE.Mesh(new THREE.BoxGeometry(.28, .26, .8), dark));
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(.06, .06, .8), dark); tail.position.set(0, .05, -.7); heli.add(tail);
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(1.2, .01, .05), dark); rotor.position.y = .2; heli.add(rotor);
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(.06, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, .2, .2), toneMapped: false })); blink.position.y = -.16; heli.add(blink);
+    const beamM = shine("#e8f0ff"), beam = new THREE.Mesh(unitBeam, beamM);
+    const spot = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial(additive({ map: sprite, color: "#cfe0ff" }))); spot.rotation.x = -Math.PI / 2;
+    scene.add(heli, beam, spot);
+    night.push((time, n) => {
+      heli.visible = beam.visible = spot.visible = n > .05;
+      if (!heli.visible) return;
+      const a = time * .06, [cx, cz] = DT, hx = cx + Math.cos(a) * 650, hz = cz + Math.sin(a) * 650;
+      heli.position.set(hx * U, (hAt(cx, cz) + 280) * U, hz * U); heli.rotation.y = -a; rotor.rotation.y = time * 25;
+      blink.visible = Math.sin(time * 6) > .6;
+      const tx = cx + Math.cos(a - .5) * 380 + Math.sin(time * .3) * 60, tz = cz + Math.sin(a - .5) * 380;
+      tv1.copy(heli.position); tv1.y -= .2; tv2.set(tx * U, hAt(tx, tz) * U + .3, tz * U);
+      const len = tv1.distanceTo(tv2);
+      beam.position.copy(tv1); beam.quaternion.setFromUnitVectors(DOWN, tv2.clone().sub(tv1).normalize()); beam.scale.set(2.2, len, 2.2);
+      beamM.uniforms.o.value = .22 * n; spot.position.copy(tv2); spot.scale.setScalar(3); spot.material.opacity = .9 * n;
+    });
+  }
+  // planes lined up for LAX, landing west over the basin on a 3° glide, a couple of minutes apart
+  {
+    const [lx, lz] = LL(33.9425, -118.408), NPL = 6, pos = new Float32Array(NPL * 3), g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.PointsMaterial(additive({ size: 7, sizeAttenuation: false, map: sprite, color: "#fff6e0", fog: false })), pts = new THREE.Points(g, m);
+    pts.frustumCulled = false; scene.add(pts);
+    night.push((time, n) => {
+      m.opacity = n;
+      for (let i = 0; i < NPL; i++) {
+        const d = ((i * 6500 - time * 75) % 39000 + 39000) % 39000 + 600;
+        pos.set([(lx + d) * U, (30 + d * .0524) * U, (lz + (i % 2 ? -350 : 350)) * U], i * 3);
+      }
+      g.attributes.position.needsUpdate = true;
+    });
+  }
+  // searchlights over Hollywood and Highland, like a premiere
+  {
+    const [hx, hz] = LL(34.1016, -118.3387), g0 = hAt(hx, hz), ms = [];
+    for (let i = 0; i < 3; i++) { const m = shine("#eaf2ff"), b = new THREE.Mesh(unitBeam, m); b.position.set((hx + (i - 1) * 25) * U, (g0 + 3) * U, hz * U); scene.add(b); ms.push([b, m, i]); }
+    night.push((time, n) => ms.forEach(([b, m, i]) => {
+      b.visible = n > .05; const a = time * .35 + i * 2.1, tilt = .35 + .15 * Math.sin(time * .5 + i);
+      tv1.set(Math.sin(a) * tilt, 1, Math.cos(a) * tilt).normalize(); b.quaternion.setFromUnitVectors(DOWN, tv1); b.scale.set(3, 260, 3);
+      m.uniforms.o.value = .16 * n;
+    }));
+  }
+  // the taco trucks: a white box, a lit window on the sidewalk side, string lights out to a pole
+  {
+    const bodyM = new THREE.MeshStandardMaterial({ color: "#f1ede4", roughness: .6 }), win = glowMat("#ffcf8a", 1.6), bulbs = [];
+    for (const t of TRUCKS) {
+      const grp = new THREE.Group(); grp.position.set(t.x * U, hAt(t.x, t.z) * U, t.z * U); grp.rotation.y = Math.atan2(t.dir[0], t.dir[1]); scene.add(grp);
+      const sx = Math.sign(t.n[0] * t.dir[1] - t.n[1] * t.dir[0]) || 1;   // which local side faces the sidewalk
+      const box = solid(new THREE.Mesh(new THREE.BoxGeometry(.24, .26, .66), bodyM)); box.position.y = .17; grp.add(box);
+      const cab = solid(new THREE.Mesh(new THREE.BoxGeometry(.23, .17, .16), bodyM)); cab.position.set(0, .12, .41); grp.add(cab);
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(.34, .09), win); w.position.set(sx * .122, .21, -.05); w.rotation.y = sx * Math.PI / 2; grp.add(w);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .3, 6), new THREE.MeshStandardMaterial({ color: "#222" })); pole.position.set(sx * .55, .15, -.05); grp.add(pole);
+      for (const z0 of [-.3, .2]) for (let k = 0; k <= 10; k++) { const f = k / 10; bulbs.push({ grp, p: new THREE.Vector3(sx * lerp(.12, .55, f), .3 - Math.sin(f * Math.PI) * .05, lerp(z0, -.05, f)) }); }
+    }
+    const pts = new Float32Array(bulbs.length * 3);
+    bulbs.forEach((b, i) => { b.grp.updateMatrixWorld(true); b.p.applyMatrix4(b.grp.matrixWorld); pts.set([b.p.x, b.p.y, b.p.z], i * 3); });
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    const m = new THREE.PointsMaterial(additive({ size: .07, map: sprite, color: "#ffd59a" })); scene.add(new THREE.Points(g, m));
+    night.push((time, n) => { m.opacity = .3 + .7 * n; });
+  }
+  // Dodger Stadium in Chavez Ravine: the bowl, the light banks and the glow they throw into the sky
+  {
+    const [sx, sz] = LL(34.0739, -118.2400), st = new THREE.Group(); st.position.set(sx * U, hAt(sx, sz) * U, sz * U); scene.add(st);
+    const stands = solid(new THREE.Mesh(new THREE.CylinderGeometry(15, 9.5, 3.4, 48, 1, true, -.9, Math.PI + 1.8), new THREE.MeshStandardMaterial({ color: "#c9c3b6", roughness: .9, side: THREE.DoubleSide })));
+    stands.position.y = 1.7; st.add(stands);
+    const fieldM = new THREE.MeshStandardMaterial({ color: "#3f7a3a", roughness: 1, emissive: "#4f9a48", emissiveIntensity: 0 });
+    const field = new THREE.Mesh(new THREE.CircleGeometry(9.6, 48), fieldM); field.rotation.x = -Math.PI / 2; field.position.y = .15; st.add(field);
+    const bank = glowMat("#f4f8ff", 2.4);
+    for (let i = 0; i < 8; i++) { const a = -.6 + i * (Math.PI + 1.2) / 7, b = new THREE.Mesh(new THREE.BoxGeometry(1.8, .6, .1), bank); b.position.set(Math.sin(a) * 15.5, 5.4, Math.cos(a) * 15.5); b.rotation.y = a + Math.PI; st.add(b); }
+    const dome = new THREE.Sprite(new THREE.SpriteMaterial(additive({ map: sprite, color: "#cfe2ff", fog: false }))); dome.scale.set(80, 45, 1); dome.position.y = 12; st.add(dome);
+    night.push((time, n) => { fieldM.emissiveIntensity = .7 * n; dome.material.opacity = .4 * n; });
+  }
+  // Venice: the boardwalk lit from the pier down to Venice Beach, low shops along it, the sign over Windward
+  {
+    const W = [[34.0080, -118.4975], [33.9990, -118.4880], [33.9900, -118.4790], [33.9850, -118.4730], [33.9760, -118.4660]].map((p) => LL(...p));
+    const lamps = [], shops = [];
+    for (let k = 0; k < W.length - 1; k++) {
+      const [ax, az] = W[k], dx = W[k + 1][0] - ax, dz = W[k + 1][1] - az, len = Math.hypot(dx, dz), nx = dz / len, nz = -dx / len;   // n points inland
+      for (let s = 0; s < len; s += 18) { const x = ax + dx * s / len, z = az + dz * s / len; lamps.push(x * U, (hAt(x, z) + 5) * U, z * U); if (s % 36 < 18) shops.push([x + nx * 16, z + nz * 16, Math.atan2(dx, dz)]); }
+    }
+    const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.Float32BufferAttribute(lamps, 3));
+    const lm = new THREE.PointsMaterial(additive({ size: .9, map: sprite, color: "#ffc77a" })); scene.add(new THREE.Points(lg, lm));
+    const PAST = ["#f2a7b8", "#9fd8cf", "#f6d27a", "#b9a6f2", "#f4b183", "#a8d18d"].map((c) => new THREE.Color(c));
+    const sb = solid(new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .8, emissive: "#ffb070", emissiveIntensity: 0 }), shops.length));
+    shops.forEach(([x, z, a], i) => { const h = 5 + (i * 7 % 5); dummy.rotation.set(0, a, 0); dummy.position.set(x * U, (hAt(x, z) + h / 2) * U, z * U); dummy.scale.set(1.0, h * U, 1.2); dummy.updateMatrix(); sb.setMatrixAt(i, dummy.matrix); sb.setColorAt(i, PAST[i % PAST.length]); });
+    dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); scene.add(sb);
+    const cv = document.createElement("canvas"); cv.width = 512; cv.height = 128;
+    const g = cv.getContext("2d"); g.font = "900 104px Arial Black, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.shadowColor = "#ffb36b"; g.shadowBlur = 18; g.fillStyle = "#fff4e0"; g.fillText("VENICE", 256, 68);
+    const [vx, vz] = LL(33.9873, -118.4722), vm = new THREE.MeshBasicMaterial({ map: tex(cv), transparent: true, toneMapped: false, side: THREE.DoubleSide });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), vm); sign.position.set(vx * U, (hAt(vx, vz) + 9) * U, vz * U); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+    night.push((time, n) => { lm.opacity = n; sb.material.emissiveIntensity = .25 * n; vm.color.setScalar(.6 + 1.4 * n); });
+  }
+  // the marine layer rolling in off the ocean at the end of the night
+  {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const g = cv.getContext("2d"), CR = rand(77);
+    for (let k = 0; k < 7; k++) { const x = 30 + CR() * 68, y = 44 + CR() * 40, r = 22 + CR() * 20, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, "rgba(255,255,255,.55)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
+    const cloudTex = tex(cv), puffs = [];
+    for (let i = 0; i < 46; i++) {
+      const [x, z] = LL(33.94 + CR() * .11, -118.61 + CR() * .1), s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, color: "#c4bcd2", transparent: true, opacity: 0, depthWrite: false, fog: false }));
+      s.scale.set(60 + CR() * 60, 22 + CR() * 20, 1); scene.add(s); puffs.push({ s, x, z, y: 30 + CR() * 90, ox: CR() * 1500 });
+    }
+    night.push((time) => {
+      marineK = range(sy, key("numbersMid"), key("end"));
+      puffs.forEach((q) => {
+        const ph = ((time * 8 + q.ox) % 1500) / 1500;                    // each drifts inland, fading out before it wraps round
+        q.s.visible = marineK > 0; q.s.material.opacity = .55 * marineK * Math.sin(Math.PI * ph);
+        q.s.position.set((q.x + ph * 1500) * U, q.y * U, q.z * U);
+      });
+    });
+  }
+  // the green overhead signs on the 110 and the 101, around the four-level interchange and south of downtown
+  {
+    const along = (r, s) => { let j = 1; while (j < r.n - 1 && r.cum[j] < s) j++; const f = (s - r.cum[j - 1]) / ((r.cum[j] - r.cum[j - 1]) || 1), dx = r.pts[j * 2] - r.pts[j * 2 - 2], dz = r.pts[j * 2 + 1] - r.pts[j * 2 - 1], l = Math.hypot(dx, dz) || 1; return [lerp(r.pts[j * 2 - 2], r.pts[j * 2], f), lerp(r.pts[j * 2 - 1], r.pts[j * 2 + 1], f), dx / l, dz / l]; };
+    const picks = [];
+    for (const [c, lo, hi, most] of [[FOUR, 250, 1100, 3], [fig[0], 150, 900, 1]]) {
+      let got = 0;
+      for (const r of roads) for (let s = 60; r.t === 0 && s < r.len - 60 && got < most; s += 150) {
+        const [x, z, dx, dz] = along(r, s), d = Math.hypot(x - c[0], z - c[1]);
+        if (d > lo && d < hi && picks.every((p) => Math.hypot(p.x - x, p.z - z) > 350)) { picks.push({ r, s, x, z, dx, dz }); got++; }
+      }
+    }
+    const face = (route, dirn, city) => {
+      const cv = document.createElement("canvas"); cv.width = 512; cv.height = 144;
+      const g = cv.getContext("2d"); g.fillStyle = "#1d6b40"; g.fillRect(0, 0, 512, 144); g.strokeStyle = "#fff"; g.lineWidth = 6; g.strokeRect(9, 9, 494, 126);
+      g.fillStyle = "#fff"; g.font = "700 38px Arial, sans-serif"; g.textBaseline = "middle"; g.fillText(`${route} ${dirn}`, 30, 46); g.font = "700 50px Arial, sans-serif"; g.fillText(city, 30, 100);
+      return tex(cv);
+    };
+    const green = new THREE.MeshStandardMaterial({ color: "#1d6b40", roughness: .6 }), steel = new THREE.MeshStandardMaterial({ color: "#8d9096", roughness: .5, metalness: .6 }), signMats = [];
+    for (const p of picks) {
+      const ew = Math.abs(p.dx) > Math.abs(p.dz), [route, a, b] = ew ? ["101", ["NORTH", "Hollywood"], ["SOUTH", "Santa Ana"]] : ["110", ["NORTH", "Pasadena"], ["SOUTH", "San Pedro"]];
+      const fm = [a, b].map(([d, c]) => { const t = face(route, d, c); const m = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: "#ffffff", emissiveIntensity: 0, roughness: .6 }); signMats.push(m); return m; });
+      const grp = new THREE.Group(); grp.position.set(p.x * U, roadY(p.r, p.x, p.z, p.s) * U, p.z * U); grp.rotation.y = Math.atan2(p.dx, p.dz); scene.add(grp);
+      for (const sx of [-1.45, 1.45]) { const post = solid(new THREE.Mesh(new THREE.BoxGeometry(.05, .8, .05), steel)); post.position.set(sx, .4, 0); grp.add(post); }
+      const beam = solid(new THREE.Mesh(new THREE.BoxGeometry(2.95, .06, .06), steel)); beam.position.y = .78; grp.add(beam);
+      const panel = solid(new THREE.Mesh(new THREE.BoxGeometry(1.5, .42, .03), [green, green, green, green, fm[1], fm[0]])); panel.position.set(-.5, .55, 0); grp.add(panel);
+    }
+    night.push((time, n) => signMats.forEach((m) => (m.emissiveIntensity = .45 * n)));
+  }
+  // fireworks over the water by the pier, for the last shots of the night
+  {
+    const FB = 7, FP = 90, pos = new Float32Array(FB * FP * 3), colr = new Float32Array(FB * FP * 3), FR = rand(55);
+    const bursts = Array.from({ length: FB }, () => ({ off: FR() * 9, per: 4 + FR() * 3, x: WHEEL[0] - 120 + (FR() - .5) * 260, z: WHEEL[1] + 60 + (FR() - .5) * 260, y: 110 + FR() * 70, R: 35 + FR() * 25,
+      col: new THREE.Color().setHSL(FR(), .9, .6), dirs: Array.from({ length: FP }, () => new THREE.Vector3(FR() * 2 - 1, FR() * 2 - 1, FR() * 2 - 1).normalize().multiplyScalar(.7 + FR() * .3)) }));
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(colr, 3));
+    const pts = new THREE.Points(g, new THREE.PointsMaterial(additive({ size: 1.4, map: sprite, vertexColors: true, fog: false }))); pts.frustumCulled = false; scene.add(pts);
+    night.push((time, n) => {
+      const k = range(sy, key("numbersMid"), key("numbersEnd")) * n;
+      pts.visible = k > 0; if (!pts.visible) return;
+      bursts.forEach((b, i) => {
+        const age = (time + b.off) % b.per, live = age < 2.6, e = 1 - Math.exp(-age * 2.5), fade = live ? (1 - age / 2.6) ** 1.6 * k * 2.5 : 0;
+        b.dirs.forEach((d, j) => {
+          const o = (i * FP + j) * 3;
+          pos[o] = (b.x + d.x * b.R * e) * U; pos[o + 1] = (b.y + d.y * b.R * e - 2.9 * age * age) * U; pos[o + 2] = (b.z + d.z * b.R * e) * U;
+          colr[o] = b.col.r * fade; colr[o + 1] = b.col.g * fade; colr[o + 2] = b.col.b * fade;
+        });
+      });
+      g.attributes.position.needsUpdate = g.attributes.color.needsUpdate = true;
+    });
   }
 
   // ── pins ──
@@ -1727,7 +1989,7 @@ async function start() {
     return makePin(s.color, new THREE.Vector3(x * U, y * U, z * U), true);
   });
   // the hero's reels drop their pins where those places are
-  const heroPins = (SPOT.REELS || []).map((s) => makePin(s.glow || s.color, at(LL(...s.ll)), true));
+  const heroPins = (SPOT.REELS || []).map((s) => { const p = at(LL(...s.ll)); s.pos = [p.x, p.y + 4.1, p.z]; return makePin(s.glow || s.color, p, true); });   // s.pos: the pin's head, for the card's light trail
   // the live feed: straight down on Koreatown, Mid-Wilshire and Melrose, high enough that every catalog
   // spot there fits on screen. On a tall phone screen the camera turns so east-west runs up the screen.
   const NEON = ["#9b87ff", "#FF6FA8", "#22D3EE", "#FF8A4C", "#A3E635"];
@@ -1766,7 +2028,7 @@ async function start() {
       const k = landed ? (time * .45 + pin.phase + j * .5) % 1 : range(t, .4 + j * .2, 1);
       const s = 1 - (1 - k) ** 3;
       r.scale.setScalar(1 + s * 4.5);
-      r.material.opacity = (1 - k) ** 2 * (j ? .4 : .7) * (t > .4 ? 1 : 0);
+      r.material.opacity = (1 - k) ** 2 * (j ? .4 : .7) * (t > .4 ? 1 : 0) * clamp((camera.position.y - pin.g.position.y - 3) / 6);   // gone when the camera is down at its level
     });
     if (pin.beam) pin.beam.material.opacity = landed ? .26 + Math.sin(time * 2 + pin.phase) * .05 : t * .2;
   }
@@ -1783,13 +2045,17 @@ async function start() {
   const liveC = portrait ? off(LIVE, LIVE_H * .2, 0) : LIVE;              // on a phone the cards fill the bottom, so the pins sit higher
   const signY = portrait ? -117 : 18;                                     // on a phone the card sits low, so the sign sits high
   const fdir = (() => { const a = F(0), b = F(9), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })();
+  const ARRIVE = (SPOT.REELS || []).map((s, i, all) => {
+    const v = LL(...s.ll), R = nearRoad(v) || { pt: v, dir: [1, 0] }, next = all[i + 1] ? LL(...all[i + 1].ll) : v;
+    const mid = [(v[0] + next[0]) / 2, (v[1] + next[1]) / 2];
+    return { cam: V(off(R.pt, -R.dir[0] * 75, -R.dir[1] * 75), 10), look: V(v, 16), hop: V(mid, 170), hopLook: V(next, 0) };
+  });
   const PATH = [
     // over the Arts District, downtown and Koreatown against the sunset (pulled back on a tall phone screen, so all four pins fit)
     ["top",       portrait ? V(off(DT, 3800, 1200), 1500) : V(off(DT, 2600, 2400), 1000), portrait ? V(off(DT, -3000, -600), 0) : V(off(DT, -700, -200), 120), 0, 1],
     ["introEnd",  portrait ? V(off(DT, 2600, 900), 900) : V(off(DT, 1600, 1500), 520),   portrait ? V(off(DT, -3200, -500), 0) : V(off(DT, -900, -100), 160), .3, 0],
-    ["dive",      V(off(F(0), -fdir[0] * 700, -fdir[1] * 700), 150), V(F(3), 60), .36, 0],   // line up with Figueroa from the south, then sink into it
-    ["canyon",    V(F(1), 42),                    V(F(5), 50),                  .4,  0],   // drift up Figueroa between the towers
-    ["canyonEnd", V(F(7), 42),                    V(F(9), 60),                  .46, 0],
+    // down to each reel's real block as its card lands, standing in the street 75 m off; up over the roofs between them
+    ...ARRIVE.flatMap((a, i) => [[`reel${i}`, a.cam, a.look, .37 + i * .045, 1], ...(i < ARRIVE.length - 1 ? [[`hop${i}`, a.hop, a.hopLook, .39 + i * .045, 0]] : [])]),
     ["heroEnd",   V(off(F(9), fdir[0] * 150, fdir[1] * 150), 170), V(FOUR, 15), .52, 0],   // rise out over the interchange
     ["how",       V(off(FOUR, -420, 300), 170),   V(FOUR, 10),                  .58, 1],   // a slow quarter orbit of the four-level interchange
     ["howEnd",    V(off(FOUR, -480, -160), 150),  V(FOUR, 10),                  .64, 1],
@@ -1838,11 +2104,12 @@ async function start() {
     const top = (id) => el(id).getBoundingClientRect().top + scrollY;
     const end = (id) => top(id) + el(id).offsetHeight - innerHeight;
     const fr = (id, f) => top(id) + f * (el(id).offsetHeight - innerHeight);
-    const A = { top: 0, introEnd: end("top"), dive: fr("reels", .12), canyon: fr("reels", .32), canyonEnd: fr("reels", .8), heroEnd: end("reels"),
+    const A = { top: 0, introEnd: end("top"), heroEnd: end("reels"),
                 how: top("how"), howEnd: fr("how", .9), live: top("live"), liveEnd: fr("live", .92), demo: top("demo"), demoEnd: end("demo"),
                 over: (end("demo") + top("place")) / 2, place: top("place"), placeIn: fr("place", .42), placeEnd: fr("place", .9), placeUp: end("place"),
                 np: top("np"), npEnd: fr("np", .9), numbers: top("numbers"), numbersMid: fr("numbers", .45), numbersEnd: end("numbers"),
                 end: document.documentElement.scrollHeight - innerHeight };
+    ARRIVE.forEach((_, i) => { A["reel" + i] = fr("reels", i * .3 + .17); A["hop" + i] = fr("reels", i * .3 + .3); });   // each reel has 30% of the hero
     ys = PATH.map(([k]) => A[k]);
   }
   measure();
@@ -1871,21 +2138,21 @@ async function start() {
     return lerp(PATH[i][3], PATH[i + 1][3], g);
   }
   const v3 = new THREE.Vector3();
-  SPOT.project = (x, y, z) => { v3.set(x, y, z).project(camera); return { x: (v3.x + 1) / 2 * innerWidth, y: (1 - v3.y) / 2 * innerHeight, ok: v3.z < 1 }; };
+  SPOT.project = (x, y, z) => { v3.set(x, y, z).project(camera); return { x: (v3.x + 1) / 2 * CW(), y: (1 - v3.y) / 2 * CH(), ok: v3.z < 1 }; };
 
   // render into a multisampled target so edges stay smooth through the post effects
   const pr = renderer.getPixelRatio();
-  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { samples: small ? 2 : 4, type: THREE.HalfFloatType }));
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(CW() * pr, CH() * pr, { samples: small ? 2 : 4, type: THREE.HalfFloatType }));
   composer.addPass(new RenderPass(scene, camera));
   let gtao = null;
   if (!small) {
-    gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+    gtao = new GTAOPass(scene, camera, CW(), CH());
     gtao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.4, thickness: 3, scale: 1.2, samples: 16 });
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
     gtao.blendIntensity = .85;
     composer.addPass(gtao);
   }
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .4, .5, .6);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(CW(), CH()), .4, .5, .6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
@@ -1922,7 +2189,7 @@ async function start() {
     const n = L.lamp;
     skyMat.uniforms.zen.value.copy(L.zen); skyMat.uniforms.hor.value.copy(L.hor); skyMat.uniforms.glow.value.copy(L.glow); skyMat.uniforms.glowK.value = L.glowK;
     // looking straight down there's less air between the camera and the ground than toward the horizon
-    scene.fog.color.copy(L.hor); scene.fog.density = L.fog * (1 - .8 * clamp(-camera.getWorldDirection(look).y) ** 2);
+    scene.fog.color.copy(L.hor); scene.fog.density = L.fog * (1 - .8 * clamp(-camera.getWorldDirection(look).y) ** 2) * (1 + 1.4 * marineK);   // thicker as the marine layer comes in
     hemi.color.copy(L.hemiS); hemi.groundColor.copy(L.hemiG); hemi.intensity = L.hemi;
     sunL.color.copy(L.sunC); sunL.intensity = L.sun;
     look.set(camLook.x * U, camLook.y * U, camLook.z * U);
@@ -1965,6 +2232,7 @@ async function start() {
     driveCars(reduce ? 0 : time);
     walkPeople(reduce ? 0 : time);
     wheel.rotation.x = time * .25;
+    night.forEach((f) => f(reduce ? 0 : time, L.lamp));
     const blink = (Math.sin(time * 3) > .2 ? 1 : .15) * L.lamp;
     redLights.forEach((s) => s.material.color.setRGB(3 * blink, .25 * blink, .25 * blink));
     composer.render();
@@ -1976,14 +2244,14 @@ async function start() {
       if (slow > .6 && quality > 0) {
         quality--; slow = 0;
         if (gtao && gtao.enabled) gtao.enabled = false;
-        else { renderer.setPixelRatio(1); composer.setPixelRatio?.(1); composer.setSize(innerWidth, innerHeight); }
+        else { renderer.setPixelRatio(1); composer.setPixelRatio?.(1); composer.setSize(CW(), CH()); }
       }
     }
   }
   let lastFrame = 0, slow = 0, quality = 2;
   addEventListener("resize", () => {
-    camera.aspect = innerWidth / innerHeight; camera.fov = innerHeight > innerWidth ? 55 : 42; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight, false); composer.setSize(innerWidth, innerHeight); gtao?.setSize(innerWidth, innerHeight);
+    camera.aspect = CW() / CH(); camera.fov = CH() > CW() ? 55 : 42; camera.updateProjectionMatrix();
+    renderer.setSize(CW(), CH(), false); composer.setSize(CW(), CH()); gtao?.setSize(CW(), CH());
     measure();
   });
   addEventListener("load", measure);
