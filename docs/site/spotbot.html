@@ -2252,7 +2252,8 @@ async function start() {
     ["musicUp",   V(off(MUSIC, -MDIR[0] * 700, -MDIR[1] * 700), 260), V(MUSIC, 0), 1, 0],
     ["music",     V(off(MUSIC, -MDIR[0] * 108, -MDIR[1] * 108), 1.75), V(MUSIC, 24), 1, 1],   // tilted up a little: the stage low, the lasers filling the sky
     ["musicEnd",  V(off(MUSIC, -MDIR[0] * 96, -MDIR[1] * 96), 1.75), V(MUSIC, 26), 1,   1],
-    ["end",       V(off(MUSIC, -MDIR[0] * 190, -MDIR[1] * 190), 75), V(off(MUSIC, MDIR[0] * 700, MDIR[1] * 700), 40), 1, 1],   // up over the crowd: the stage, the lasers and downtown behind
+    ["musicOut",  V(off(MUSIC, -MDIR[0] * 190, -MDIR[1] * 190), 75), V(off(MUSIC, MDIR[0] * 700, MDIR[1] * 700), 40), 1, 0],   // up over the crowd: the stage, the lasers and downtown behind
+    ["end",       V(LL(34.0140, -118.4905), 110), V(off(WHEEL, -90, 50), 95), 1,  1],   // and back to the pier to close the night under the fireworks
   ];
   const LIVE_END = PATH.findIndex((p) => p[0] === "liveEnd"), smooth = (x) => x * x * (3 - 2 * x);
   const posCurve = new THREE.CatmullRomCurve3(PATH.map((p) => new THREE.Vector3(...p[1])), false, "centripetal");
@@ -2287,7 +2288,7 @@ async function start() {
                 how: top("how"), howEnd: fr("how", .9), live: top("live"), liveEnd: fr("live", .92), demo: top("demo"), demoEnd: end("demo"),
                 over: (end("demo") + top("place")) / 2, place: top("place"), placeIn: fr("place", .42), placeEnd: fr("place", .9), placeUp: end("place"),
                 np: top("np"), npEnd: fr("np", .9), numbers: top("numbers"), numbersMid: fr("numbers", .45), numbersEnd: end("numbers"),
-                musicUp: (end("numbers") + top("music")) / 2, music: fr("music", .22), musicEnd: fr("music", .9),
+                musicUp: (end("numbers") + top("music")) / 2, music: fr("music", .22), musicEnd: fr("music", .9), musicOut: end("music"),
                 end: document.documentElement.scrollHeight - innerHeight };
     ARRIVE.forEach((_, i) => { A["reel" + i] = fr("reels", i * .3 + .17); A["hop" + i] = fr("reels", i * .3 + .3); });   // each reel has 30% of the hero
     ys = PATH.map(([k]) => A[k]);
