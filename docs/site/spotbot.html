@@ -591,8 +591,8 @@
   </div>
   <footer>
     <div class="wrap">
-      <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok or Discord.</span>
-      <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> · City: map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, elevation USGS</span>
+      <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok, Discord or any venue shown. Hollywood Sign™ Hollywood Chamber of Commerce.</span>
+      <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> · City: map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, elevation USGS &amp; NOAA, 3D by three.js · <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/site/CREDITS.md">Credits &amp; licenses</a></span>
     </div>
   </footer>
 </section>
@@ -637,7 +637,7 @@
   const cardHTML = (s, id) => `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="d">📝 ${s.desc}<br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.sharer} · via Instagram</div></div><div class="btns"><span class="up" id="${id}">👍 <b>0</b></span><span>👎</span><span>📅 Lock it in</span></div>`;
   const av = (t, bg) => `<div class="av" style="background:${bg}">${t}</div>`;
   const scenes = [...document.querySelectorAll("[data-scene]")];
-  const progressOf = (el) => { if (reduce) return 1; const r = el.getBoundingClientRect(); return clamp(-r.top / Math.max(1, r.height - innerHeight)); };
+  const progressOf = (el, r = el.getBoundingClientRect()) => reduce ? 1 : clamp(-r.top / Math.max(1, r.height - innerHeight));
 
   // ── 0. intro: pins light up in the 3D city, then each spot's card rises out of its pin and
   //    flies into the phone. The 3D script tells us where each pin is on screen (SPOT.project). ──
@@ -908,9 +908,11 @@
   let queued = false;
   function frame() {
     queued = false;
-    bar.style.setProperty("--sp", scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight));
+    // read every box before writing any style, so the page lays out once per frame, not once per scene
+    const sp = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight), rects = scenes.map((el) => el.getBoundingClientRect());
+    bar.style.setProperty("--sp", sp);
     scenes.forEach((el, i) => {
-      const r = el.getBoundingClientRect(), p = progressOf(el), name = el.dataset.scene;
+      const r = rects[i], p = progressOf(el, r), name = el.dataset.scene;
       SPOT[name] = p;
       const near = r.bottom > -innerHeight && r.top < innerHeight * 2;
       if (near || reduce) RENDER[name](p);
@@ -952,7 +954,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 const canvas = document.getElementById("city");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const small = innerWidth < 760;
+const small = (innerWidth || screen.width) < 760;                   // a tab opened hidden can report a 0-wide window at load
 const SPOT = window.SPOT || (window.SPOT = {});
 const clamp = (x) => Math.max(0, Math.min(1, x));
 const range = (p, a, b) => clamp((p - a) / (b - a));
@@ -1711,7 +1713,9 @@ async function start() {
     SPOT.onTod?.(t);
   }
 
-  let shadowSize = 0;
+  let shadowSize = 0, shadowOk = false;
+  const look = new THREE.Vector3(), shadowAt = new THREE.Vector3();
+  if (shadows) renderer.shadowMap.autoUpdate = false;
   function dusk(t) {
     mix(t);
     ink(t);
@@ -1720,12 +1724,15 @@ async function start() {
     scene.fog.color.copy(L.hor); scene.fog.density = L.fog;
     hemi.color.copy(L.hemiS); hemi.groundColor.copy(L.hemiG); hemi.intensity = L.hemi;
     sunL.color.copy(L.sunC); sunL.intensity = L.sun;
-    const look = new THREE.Vector3(camLook.x * U, camLook.y * U, camLook.z * U);
+    look.set(camLook.x * U, camLook.y * U, camLook.z * U);
     sunL.position.copy(look).addScaledVector(SUN, 900); sunL.target.position.copy(look); sunL.target.updateMatrixWorld();
     if (shadows) {
+      // everything that casts a shadow stands still, so the shadow map is redrawn only when the sun's view moves
       const size = Math.max(40, Math.min(500, (camPos.y - ground) * U * 1.2));
-      if (Math.abs(size - shadowSize) > shadowSize * .08) { shadowSize = size; Object.assign(sunL.shadow.camera, { left: -size, right: size, top: size, bottom: -size }); sunL.shadow.camera.updateProjectionMatrix(); }
-      renderer.shadowMap.autoUpdate = L.sun > .05;
+      let moved = !shadowOk || look.distanceToSquared(shadowAt) > 1e-4;
+      if (Math.abs(size - shadowSize) > shadowSize * .08) { shadowSize = size; moved = true; Object.assign(sunL.shadow.camera, { left: -size, right: size, top: size, bottom: -size }); sunL.shadow.camera.updateProjectionMatrix(); }
+      if (L.sun > .05 && moved) { renderer.shadowMap.needsUpdate = true; shadowAt.copy(look); shadowOk = true; }
+      else if (L.sun <= .05) shadowOk = false;
     }
     moon.intensity = .45 * n;
     renderer.toneMappingExposure = L.exp; bloom.strength = (small ? .85 : 1) * L.bloom; bloom.threshold = L.thr;
