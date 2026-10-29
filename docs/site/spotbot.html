@@ -59,6 +59,9 @@
   .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; text-decoration: none; color: var(--ink3); font: 600 12px Inter, sans-serif; }
   .rail a span { opacity: 0; transform: translateX(6px); transition: .25s; white-space: nowrap; }
   .rail a:hover span, .rail a.on span { opacity: 1; transform: none; color: var(--ink); }
+  /* the time of evening at each chapter, always there; the current one lights up */
+  .rail a b { font: 600 10px/1 Inter, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .02em; color: var(--sky-ink2, var(--ink3)); opacity: .55; transition: opacity .25s, color .25s; }
+  .rail a.on b { opacity: 1; color: var(--sky-acc, var(--pink)); }
   .rail i { width: 16px; height: 16px; border-radius: 50%; flex: none; background: conic-gradient(var(--pink) calc(var(--p, 0) * 1turn), rgba(255,255,255,.16) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); transition: transform .25s; }
   .rail a.on i { transform: scale(1.35); }
   .rail a.done i { background: var(--lime); }
@@ -334,7 +337,38 @@
   .timeline li.cur { display: flex; }
   .timeline li::before { display: none; }
   .np .flip { width: 300px; height: 380px; }
-  @media (min-width: 861px) and (min-aspect-ratio: 1/1) { .np .flipbox { justify-self: end; margin-right: 6vw; } }   /* clear of the Hollywood sign */
+  @media (min-width: 861px) and (min-aspect-ratio: 1/1) { .np .flipbox { justify-self: end; margin-right: 6vw; } }   /* clear of the sign */
+
+  /* ── phones: less on screen at once, nothing cut off, and room left to see the city ── */
+  @media (max-width: 760px) {
+    .plabel { display: none; }                                         /* the cards rising out of the pins name the places */
+    .phone.iphone { height: 44vh; bottom: 2vh; }
+    .iscreen { padding: 10px; border-radius: 24px; }
+    .istatus { padding-bottom: 8px; }
+    .isub { margin: 8px 2px 4px; }
+    .ilist { gap: 5px; }
+    .ilist li { padding: 6px 8px; font-size: 12px; grid-template-columns: 22px minmax(0, 1fr); }
+    .ilist li span { font-size: 15px; }
+    .ilist li b, .mini .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live .sticky { padding: 80px 0 2vh; align-items: stretch; }          /* heading on top, cards at the bottom, the pins in between */
+    .live .wrap { display: flex; flex-direction: column; }
+    .live .wallstage { margin-top: auto; }
+    .wall { height: 32vh; }
+    .wallhead { margin-bottom: 10px; }
+    .mini { padding: 9px 11px; margin-bottom: 10px; font-size: 13px; }
+    .mini .row { margin-top: 6px; }
+    .mini.ping .t { padding-right: 38px; }
+    .note { margin-top: 6px; font-size: 12px; }
+    .np .sticky { align-items: flex-end; padding-bottom: 3vh; }        /* the card low, the sign above it */
+    .flip { width: 240px; height: 300px; }
+    .nums .stats { margin-top: 16px; gap: 8px; }
+    .stat .in { padding: 12px; border-radius: 16px; }
+    .stat b { font-size: 34px; }
+    .stat span { margin-top: 6px; font-size: 14px; }
+    .stat small { display: none; }
+    .bars { margin-top: 10px; padding: 12px 14px; gap: 8px; }
+    .bars .row { font-size: 12px; }
+  }
   .wallhead { flex-direction: column; align-items: center; text-align: center; gap: 10px; }
   .nums .wrap, .after .wrap > .reveal:first-child { text-align: center; }
   .stat .in { text-align: center; }
@@ -374,14 +408,14 @@
 </nav>
 
 <div class="rail" id="rail">
-  <a href="#top"><span>LA tonight</span><i></i></a>
-  <a href="#reels"><span>Reel to card</span><i></i></a>
-  <a href="#how"><span>How it works</span><i></i></a>
-  <a href="#live"><span>Live feed</span><i></i></a>
-  <a href="#demo"><span>Demo</span><i></i></a>
-  <a href="#place"><span>Friday night</span><i></i></a>
-  <a href="#np"><span>Not a place</span><i></i></a>
-  <a href="#numbers"><span>Numbers</span><i></i></a>
+  <a href="#top"><span>LA tonight</span><b>6:52</b><i></i></a>
+  <a href="#reels"><span>Reel to card</span><b>7:27</b><i></i></a>
+  <a href="#how"><span>How it works</span><b>7:49</b><i></i></a>
+  <a href="#live"><span>Live feed</span><b>8:05</b><i></i></a>
+  <a href="#demo"><span>Demo</span><b>8:12</b><i></i></a>
+  <a href="#place"><span>Friday night</span><b>Fri 8:30</b><i></i></a>
+  <a href="#np"><span>Not a place</span><b>9:40</b><i></i></a>
+  <a href="#numbers"><span>Numbers</span><b>11:15</b><i></i></a>
 </div>
 
 <main class="page">
@@ -557,7 +591,7 @@
   <div class="sticky">
     <div class="wrap">
       <div class="eyebrow">By the numbers</div>
-      <h2>Measured, <span class="grad">not guessed.</span></h2>
+      <h2><span class="grad">Measured.</span></h2>
       <div class="stats" id="stats">
         <div class="stat"><div class="in glass"><b class="grad" data-to="74" data-suffix="%">0%</b><span>Right place</span><small>271 held-out reels</small></div></div>
         <div class="stat"><div class="in glass"><b class="grad" data-to="0.3" data-dec="1" data-prefix="~" data-suffix="s">~0.0s</b><span>Per reel</span><small>On a laptop CPU</small></div></div>
@@ -575,7 +609,7 @@
 <!-- 7. Privacy + final -->
 <section class="after" id="privacy">
   <div class="wrap">
-    <div class="reveal"><div class="eyebrow">Privacy</div><h2 style="font-size:clamp(34px,5.4vw,64px);margin-top:14px">Your reels <span class="grad">stay yours.</span></h2></div>
+    <div class="reveal"><div class="eyebrow">Privacy</div><h2 style="font-size:clamp(34px,5.4vw,64px);margin-top:14px"><span class="grad">Yours.</span></h2></div>
     <div class="privacy">
       <div class="priv glass reveal" data-tilt style="--o1:#7C5CFF;--o2:#22D3EE"><div class="ico">🖥️</div><h3>Runs locally</h3><p>Never sent to an outside AI company.</p></div>
       <div class="priv glass reveal" data-tilt style="--o1:#FF3D8B;--o2:#FF8A4C"><div class="ico">🚫</div><h3>No ads, no selling</h3><p>It only sees what you send it.</p></div>
@@ -591,14 +625,15 @@
   </div>
   <footer>
     <div class="wrap">
-      <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok, Discord or any venue shown. Hollywood Sign™ Hollywood Chamber of Commerce.</span>
-      <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> · City: map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, elevation USGS &amp; NOAA, 3D by three.js · <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/site/CREDITS.md">Credits &amp; licenses</a></span>
+      <span>SpotBot · CSULB capstone, Team 10 · Not affiliated with Instagram, TikTok, Discord or any venue shown.</span>
+      <span><a href="./">Capstone plan</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> · City: map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, elevation USGS &amp; NOAA, places Overture Maps, 3D by three.js · <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/site/CREDITS.md">Credits &amp; licenses</a></span>
     </div>
   </footer>
 </section>
 
 </main>
 
+<script src="la/spots.js"></script>
 <script>
 (() => {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -610,30 +645,31 @@
   const bump = (el) => { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); };
   // Shared with the 3D city (module script below): how far through each scene we are.
   const SPOT = window.SPOT = { intro: 0, hero: 0, how: 0, live: 0, demo: 0, place: 0, np: 0, numbers: 0 };
-  // LA spots from the hand-labeled reels. pos is where the pin stands in the 3D city:
-  // 71Above sits on top of the US Bank Tower model, as it does in real life.
-  SPOT.INTRO = [
-    { venue: "71Above", area: "Downtown LA", emoji: "🍽️", cat: "food drink", color: "#FF8A4C", pos: [6, 13.6, 2], ll: [34.0511, -118.2540], votes: 5 },
-    { venue: "Hojokban", area: "Koreatown", emoji: "🍸", cat: "nightlife", color: "#9b87ff", pos: [-12, 0, 4], ll: [34.0618, -118.3004], votes: 4 },
-    { venue: "Republique", area: "Los Angeles", emoji: "🍽️", cat: "food drink", color: "#FF6FA8", pos: [-20, 0, -4], ll: [34.0640, -118.3441], votes: 3 },
-    { venue: "Cento Raw Bar", area: "Los Angeles", emoji: "🍸", cat: "nightlife", color: "#22D3EE", pos: [-4, 0, -12], ll: [34.0470, -118.2470], votes: 6 },
-  ];
+  // Every place on the page is from SpotBot's real catalog: the hand-labelled reels, pinned where the
+  // place really is (la/spots.js, built by tools/build_spots.py). The people, captions and votes are a demo.
+  const KIND = { food_drink: ["🍽️", "#FF8A4C", "food drink"], cafe_dessert: ["🍰", "#FF3D8B", "cafe dessert"], nightlife: ["🍸", "#9b87ff", "nightlife"],
+                 outdoors: ["🏞️", "#22D3EE", "outdoors"], live_music: ["🎶", "#A3E635", "live music"], other: ["📍", "#888780", "other"] };
+  const DISH = { bbq_grill: "BBQ", drinks_bar: "Drinks", fried_chicken: "Fried chicken", pastry: "Pastries" };
+  const SPOTS = (window.SPOTS || []).map((s) => {
+    const [emoji, color, cat] = KIND[s.cat] || KIND.other, d = s.dish && s.dish[0];
+    const what = d ? DISH[d] || d[0].toUpperCase() + d.slice(1).replace(/_/g, " ") : s.cat === "cafe_dessert" ? "Cafe and desserts" : "Food and drinks";
+    return { ...s, kind: s.cat, emoji, color, cat, desc: `${what} in ${s.area}.` };
+  });
+  SPOT.SPOTS = SPOTS;
+  const spot = (venue, more) => { const s = SPOTS.find((x) => x.venue === venue); return s && { ...s, ...more }; };
+  // the intro: four spots across the view, 71Above on top of the US Bank Tower, as it is in real life
+  SPOT.INTRO = [spot("71Above", { votes: 5 }), spot("Izakaya Osen", { votes: 4, color: "#9b87ff" }), spot("Damsot", { votes: 3, color: "#22D3EE" }), spot("Republique", { votes: 6, color: "#FF6FA8" })].filter(Boolean);
 
-  // Real places from the hand-labeled reels; demo handles are made up.
+  // the hero's three reels, all downtown, where the camera is; the handles and captions are made up
   const REELS = [
-    { food: "🍜", bg: "linear-gradient(160deg,#3a1d12,#8a3b17 35%,#e0832f 70%,#f5c46b)", glow: "#FF8A4C",
-      handle: "@demo.foodie", cap: "the broth here is unreal 🍜 ramen night in long beach",
-      venue: "Jounetsu Ramen", emoji: "🍽️", cat: "food drink", color: "#D85A30",
-      desc: "A ramen spot in Long Beach that the reel is all about.", sharer: "maya", sc: "#e67e22", votes: 4 },
-    { food: "🧋", bg: "linear-gradient(160deg,#3b1530,#8f2f62 40%,#e077a5 75%,#f7c6da)", glow: "#FF3D8B",
-      handle: "@demo.cafes", cap: "found my new study spot ☕ long beach",
-      venue: "Pura Vida", emoji: "🍰", cat: "cafe dessert", color: "#D4537E",
-      desc: "A Long Beach cafe the reel shows off, drinks and all.", sharer: "jordan", sc: "#16a085", votes: 3 },
-    { food: "🌮", bg: "linear-gradient(160deg,#10301c,#1d6b3a 40%,#8cc152 75%,#f2d94e)", glow: "#A3E635",
-      handle: "@demo.eats", cap: "late night tacos in anaheim hit different 🌮",
-      venue: "Taco Land", emoji: "🍽️", cat: "food drink", color: "#D85A30",
-      desc: "A taco spot in Anaheim that the reel is all about.", sharer: "ari", sc: "#c0392b", votes: 5 },
-  ];
+    spot("Marugame Monzo", { food: "🍜", bg: "linear-gradient(160deg,#3a1d12,#8a3b17 35%,#e0832f 70%,#f5c46b)", glow: "#FF8A4C",
+      handle: "@demo.foodie", cap: "udon night in little tokyo 🍜", sharer: "maya", sc: "#e67e22", votes: 4 }),
+    spot("Ranch & Maple", { food: "🍗", bg: "linear-gradient(160deg,#3b1530,#8f2f62 40%,#e077a5 75%,#f7c6da)", glow: "#FF3D8B",
+      handle: "@demo.eats", cap: "fried chicken downtown, no notes 🍗", sharer: "jordan", sc: "#16a085", votes: 3 }),
+    spot("Lowboy", { food: "🍽️", bg: "linear-gradient(160deg,#10301c,#1d6b3a 40%,#8cc152 75%,#f2d94e)", glow: "#A3E635",
+      handle: "@demo.night", cap: "dinner in echo park tonight 🍽️", sharer: "ari", sc: "#c0392b", votes: 5 }),
+  ].filter(Boolean);
+  SPOT.REELS = REELS;
   const cardHTML = (s, id) => `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="d">📝 ${s.desc}<br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.sharer} · via Instagram</div></div><div class="btns"><span class="up" id="${id}">👍 <b>0</b></span><span>👎</span><span>📅 Lock it in</span></div>`;
   const av = (t, bg) => `<div class="av" style="background:${bg}">${t}</div>`;
   const scenes = [...document.querySelectorAll("[data-scene]")];
@@ -644,7 +680,7 @@
   const INTRO = SPOT.INTRO, iphone = $("iphone"), icount = $("icount"), iwait = $("iwait");
   $("plabels").innerHTML = INTRO.map((s) => `<div class="plabel">📍 ${s.area}</div>`).join("");
   $("spotcards").innerHTML = INTRO.map((s) => `<div class="spotcard" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="m">${s.cat} · ${s.area}</div><div class="row"><span class="v">👍 ${s.votes}</span><span>via Instagram</span></div></div>`).join("");
-  $("ilist").innerHTML = INTRO.map((s) => `<li style="--c:${s.color}"><span>${s.emoji}</span>${s.venue}<small>${s.area}</small></li>`).join("");
+  $("ilist").innerHTML = INTRO.map((s) => `<li style="--c:${s.color}"><span>${s.emoji}</span><b>${s.venue}</b><small>${s.area}</small></li>`).join("");
   const plabels = [...$("plabels").children], icards = [...$("spotcards").children], irows = [...$("ilist").children];
   const beats = [$("beat0"), $("beat1"), $("beat2")];
   const FALLBACK = [[.22, .3], [.14, .62], [.82, .34], [.86, .66]];   // pin spots if there's no 3D
@@ -675,7 +711,7 @@
     if (n !== arrived) {
       irows.forEach((li, i) => li.classList.toggle("on", i < n));
       icount.textContent = n;
-      iwait.textContent = n === INTRO.length ? "4 spots saved. Now what?" : "Waiting for reels…";
+      iwait.textContent = n === INTRO.length ? `${n} spots saved. Now what?` : "Waiting for reels…";
       if (n > arrived && arrived >= 0) { bump(icount); iphone.classList.remove("flash"); void iphone.offsetWidth; iphone.classList.add("flash"); }
       arrived = n;
     }
@@ -767,24 +803,14 @@
     });
   }
 
-  // ── 3. live feed wall ──
-  const PLACES = [
-    ["Sidecar Doughnuts", "Costa Mesa", "cafe_dessert"], ["Hapa Bakery", "Fullerton", "cafe_dessert"], ["RNT Coffee", "Fullerton", "cafe_dessert"],
-    ["Outpost Kitchen", "Costa Mesa", "food_drink"], ["Sushi District", "Costa Mesa", "food_drink"], ["Blue Ribbon Corn Dogs", "Anaheim", "food_drink"],
-    ["Mo Ran Gak", "Fullerton", "food_drink"], ["Zuzu's Petals", "Long Beach", "food_drink"], ["Ellie's", "Long Beach", "food_drink"],
-    ["Gondola Getaway", "Long Beach", "outdoors"], ["1954 Egashira Bakery", "Costa Mesa", "cafe_dessert"], ["Bao Chick", "Irvine", "food_drink"],
-    ["Le Cafe Du Parc", "Irvine", "cafe_dessert"], ["Manon", "Fullerton", "food_drink"], ["Mama Chai's", "Fullerton", "cafe_dessert"],
-    ["Onn Cafe", "Costa Mesa", "cafe_dessert"], ["Yuzu Sushi Bar", "Costa Mesa", "food_drink"], ["Jounetsu Ramen", "Long Beach", "food_drink"],
-    ["Pura Vida", "Long Beach", "cafe_dessert"], ["Taco Land", "Anaheim", "food_drink"], ["Ufoodie Malatang", "Anaheim", "food_drink"],
-  ];
+  // ── 3. live feed wall: every catalog spot on the map, the same ones whose pins drop in the city ──
   const GISTS = ["Gym fail compilation", "Cat vs. cucumber", "This wedding got out of hand", "Easiest pasta ever", "Dance trend, part 4"];
-  const KIND = { food_drink: ["🍽️", "#FF8A4C", "food drink"], cafe_dessert: ["🍰", "#FF3D8B", "cafe dessert"], outdoors: ["🏞️", "#22D3EE", "outdoors"] };
   const SOURCES = ["via Instagram", "via Instagram", "via TikTok"];
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const mini = (k) => {
     if (k % 6 === 4) return `<div class="mini gist" style="--c:#888780"><div class="t">${pick(GISTS)}</div><div class="m">💬 Story · not a place</div><div class="row"><span class="v">💭</span><span class="src">${pick(SOURCES)}</span></div></div>`;
-    const [name, city, cat] = PLACES[k % PLACES.length], [emoji, color, label] = KIND[cat];
-    return `<div class="mini" style="--c:${color}"><div class="t">${emoji} ${name}</div><div class="m">${label} · ${city}</div><div class="row"><span class="v">👍 ${1 + Math.floor(Math.random() * 6)}</span><span class="src">${pick(SOURCES)}</span></div></div>`;
+    const s = SPOTS[k % SPOTS.length];
+    return `<div class="mini" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="m">${s.cat} · ${s.area}</div><div class="row"><span class="v">👍 ${1 + Math.floor(Math.random() * 6)}</span><span class="src">${pick(SOURCES)}</span></div></div>`;
   };
   const wall = $("wall");
   wall.innerHTML = [0, 1, 2].map((c) => {
@@ -809,20 +835,23 @@
   new IntersectionObserver(([e]) => { clearTimeout(pinger); if (e.isIntersecting && !reduce) ping(); }, { threshold: .1 }).observe(wall);
 
   // ── 4. demo chat, scrubbed by scroll ──
-  const body = $("demoBody"), DEMO = { ramen: REELS[0], cafe: REELS[1] };
+  // two real spots on Melrose and Fairfax, a few blocks apart; the winner's storefront is built where it really is
+  const body = $("demoBody");
+  const DEMO = { a: spot("Viva La Mamma", { sharer: "maya", sc: "#e67e22" }) || REELS[0], b: spot("Fleurs et Sel", { sharer: "jordan", sc: "#16a085" }) || REELS[1] };
   const user = (n, bg, html, at) => `<div class="msg">${av(n[0].toUpperCase(), bg)}<div><div class="who">${n} <small>Today at ${at}</small></div>${html}</div></div>`;
   const bot = (html) => `<div class="msg">${av("📍", "var(--violet)")}<div><div class="who">SpotBot<span class="tag">APP</span></div>${html}</div></div>`;
-  const names = [DEMO.ramen.venue, DEMO.cafe.venue];
+  const names = [DEMO.a.venue, DEMO.b.venue];
   const winner = names[Math.floor(Math.random() * 2)];           // a real coin flip, once per visit
-  SPOT.winner = winner;                                           // the 3D city puts its name on the storefront
-  SPOT.winnerColor = winner === DEMO.ramen.venue ? DEMO.ramen.color : DEMO.cafe.color;
+  const winSpot = winner === DEMO.a.venue ? DEMO.a : DEMO.b;
+  SPOT.winner = winner;                                           // the 3D city puts its name on the storefront, where the place is
+  SPOT.winnerColor = winSpot.color; SPOT.winnerLL = winSpot.ll;
   const seq = []; for (let i = 0; i < 22; i++) seq.push(names[i % 2]);
   if (seq[seq.length - 1] !== winner) seq.push(winner);
   const EVENTS = [
     [.04, user("maya", "#e67e22", `<div class="link">instagram.com/reel/…</div>`, "8:12 PM")],
-    [.12, bot(cardHTML(DEMO.ramen, "dv-ramen"))],
+    [.12, bot(cardHTML(DEMO.a, "dv-a"))],
     [.22, user("jordan", "#16a085", `<div>ok but hear me out</div><div class="link">instagram.com/reel/…</div>`, "8:14 PM")],
-    [.30, bot(cardHTML(DEMO.cafe, "dv-cafe"))],
+    [.30, bot(cardHTML(DEMO.b, "dv-b"))],
     [.56, user("nick", "#8e44ad", `<div style="color:#c9cdfb">/plan friday</div>`, "8:21 PM")],
     [.62, bot(`<div>It's a tie, 2 👍 each. Spinning for it…</div><div class="picker" id="picker"><div class="lbl">🎲 Tie-breaker</div><div class="reelwin"><div class="strip" id="strip">${seq.map((n) => `<div>${n}</div>`).join("")}</div></div><div class="won" id="won"></div></div>`)],
   ];
@@ -830,13 +859,13 @@
   const msgs = [...body.children];
   msgs.forEach((m) => (m.hidden = true));
   const tl = [...$("timeline").children], timebar = $("timebar");
-  const dv = { ramen: 0, cafe: 0 };
+  const dv = { a: 0, b: 0 };
   let shown = 0, armed = true;
   function demo(t) {
     let n = 0;
     EVENTS.forEach(([at], i) => { const on = t >= at; msgs[i].hidden = !on; if (on) n++; });
     if (n !== shown) { shown = n; body.scrollTop = body.scrollHeight; }
-    const votes = { ramen: (t >= .38) + (t >= .46), cafe: (t >= .42) + (t >= .50) };
+    const votes = { a: (t >= .38) + (t >= .46), b: (t >= .42) + (t >= .50) };
     for (const k in votes) if (votes[k] !== dv[k]) { const el = $("dv-" + k); el.querySelector("b").textContent = votes[k]; bump(el); dv[k] = votes[k]; }
     const end = -(seq.length - 1) * 46;
     $("strip").style.transform = `translateY(${ease(range(t, .64, .9)) * end}px)`;
@@ -917,7 +946,7 @@
       const near = r.bottom > -innerHeight && r.top < innerHeight * 2;
       if (near || reduce) RENDER[name](p);
       const a = railLinks[i];
-      a.firstElementChild.nextElementSibling.style.setProperty("--p", p);
+      a.lastElementChild.style.setProperty("--p", p);
       a.classList.toggle("on", r.top <= innerHeight * .5 && r.bottom > innerHeight * .5);
       a.classList.toggle("done", p >= 1);
     });
@@ -943,7 +972,8 @@
      footprints and heights, USGS elevation and CC0 textures (docs/site/tools/build_la3d.py writes
      the data in docs/site/la/). The sun goes down as you scroll, and the camera flies through the
      real city: downtown, Figueroa Street, the four-level interchange, Griffith Observatory, a
-     Hollywood Boulevard storefront, the Santa Monica pier and the sign. 1 unit = 10 metres. -->
+     storefront on Melrose or Fairfax, the Santa Monica pier and a sign on Mount Lee. Every pin stands
+     where its place really is (la/spots.js). 1 unit = 10 metres. -->
 <script type="module">
 import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -990,7 +1020,8 @@ async function start() {
     return ((HG[i] * (1 - tx) + HG[i + 1] * tx) * (1 - tz) + (HG[i + G.nx] * (1 - tx) + HG[i + G.nx + 1] * tx) * tz) / 10;
   }
   const ZONES = Object.values({ downtown: [34.030, -118.275, 34.066, -118.230], koreatown: [34.054, -118.330, 34.070, -118.275], hollywood: [34.088, -118.345, 34.106, -118.310],
-    santamonica: [34.000, -118.505, 34.030, -118.480], centurycity: [34.050, -118.425, 34.065, -118.405], griffith: [34.112, -118.310, 34.125, -118.292] })
+    santamonica: [34.000, -118.505, 34.030, -118.480], centurycity: [34.050, -118.425, 34.065, -118.405], griffith: [34.112, -118.310, 34.125, -118.292],
+    melrose: [34.066, -118.372, 34.090, -118.340] })
     .map(([s, w, n, e]) => { const [x0, z0] = LL(n, w), [x1, z1] = LL(s, e); return [x0, z0, x1, z1]; });
   const inZone = (x, z) => ZONES.some(([x0, z0, x1, z1]) => x > x0 && x < x1 && z > z0 && z < z1);
 
@@ -998,16 +1029,32 @@ async function start() {
   const DT = LL(34.0505, -118.2550);                                    // the Financial District
   const FOUR = LL(34.0624, -118.2468);                                  // the four-level interchange
   const OBS = LL(34.1184, -118.3004);                                   // Griffith Observatory
-  const SIGN = LL(34.1341, -118.3215);                                  // the Hollywood sign on Mount Lee
+  const SIGN = LL(34.1341, -118.3215);                                  // Mount Lee, where our sign stands
   const PIER0 = LL(34.0104, -118.4956), PIER1 = LL(34.0066, -118.5004), WHEEL = LL(34.0090, -118.4977);
   let fig = (meta.figueroa || []).slice();
   if (fig.length < 10) { const a = LL(34.042, -118.268), b = LL(34.058, -118.250); fig = Array.from({ length: 10 }, (_, i) => [lerp(a[0], b[0], i / 9), lerp(a[1], b[1], i / 9)]); }
   if (fig[0][1] < fig[fig.length - 1][1]) fig.reverse();                       // run it south to north
-  const blvd = meta.hollywoodBlvd || [];
-  const bm = blvd[Math.floor(blvd.length / 2)] || LL(34.1016, -118.3285);
-  const bdir = (() => { const a = blvd[0] || [0, 0], b = blvd[blvd.length - 1] || [1, 0]; const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })();
-  let bn = [-bdir[1], bdir[0]]; if (bn[1] > 0) bn = [-bn[0], -bn[1]];           // the boulevard's north side
-  const STORE = [bm[0] + bn[0] * 17, bm[1] + bn[1] * 17];                     // the restaurant, on the north side
+  // the place the group picks is built where it really is, on the side of its nearest street (a main
+  // street wins over a side street up to 40 m closer). The raw road data is read here, since the
+  // buildings below have to make room for the shop before the roads are built.
+  const VENUE = SPOT.winnerLL ? LL(...SPOT.winnerLL) : LL(34.0720, -118.3580);
+  let bm = VENUE, bdir = [1, 0];
+  {
+    const dv = new DataView(rBuf), count = dv.getUint32(0, true);
+    let best = Infinity;
+    for (let i = 0, o = 4; i < count; i++) {
+      const t = dv.getUint8(o), layer = dv.getInt8(o + 1), n = dv.getUint16(o + 2, true); o += 4;
+      if (t >= 4 && layer === 0) for (let j = 0; j < n - 1; j++) {
+        const ax = dv.getInt16(o + j * 4, true), az = dv.getInt16(o + j * 4 + 2, true), dx = dv.getInt16(o + j * 4 + 4, true) - ax, dz = dv.getInt16(o + j * 4 + 6, true) - az;
+        const l2 = dx * dx + dz * dz || 1, s = clamp(((VENUE[0] - ax) * dx + (VENUE[1] - az) * dz) / l2), px = ax + dx * s, pz = az + dz * s;
+        const d = Math.hypot(VENUE[0] - px, VENUE[1] - pz) + (t === 7 ? 40 : 0);
+        if (d < best) { best = d; bm = [px, pz]; bdir = [dx / Math.sqrt(l2), dz / Math.sqrt(l2)]; }
+      }
+      o += n * 4;
+    }
+  }
+  let bn = [-bdir[1], bdir[0]]; if (bn[0] * (VENUE[0] - bm[0]) + bn[1] * (VENUE[1] - bm[1]) < 0) bn = [-bn[0], -bn[1]];   // the place's side of the street
+  const STORE = [bm[0] + bn[0] * 17, bm[1] + bn[1] * 17];
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2("#ffc48c", .001);
@@ -1375,7 +1422,9 @@ async function start() {
       const n = Math.floor(r.len * DENS[r.t] * k * (r.t === 1 || r.t === 3 ? 1 : 2) + CR());
       for (let i = 0; i < n; i++) {
         const oneway = r.t === 1 || r.t === 3, dir = oneway || CR() < .5 ? 1 : -1, lanes = LANES[r.t];
-        cars.push({ r, s: CR() * r.len, dir, off: lanes[Math.floor(CR() * lanes.length)] * dir, v: (r.t <= 3 ? 26 : 13) * (.8 + CR() * .4), seg: 1, trail: r.t <= 3 ? 7 : 1 });
+        // each car keeps its own pace, and now and then slows, as if for a light: a lot on the boulevards, a little on the freeway
+        cars.push({ r, s: CR() * r.len, dir, off: lanes[Math.floor(CR() * lanes.length)] * dir, v: (r.t <= 3 ? 26 : 13) * (.6 + CR() * .75), seg: 1, trail: r.t <= 3 ? 7 : 1,
+                    ph: CR() * 6.28, w: .15 + CR() * .35, stop: r.t <= 3 ? .25 : .7 });
       }
     }
   }
@@ -1391,7 +1440,8 @@ async function start() {
     const dt = Math.min(.1, time - lastT); lastT = time;
     cars.forEach((c, i) => {
       const r = c.r;
-      c.s = (((c.s + c.v * dt * c.dir) % r.len) + r.len) % r.len;
+      const pace = 1 - c.stop * (.5 + .5 * Math.sin(time * c.w + c.ph)) ** 4;
+      c.s = (((c.s + c.v * pace * dt * c.dir) % r.len) + r.len) % r.len;
       let j = Math.min(Math.max(1, c.seg), r.n - 1);
       while (j < r.n - 1 && r.cum[j] < c.s) j++;
       while (j > 1 && r.cum[j - 1] > c.s) j--;
@@ -1423,13 +1473,13 @@ async function start() {
 
   // ── landmarks ──
   const at = ([x, z], dy = 0) => new THREE.Vector3(x * U, (hAt(x, z) + dy) * U, z * U);
-  // the Hollywood sign, letter by letter on Mount Lee's slope (a little larger than life, so it reads)
+  // our own sign on Mount Lee's slope, letter by letter (a little larger than life, so it reads)
   const sign = [];
-  "HOLLYWOOD".split("").forEach((ch, i) => {
+  "SPOTBOT".split("").forEach((ch, i, all) => {
     const c = document.createElement("canvas"); c.width = 128; c.height = 160;
     const g = c.getContext("2d"); g.fillStyle = "#fff"; g.font = "900 150px Arial Black, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(ch, 64, 86);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    const x = SIGN[0] - 120 + i * 30, z = SIGN[1] + 30;
+    const x = SIGN[0] + (i - (all.length - 1) / 2) * 30, z = SIGN[1] + 30;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.2), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: new THREE.Color(1.1, 1.08, 1.02), toneMapped: false }));
     m.position.copy(at([x, z], 16)); m.rotation.x = -.15; scene.add(m); sign.push(m);
   });
@@ -1476,7 +1526,7 @@ async function start() {
   if (wgt) { const sail = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3, .1), glowMat("#9fd4ff", 1.4)); sail.position.set(wgt[0] * U, (wgt[1] + 1) * U, wgt[2] * U); sail.rotation.z = -.35; scene.add(sail); }
   const redLights = tall.map(([x, h, z]) => { const s = new THREE.Mesh(new THREE.SphereGeometry(.25, 12, 8), new THREE.MeshBasicMaterial({ color: "#ff2a2a", toneMapped: false })); s.position.set(x * U, (h + 2) * U, z * U); scene.add(s); return s; });
 
-  // the restaurant the group picks, with its name in neon, on Hollywood Boulevard
+  // the place the group picks, with its name in neon, where it really is
   const placeGroup = new THREE.Group();
   placeGroup.position.copy(at(STORE)); placeGroup.rotation.y = Math.atan2(-bn[0], -bn[1]); placeGroup.scale.setScalar(.55);
   scene.add(placeGroup);
@@ -1524,6 +1574,40 @@ async function start() {
   placeGroup.add(new THREE.Points(bulbGeo, bulbMat));
   const shopLight = new THREE.PointLight("#ffb46a", 0, 4, 1.6); shopLight.position.set(0, .9, 1.8); placeGroup.add(shopLight);
 
+  // ── people on the sidewalks where the camera comes down to the street: both sides of the place's
+  //    street, and Figueroa between the towers. Each walks a stretch of sidewalk at their own pace. ──
+  const walkers = [];
+  {
+    const WR = rand(31), line = (a, b, off, n) => {
+      const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1;
+      for (let i = 0; i < n; i++) walkers.push({ ax: a[0], az: a[1], dx: dx / len, dz: dz / len, len, off: off * (WR() < .5 ? 1 : -1) + (WR() - .5) * 1.5,
+                                                  s: WR() * len, v: (1.1 + WR() * .6) * (WR() < .5 ? 1 : -1), ph: WR() * 6.28 });
+    };
+    line([bm[0] - bdir[0] * 140, bm[1] - bdir[1] * 140], [bm[0] + bdir[0] * 140, bm[1] + bdir[1] * 140], 11, small ? 30 : 70);
+    if (!small) for (let i = 0; i < fig.length - 1; i++) line(fig[i], fig[i + 1], 13, 18);
+  }
+  const SKIN = ["#8d5524", "#c68642", "#e0ac69", "#f1c27d", "#ffdbac", "#5c3a21"].map((c) => new THREE.Color(c));
+  const CLOTHES = ["#22252b", "#f2f0ea", "#3b5b8c", "#8c2f39", "#c9a66b", "#4d6b3a", "#e07a5f", "#6d5fd6", "#2e2e2e", "#d9d4cc"].map((c) => new THREE.Color(c));
+  const people = new THREE.InstancedMesh(new THREE.CapsuleGeometry(.022, .11, 3, 8), new THREE.MeshStandardMaterial({ roughness: .8 }), Math.max(1, walkers.length));
+  const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(.013, 10, 8), new THREE.MeshStandardMaterial({ roughness: .7 }), Math.max(1, walkers.length));
+  const PR = rand(33);
+  walkers.forEach((w, i) => { people.setColorAt(i, CLOTHES[Math.floor(PR() * CLOTHES.length)]); heads.setColorAt(i, SKIN[Math.floor(PR() * SKIN.length)]); });
+  people.count = heads.count = walkers.length;
+  scene.add(people, heads);
+  let walkT = 0;
+  function walkPeople(time) {
+    const dt = Math.min(.1, Math.max(0, time - walkT)); walkT = time;
+    walkers.forEach((w, i) => {
+      w.s = ((w.s + w.v * dt) % w.len + w.len) % w.len;
+      const x = w.ax + w.dx * w.s - w.dz * w.off, z = w.az + w.dz * w.s + w.dx * w.off;
+      const y = hAt(x, z) * U + .077 + Math.abs(Math.sin(time * 7 + w.ph)) * .004;   // standing on the pavement, with a step's bob
+      dummy.position.set(x * U, y, z * U); dummy.rotation.set(0, Math.atan2(w.dx * Math.sign(w.v), w.dz * Math.sign(w.v)), 0); dummy.updateMatrix(); people.setMatrixAt(i, dummy.matrix);
+      dummy.position.y += .09; dummy.updateMatrix(); heads.setMatrixAt(i, dummy.matrix);
+    });
+    dummy.rotation.set(0, 0, 0);
+    people.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
+  }
+
   // ── pins ──
   const headGeo = new THREE.SphereGeometry(.34, 48, 32), tipGeo = new THREE.ConeGeometry(.2, .62, 32), dotGeo = new THREE.SphereGeometry(.12, 24, 16);
   const ringGeo = new THREE.RingGeometry(.32, .42, 64), beamGeo = new THREE.CylinderGeometry(.05, .05, 30, 16, 1, true);
@@ -1549,12 +1633,29 @@ async function start() {
     s.pos = [x * U, y * U + 3, z * U];
     return makePin(s.color, new THREE.Vector3(x * U, y * U, z * U), true);
   });
-  const arterials = roads.filter((r) => r.t >= 4 && r.t <= 6 && r.layer === 0);
-  const P = rand(21), spotNear = (cx, cz, rad) => { for (let tries = 0; tries < 200; tries++) { const r = arterials[Math.floor(P() * arterials.length)], j = Math.floor(P() * r.n), x = r.pts[j * 2], z = r.pts[j * 2 + 1]; if (Math.hypot(x - cx, z - cz) < rad) return new THREE.Vector3(x * U, hAt(x, z) * U, z * U); } return at([cx, cz]); };
-  const heroPins = ["#FF8A4C", "#FF6FA8", "#A3E635"].map((c) => makePin(c, spotNear(DT[0], DT[1], 900), true));
+  // the hero's reels drop their pins where those places are
+  const heroPins = (SPOT.REELS || []).map((s) => makePin(s.glow || s.color, at(LL(...s.ll)), true));
+  // the live feed: straight down on Koreatown, Mid-Wilshire and Melrose, high enough that every catalog
+  // spot there fits on screen. On a tall phone screen the camera turns so east-west runs up the screen.
   const NEON = ["#9b87ff", "#FF6FA8", "#22D3EE", "#FF8A4C", "#A3E635"];
-  const LIVE = LL(34.0628, -118.315);                                   // what the straight-down shot sees
-  const livePins = []; for (let i = 0; i < (small ? 24 : 44); i++) livePins.push(makePin(NEON[i % NEON.length], spotNear(LIVE[0], LIVE[1], small ? 600 : 1000), false, 6));
+  const [xW, zS] = LL(34.045, -118.395), [xE, zN] = LL(34.090, -118.290);
+  const liveSpots = (SPOT.SPOTS || []).map((s) => LL(...s.ll)).filter(([x, z]) => x > xW && x < xE && z > zN && z < zS);
+  const portraitView = innerHeight > innerWidth;
+  const LIVE = (() => { const xs = liveSpots.map((p) => p[0]), zs = liveSpots.map((p) => p[1]); return xs.length ? [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2] : LL(34.0628, -118.315); })();
+  const LIVE_H = (() => {
+    const span = (k) => liveSpots.reduce((m, p) => Math.max(m, Math.abs(p[k] - LIVE[k])), 300) + 350;   // half the spread, plus room for a pin
+    const vf = (portraitView ? 55 : 42) * Math.PI / 360, hf = Math.atan(Math.tan(vf) * innerWidth / innerHeight);
+    const [across, along] = portraitView ? [span(1), span(0)] : [span(0), span(1)];
+    return Math.max(2300, Math.min(7000, Math.max(across / Math.tan(hf), along / Math.tan(vf))));
+  })();
+  const liveScale = 6 * LIVE_H / 2300;                                  // the same size on screen at any height
+  const livePins = [], placed = [], gap = .8 * liveScale * 10;           // pins closer than a pin's width are nudged apart, not stacked
+  for (const [x0, z0] of liveSpots) {
+    let x = x0, z = z0;
+    for (const [qx, qz] of placed) { const d = Math.hypot(x - qx, z - qz); if (d < gap) { const a = d > .1 ? Math.atan2(z - qz, x - qx) : placed.length; x = qx + Math.cos(a) * gap; z = qz + Math.sin(a) * gap; } }
+    placed.push([x, z]);
+    livePins.push(makePin(NEON[livePins.length % NEON.length], at([x, z]), false, liveScale));
+  }
   const placePin = makePin(SPOT.winnerColor || "#FF3D8B", at(STORE, 9), true, .35);
   function drop(pin, t, time) {
     pin.g.visible = t > 0;
@@ -1584,6 +1685,8 @@ async function start() {
   const street = (k) => off(bm, -bn[0] * k, -bn[1] * k);
   const portrait = innerHeight > innerWidth;
   const npX = portrait || innerWidth <= 860 ? 0 : 105;                   // on a wide screen the reel card sits right, so the sign goes left
+  const liveC = portrait ? off(LIVE, LIVE_H * .2, 0) : LIVE;              // on a phone the cards fill the bottom, so the pins sit higher
+  const signY = portrait ? -117 : 18;                                     // on a phone the card sits low, so the sign sits high
   const fdir = (() => { const a = F(0), b = F(9), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })();
   const PATH = [
     // over the Arts District, downtown and Koreatown against the sunset (pulled back on a tall phone screen, so all four pins fit)
@@ -1595,17 +1698,17 @@ async function start() {
     ["heroEnd",   V(off(F(9), fdir[0] * 150, fdir[1] * 150), 170), V(FOUR, 15), .52, 0],   // rise out over the interchange
     ["how",       V(off(FOUR, -420, 300), 170),   V(FOUR, 10),                  .58, 1],   // a slow quarter orbit of the four-level interchange
     ["howEnd",    V(off(FOUR, -480, -160), 150),  V(FOUR, 10),                  .64, 1],
-    ["live",      V(off(LIVE, 0, 260), 2300),     V(LIVE, 0),                   .74, 1],   // straight down on Koreatown; only push in while the pins drop
-    ["liveEnd",   V(off(LIVE, 0, 190), 1650),     V(LIVE, 0),                   .82, 1],
+    ["live",      V(portrait ? off(liveC, LIVE_H * .11, 0) : off(liveC, 0, LIVE_H * .11), LIVE_H), V(liveC, 0), .74, 1],   // straight down on the spots; only push in while the pins drop
+    ["liveEnd",   V(portrait ? off(liveC, LIVE_H * .06, 0) : off(liveC, 0, LIVE_H * .06), LIVE_H * .82), V(liveC, 0), .82, 1],
     ["demo",      [OBS[0] - 60, hAt(...OBS) + 120, OBS[1] - 300], V(off(OBS, 500, 1300), 0), .92, 1],   // over Griffith Observatory, the city lit up beyond it
     ["demoEnd",   [OBS[0] + 40, hAt(...OBS) + 105, OBS[1] - 260], V(off(OBS, 800, 1500), 0), 1, 1],
     ["over",      V(off(STORE, 300, -900), 500),  V(STORE, 0),                  1,   0],
-    ["place",     V(street(220), 120),            V(STORE, 4),                  1,   0],   // down onto Hollywood Boulevard
+    ["place",     V(street(220), 120),            V(STORE, 4),                  1,   0],   // down onto the place's street
     ["placeIn",   V(street(9), 1.8),              V(STORE, 5),                  1,   1],
     ["placeEnd",  V(off(street(11), bdir[0] * 3, bdir[1] * 3), 1.7), V(STORE, 5.5), 1, 1],
     ["placeUp",   V(street(80), 160),             V(SIGN, 60),                  1,   0],   // up off the boulevard, toward Mount Lee
-    ["np",        [SIGN[0] + 60, hAt(...SIGN) + 25, SIGN[1] + 520], V(off(SIGN, npX, 30), 18), 1, 1],   // the sign
-    ["npEnd",     [SIGN[0] - 90, hAt(...SIGN) + 30, SIGN[1] + 470], V(off(SIGN, npX - 20, 30), 18), 1, 1],
+    ["np",        [SIGN[0] + 60, hAt(...SIGN) + 25, SIGN[1] + 520], V(off(SIGN, npX, 30), signY), 1, 1],   // the sign
+    ["npEnd",     [SIGN[0] - 90, hAt(...SIGN) + 30, SIGN[1] + 470], V(off(SIGN, npX - 20, 30), signY), 1, 1],
     ["numbers",   V(LL(34.104, -118.355), 900),   V(LL(34.035, -118.49), 0),    1,   0],   // a drone drift west along Sunset to the ocean
     ["numbersMid",V(LL(34.065, -118.425), 650),   V(PIER0, 0),                  1,   0],
     ["numbersEnd",V(LL(34.0102, -118.4958), 45),  V(WHEEL, 28),                 1,   1],   // the head of the pier, across the wheel to the sea
@@ -1704,7 +1807,8 @@ async function start() {
     inkT = t;
     skyC.lerpColors(L.hor, L.zen, .35);                                  // roughly the sky behind the headlines
     const lum = .2126 * skyC.r + .7152 * skyC.g + .0722 * skyC.b;
-    const dark = range(lum, .3, .4), night = range(t, .3, .85);
+    // a tall screen shows more of the bright horizon behind the headlines, so dark ink holds a little longer
+    const dark = portrait ? range(lum, .22, .32) : range(lum, .3, .4), night = range(t, .3, .85);
     INK.forEach((k) => {
       inkC.lerpColors(DUSK[k], NIGHT[k], night).lerp(DAY[k], dark);
       rootStyle.setProperty("--sky-" + k, inkC.getStyle());
@@ -1721,7 +1825,8 @@ async function start() {
     ink(t);
     const n = L.lamp;
     skyMat.uniforms.zen.value.copy(L.zen); skyMat.uniforms.hor.value.copy(L.hor); skyMat.uniforms.glow.value.copy(L.glow); skyMat.uniforms.glowK.value = L.glowK;
-    scene.fog.color.copy(L.hor); scene.fog.density = L.fog;
+    // looking straight down there's less air between the camera and the ground than toward the horizon
+    scene.fog.color.copy(L.hor); scene.fog.density = L.fog * (1 - .8 * clamp(-camera.getWorldDirection(look).y) ** 2);
     hemi.color.copy(L.hemiS); hemi.groundColor.copy(L.hemiG); hemi.intensity = L.hemi;
     sunL.color.copy(L.sunC); sunL.intensity = L.sun;
     look.set(camLook.x * U, camLook.y * U, camLook.z * U);
@@ -1760,6 +1865,7 @@ async function start() {
     const on = reduce || pl > .42 ? 1 : pl < .28 ? .25 : (Math.sin(time * 41) > .2 ? 1 : .2);   // the neon stutters on as you arrive
     neonMat.color.setScalar((.5 + 1.6 * L.lamp) * on);
     driveCars(reduce ? 0 : time);
+    walkPeople(reduce ? 0 : time);
     wheel.rotation.x = time * .25;
     const blink = (Math.sin(time * 3) > .2 ? 1 : .15) * L.lamp;
     redLights.forEach((s) => s.material.color.setRGB(3 * blink, .25 * blink, .25 * blink));

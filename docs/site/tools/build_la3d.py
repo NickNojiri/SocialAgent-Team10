@@ -52,6 +52,7 @@ ZONES = {
     "santamonica": (34.000, -118.505, 34.030, -118.480),
     "centurycity": (34.050, -118.425, 34.065, -118.405),
     "griffith":    (34.112, -118.310, 34.125, -118.292),
+    "melrose":     (34.066, -118.372, 34.090, -118.340),   # where the demo's two spots are (build_spots.py)
 }
 ROAD_TYPES = ["motorway", "motorway_link", "trunk", "trunk_link", "primary", "secondary", "tertiary", "residential"]
 TEXTURES = {   # asset id -> what we keep from it
@@ -212,7 +213,7 @@ def rings(el):
 def build_buildings():
     q = "[out:json][timeout:900];(" + "".join(
         f'way["building"]({s},{w},{n},{e});relation["building"]({s},{w},{n},{e});' for s, w, n, e in ZONES.values()) + ");out geom;"
-    zone = overpass("zones", q)
+    zone = overpass("zones_" + "_".join(ZONES), q)          # named after the zones, so changing them fetches again
     tall = tiled("tall", "[out:json][timeout:900];("
                  'way["building"]["height"~"^([2-9][0-9]|[1-9][0-9][0-9])(\\\\.[0-9]*)?( m)?$"]({box});'
                  'way["building"]["building:levels"~"^([6-9]|[1-9][0-9])$"]({box});'

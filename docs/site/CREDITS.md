@@ -38,15 +38,20 @@ where the credit appears on the page (the footer links here).
   National Oceanic and Atmospheric Administration.
   https://github.com/tilezen/joerd/blob/master/docs/attribution.md
 - **Textures**: ambientCG, CC0 1.0 (public domain). https://ambientcg.com
+- **Where the spots are** (`la/spots.js`, from `tools/build_spots.py`): the places come from SpotBot's own
+  hand-labelled reels. A place's coordinates are the reel's own location tag, or else Overture Maps
+  places data, under the Community Data License Agreement – Permissive 2.0, © Overture Maps
+  Foundation and its contributors. https://docs.overturemaps.org/attribution/
 
 ## Names and landmarks
 
 - SpotBot is a student project (CSULB capstone, Team 10). It is not affiliated with, sponsored or
   endorsed by Instagram, Meta, TikTok, Discord, or any venue shown. Those names are trademarks of
   their owners and appear only to describe what SpotBot works with.
-- The Hollywood Sign is a trademark and intellectual property of the Hollywood Chamber of Commerce.
-  The page shows it as a location on the map; there is no affiliation with the Chamber or the
-  Hollywood Sign Trust.
+- The sign on Mount Lee reads SPOTBOT. It's our own, not a copy of the Hollywood Sign, and there is
+  no affiliation with the Hollywood Chamber of Commerce or the Hollywood Sign Trust.
+- The places on the page are real businesses, named only to show where reels pointed. Their cards'
+  descriptions come from our labels; the people, captions, chats and votes around them are made up.
 - Griffith Observatory, the Santa Monica Pier and the downtown towers are drawn as simple stand-ins at
   their real locations, not copies of anyone's 3D models or photographs.
-- The chats, votes and live-feed spots on the page are illustrations. They are not real users' data.
+- No real person's post, caption, handle or link appears on the page.
