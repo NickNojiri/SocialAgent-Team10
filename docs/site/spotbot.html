@@ -192,15 +192,18 @@
   .reelcount b { display: inline-block; width: 22px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; position: relative; }
   .reelcount b::after { content: ""; position: absolute; inset: 0; width: calc(var(--f, 0) * 100%); background: var(--grad); }
   @media (max-width: 760px) {
-    .stagebox { flex-direction: column; gap: 14px; padding-top: 6px; }
-    .phone { height: clamp(200px, calc(100vh - 640px), 260px); border-radius: 24px; padding: 6px; }
+    /* the phone right under the headline, the chat filling what's left of the screen (svh: the part a phone's browser bars leave visible) */
+    .hero .sticky { padding-top: 76px; height: 100svh; align-items: stretch; }
+    .stagebox { flex-direction: column; justify-content: flex-start; gap: 10px; padding: 0 16px 12px; min-height: 0; }
+    .phone { height: clamp(160px, 25svh, 220px); border-radius: 24px; padding: 6px; }
     .phone::after { inset: 6px; border-radius: 19px; }
     .screen { border-radius: 19px; }
-    .slide .cap { font-size: 9px; bottom: 20px; left: 9px; right: 9px; }
-    .slide .side, .topbar { display: none; }
-    .chips { left: 8px; right: 8px; top: 10px; gap: 5px; }
-    .chip { font-size: 9.5px; padding: 3px 7px; white-space: normal; }
-    .hero .discord { width: 100%; max-width: 420px; height: 290px; font-size: 13px; }
+    /* the phone's screen keeps one line: where it found the place. The scan sweep shows it reading. */
+    .slide .cap, .slide .side, .topbar, .chip:not(.found) { display: none; }
+    .chips { left: 6px; right: 6px; top: auto; bottom: 10px; }
+    .chips { justify-items: center; }
+    .chip { font-size: 9px; line-height: 1.25; padding: 4px 7px; border-radius: 10px; white-space: normal; text-align: center; }
+    .hero .discord { width: 100%; max-width: 420px; flex: 1 1 0; height: auto; min-height: 0; max-height: 380px; font-size: 13px; }
     .hero-copy p { margin: 10px auto 14px; }
     .hero-copy .cta, .reelcount { display: none; }
   }
