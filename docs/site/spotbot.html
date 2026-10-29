@@ -317,6 +317,23 @@
   .priv h3 { font-size: 22px; margin: 16px 0 6px; }
   .priv p { margin: 0; color: var(--ink2); }
   @media (max-width: 800px) { .privacy { grid-template-columns: 1fr; } }
+  /* time-lapse: scroll fast and the cards catch a sweep of light and pull streaks behind them, like
+     headlights on a long exposure. The scroll loop sets --vy (speed, signed, down is +), --vel and --gx;
+     --sd flips the streak for things that move the other way. */
+  .spotcard, .embed, .mini, .face, .stat .in, .priv, .fside { --k: calc(var(--vy, 0) * var(--sd, 1)); --tc: var(--c, var(--o1, #b4a6ff));
+    --streak: 0 calc(var(--k) * 14px) 10px -3px color-mix(in srgb, var(--tc) calc(var(--vel, 0) * 60%), transparent),
+              0 calc(var(--k) * 34px) 18px -7px color-mix(in srgb, var(--tc) calc(var(--vel, 0) * 38%), transparent),
+              0 calc(var(--k) * 62px) 30px -12px color-mix(in srgb, var(--tc) calc(var(--vel, 0) * 20%), transparent); }
+  .spotcard::before, .embed::before, .mini::before, .face::before, .stat .in::before, .priv::before, .fside::before {
+    content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; opacity: var(--vel, 0);
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,.38) 48%, rgba(255,255,255,.1) 53%, transparent 60%) var(--gx, 0%) 0 / 300% 100% no-repeat; }
+  .embed, .stat .in, .priv { position: relative; }
+  .spotcard { box-shadow: 0 24px 60px -12px rgba(0,0,0,.85), 0 0 40px -10px var(--c), var(--streak); }
+  .embed, .stat .in, .priv { box-shadow: var(--streak); }
+  .mini { box-shadow: 0 10px 30px -12px rgba(0,0,0,.8), var(--streak); }
+  .mini.ping { box-shadow: 0 0 0 2px var(--pink), 0 14px 50px -6px var(--pink), var(--streak); }
+  .face { box-shadow: 0 30px 80px -20px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.12), var(--streak); }
+  .fside { box-shadow: 0 40px 90px -20px rgba(0,0,0,.85), var(--streak); }
   .reveal { opacity: 0; transform: perspective(900px) translateY(50px) rotateX(18deg); transform-origin: 50% 100%; transition: opacity .8s ease, transform .8s cubic-bezier(.2,.8,.2,1); }
   .reveal.in { opacity: 1; transform: none; }
   .final { text-align: center; padding: 160px 0 120px; }
@@ -815,7 +832,7 @@
   const wall = $("wall");
   wall.innerHTML = [0, 1, 2].map((c) => {
     const items = Array.from({ length: 9 }, (_, j) => mini(c * 7 + j * 3 + c)).join("");
-    return `<div class="col" style="--dir:${c % 2 ? 1 : -1}"><div class="track" style="--dur:${34 + c * 8}s">${items}${items}</div></div>`;
+    return `<div class="col" style="--sd:${c % 2 ? -1 : 1}"><div class="track" style="--dur:${34 + c * 8}s">${items}${items}</div></div>`;
   }).join("");
   const cols = [...wall.children], madeEl = $("made");
   let made = 0, pinger = null;
@@ -954,6 +971,22 @@
   addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(frame); } }, { passive: true });
   addEventListener("resize", frame);
   frame();
+
+  // ── time-lapse: a fast scroll sweeps light across the cards and streaks it behind them; an easy pace
+  //    (a wheel notch is under 1 px/ms) shows nothing ──
+  const rootStyle = document.documentElement.style;
+  let lastY = scrollY, lastS = 0, vel = 0, shownV = 0, spinning = false;
+  function streak(now) {
+    const dt = Math.max(8, now - lastS); lastS = now;
+    const v = Math.max(-9, Math.min(9, (scrollY - lastY) / dt)); lastY = scrollY;   // px per ms, capped so a jump doesn't linger
+    vel += (v - vel) * Math.min(1, dt / 80);
+    const k = Math.round(clamp((Math.abs(vel) - 1.4) / 4) * 20) / 20 * Math.sign(vel);
+    if (k !== shownV) { shownV = k; rootStyle.setProperty("--vy", k); rootStyle.setProperty("--vel", Math.abs(k)); }
+    if (k) rootStyle.setProperty("--gx", ((1 - scrollY / 2000 % 1) * 100).toFixed(1) + "%");
+    spinning = Math.abs(vel) > .05 || k !== 0;
+    if (spinning) requestAnimationFrame(streak);
+  }
+  if (!reduce) addEventListener("scroll", () => { if (!spinning) { spinning = true; lastS = performance.now(); requestAnimationFrame(streak); } }, { passive: true });
 
   // ── reveal + pointer tilt for the cards at the end ──
   const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .15 });
@@ -1563,8 +1596,9 @@ async function start() {
   const neonMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: true, toneMapped: false, depthWrite: false });
   const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.3, .58), neonMat); neon.position.set(0, 1.62, .86); placeGroup.add(neon);
   [-.8, 0, .8].forEach((x) => {
-    const top = solid(new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, .02, 16), new THREE.MeshStandardMaterial({ color: "#2b2b30" }))); top.position.set(x, .3, 1.3); placeGroup.add(top);
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, .3, 6), top.material); leg.position.set(x, .15, 1.3); placeGroup.add(leg);
+    // bar-height tables (1.05 m), so the people standing at them look right
+    const top = solid(new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .015, 16), new THREE.MeshStandardMaterial({ color: "#2b2b30" }))); top.position.set(x, .19, 1.3); placeGroup.add(top);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .19, 6), top.material); leg.position.set(x, .095, 1.3); placeGroup.add(leg);
   });
   const bulbs = [];
   [[-1.1, -1.1], [0, 0], [1.1, 1.1], [-1.1, 1.1]].forEach(([x0, x1]) => { for (let k = 0; k <= 12; k++) { const t = k / 12; bulbs.push(lerp(x0, x1, t), lerp(1.32, 1.18, t) - Math.sin(t * Math.PI) * .14, lerp(.82, 1.68, t)); } });
@@ -1574,38 +1608,94 @@ async function start() {
   placeGroup.add(new THREE.Points(bulbGeo, bulbMat));
   const shopLight = new THREE.PointLight("#ffb46a", 0, 4, 1.6); shopLight.position.set(0, .9, 1.8); placeGroup.add(shopLight);
 
-  // ── people on the sidewalks where the camera comes down to the street: both sides of the place's
-  //    street, and Figueroa between the towers. Each walks a stretch of sidewalk at their own pace. ──
-  const walkers = [];
-  {
-    const WR = rand(31), line = (a, b, off, n) => {
-      const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1;
-      for (let i = 0; i < n; i++) walkers.push({ ax: a[0], az: a[1], dx: dx / len, dz: dz / len, len, off: off * (WR() < .5 ? 1 : -1) + (WR() - .5) * 1.5,
-                                                  s: WR() * len, v: (1.1 + WR() * .6) * (WR() < .5 ? 1 : -1), ph: WR() * 6.28 });
-    };
-    line([bm[0] - bdir[0] * 140, bm[1] - bdir[1] * 140], [bm[0] + bdir[0] * 140, bm[1] + bdir[1] * 140], 11, small ? 30 : 70);
-    if (!small) for (let i = 0; i < fig.length - 1; i++) line(fig[i], fig[i + 1], 13, 18);
+  // ── foot traffic where the camera comes down to the street: both sidewalks of the place's street, and
+  //    Figueroa between the towers. People walk alone or in twos and threes, each group at its own pace.
+  //    At the place it's a Friday: a line waits at the door and moves up as people go in, others come out
+  //    and walk off, and the tables out front are taken. Positions are in metres. ──
+  const WR = rand(31), folk = [];
+  const person = (o) => { const p = { x: 0, z: 0, a: 0, ph: WR() * 6.28, seed: WR() * 6.28, go: 0, hide: false, path: [], v: 1.15 + WR() * .3, ...o }; folk.push(p); return p; };
+  const P = (along, across) => [bm[0] + bdir[0] * along + bn[0] * across, bm[1] + bdir[1] * along + bn[1] * across];   // the place's street: along it, and across from its middle
+  const line = (a, b, sides, n) => {                                     // a stretch of sidewalk; sides are [offset, spread] in metres
+    const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1;
+    for (let made = 0; made < n;) {
+      const size = Math.min(n - made, WR() < .55 ? 1 : WR() < .75 ? 2 : 3), [off, spread] = sides[Math.floor(WR() * sides.length)];
+      const s = WR() * len, v = (1.05 + WR() * .55) * (WR() < .5 ? 1 : -1), o = off + (WR() - .5) * spread;
+      for (let m = 0; m < size; m++, made++) person({ walk: { ax: a[0], az: a[1], dx: dx / len, dz: dz / len, len, off: o + (m - (size - 1) / 2) * .5, s: s + (WR() - .5) * .5, v } });
+    }
+  };
+  // on the place's side people pass between the tables and the line; across the street they keep behind the camera
+  const sg = Math.sign(bn[1] * bdir[0] - bn[0] * bdir[1]) || 1, LANE = 10.9;
+  line(P(-140, 0), P(140, 0), [[LANE * sg, .3], [-12.8 * sg, .8]], small ? 30 : 64);
+  if (!small) for (let i = 0; i < fig.length - 1; i++) line(fig[i], fig[i + 1], [[13, 1.5], [-13, 1.5]], 18);
+  // the line at the door, facing it; the ones who went in wait (hidden) to come back out
+  const DOOR = P(0, 12.5), QA = (k) => 1.3 + k * .75, slot = (k) => P(QA(k), 11.7), toDoor = Math.atan2(-bdir[0], -bdir[1]);
+  const queue = [], pool = [];
+  for (let k = 0; k < 6; k++) { const [x, z] = slot(k); queue.push(person({ x, z, a: toDoor, face: toDoor })); }
+  for (let k = 0; k < 5; k++) pool.push(person({ hide: true }));
+  // two at each table, facing each other across it
+  [-4.4, 0, 4.4].forEach((t) => [-.6, .6].forEach((d) => { const [x, z] = P(t + d, 9.85), [cx, cz] = P(t, 9.85); person({ x, z, a: Math.atan2(cx - x, cz - z) }); }));
+  let nextIn = 2.5, nextOut = 4;
+  function doorway(dt) {
+    if ((nextIn -= dt) <= 0 && queue.length) {                          // the front of the line goes in, everyone moves up, someone joins the back
+      nextIn = 3 + WR() * 3;
+      const head = queue.shift();
+      head.path = [P(.5, 12), DOOR]; head.done = () => { head.hide = true; pool.push(head); };
+      if (pool.length) { const p = pool.shift(); [p.x, p.z] = P(QA(queue.length) + 30 + WR() * 50, LANE); Object.assign(p, { hide: false, arriving: true, face: toDoor, done: () => (p.arriving = false) }); queue.push(p); }
+      queue.forEach((q, k) => { q.path = q.arriving ? [P(QA(k), LANE), slot(k)] : [slot(k)]; });
+    }
+    if ((nextOut -= dt) <= 0 && pool.length) {                          // and now and then someone comes out and walks off
+      nextOut = 4 + WR() * 4;
+      const p = pool.shift(); [p.x, p.z] = P(-.3, 12.4);
+      Object.assign(p, { hide: false, face: undefined, path: [P(-1.6, 11.2), P(-40 - WR() * 60, LANE + (WR() - .5) * .4)], done: () => { p.hide = true; pool.push(p); } });
+    }
   }
+  const turn = (p, a, dt) => { let d = a - p.a; d -= Math.round(d / 6.2832) * 6.2832; p.a += d * Math.min(1, dt * 6); };
+  function step(p, dt) {
+    const w = p.walk;
+    if (w) {
+      w.s = ((w.s + w.v * dt) % w.len + w.len) % w.len;
+      p.x = w.ax + w.dx * w.s - w.dz * w.off; p.z = w.az + w.dz * w.s + w.dx * w.off;
+      p.a = Math.atan2(w.dx * Math.sign(w.v), w.dz * Math.sign(w.v)); p.ph += Math.abs(w.v) * dt * 4.33; p.go = 1;   // a stride is about 1.45 m
+    } else if (p.path.length) {
+      const [tx, tz] = p.path[0], dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz), mv = Math.min(d, p.v * dt);
+      if (d > .02) { p.x += dx / d * mv; p.z += dz / d * mv; p.ph += mv * 4.33; turn(p, Math.atan2(dx, dz), dt); p.go = Math.min(1, p.go + dt * 4); }
+      if (d - mv < .03) { p.path.shift(); if (!p.path.length) { const f = p.done; p.done = null; f?.(); } }
+    } else { p.go = Math.max(0, p.go - dt * 4); if (p.face !== undefined) turn(p, p.face, dt); }
+  }
+  // a figure: body, head, and arms and legs that swing from the hip and shoulder as they walk
   const SKIN = ["#8d5524", "#c68642", "#e0ac69", "#f1c27d", "#ffdbac", "#5c3a21"].map((c) => new THREE.Color(c));
   const CLOTHES = ["#22252b", "#f2f0ea", "#3b5b8c", "#8c2f39", "#c9a66b", "#4d6b3a", "#e07a5f", "#6d5fd6", "#2e2e2e", "#d9d4cc"].map((c) => new THREE.Color(c));
-  const people = new THREE.InstancedMesh(new THREE.CapsuleGeometry(.022, .11, 3, 8), new THREE.MeshStandardMaterial({ roughness: .8 }), Math.max(1, walkers.length));
-  const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(.013, 10, 8), new THREE.MeshStandardMaterial({ roughness: .7 }), Math.max(1, walkers.length));
+  const PANTS = ["#1f2a44", "#22252b", "#3a3f4a", "#6b5a45", "#2e3b55", "#141414", "#c8bfae"].map((c) => new THREE.Color(c));
+  const NP = folk.length, mat = (r) => new THREE.MeshStandardMaterial({ roughness: r });
+  const limb = (r, len) => { const g = new THREE.CapsuleGeometry(r, len, 3, 8); g.translate(0, -(len / 2 + r), 0); return g; };   // hangs from its joint
+  const pBody = new THREE.InstancedMesh(new THREE.CapsuleGeometry(.018, .028, 3, 10), mat(.8), NP);
+  const pHead = new THREE.InstancedMesh(new THREE.SphereGeometry(.011, 12, 10), mat(.7), NP);
+  const pLeg = new THREE.InstancedMesh(limb(.0075, .072), mat(.85), NP * 2), pArm = new THREE.InstancedMesh(limb(.0055, .056), mat(.8), NP * 2);
   const PR = rand(33);
-  walkers.forEach((w, i) => { people.setColorAt(i, CLOTHES[Math.floor(PR() * CLOTHES.length)]); heads.setColorAt(i, SKIN[Math.floor(PR() * SKIN.length)]); });
-  people.count = heads.count = walkers.length;
-  scene.add(people, heads);
+  folk.forEach((p, i) => {
+    const top = CLOTHES[Math.floor(PR() * CLOTHES.length)], legs = PANTS[Math.floor(PR() * PANTS.length)];
+    pBody.setColorAt(i, top); pHead.setColorAt(i, SKIN[Math.floor(PR() * SKIN.length)]);
+    for (const j of [i * 2, i * 2 + 1]) { pArm.setColorAt(j, top); pLeg.setColorAt(j, legs); }
+  });
+  scene.add(pBody, pHead, pLeg, pArm);
+  const M = new THREE.Matrix4(), Mp = new THREE.Matrix4(), Mc = new THREE.Matrix4(), ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+  function pose(p, i, time) {
+    if (p.hide) { pBody.setMatrixAt(i, ZERO); pHead.setMatrixAt(i, ZERO); for (const j of [i * 2, i * 2 + 1]) { pLeg.setMatrixAt(j, ZERO); pArm.setMatrixAt(j, ZERO); } return; }
+    const sw = Math.sin(p.ph) * .45 * p.go, idle = (1 - p.go) * .07 * Math.sin(time * .5 + p.seed);   // standing still, they shift about a little
+    M.makeRotationY(p.a + idle).setPosition(p.x * U, hAt(p.x, p.z) * U + Math.abs(Math.cos(p.ph)) * .0025 * p.go, p.z * U);
+    pBody.setMatrixAt(i, Mc.multiplyMatrices(M, Mp.makeScale(1, 1, .65).setPosition(0, .12, 0)));
+    pHead.setMatrixAt(i, Mc.multiplyMatrices(M, Mp.makeTranslation(0, .164, 0)));
+    pLeg.setMatrixAt(i * 2, Mc.multiplyMatrices(M, Mp.makeRotationX(sw).setPosition(-.009, .088, 0)));
+    pLeg.setMatrixAt(i * 2 + 1, Mc.multiplyMatrices(M, Mp.makeRotationX(-sw).setPosition(.009, .088, 0)));
+    pArm.setMatrixAt(i * 2, Mc.multiplyMatrices(M, Mp.makeRotationX(-sw * .8).setPosition(-.024, .145, 0)));
+    pArm.setMatrixAt(i * 2 + 1, Mc.multiplyMatrices(M, Mp.makeRotationX(sw * .8).setPosition(.024, .145, 0)));
+  }
   let walkT = 0;
   function walkPeople(time) {
     const dt = Math.min(.1, Math.max(0, time - walkT)); walkT = time;
-    walkers.forEach((w, i) => {
-      w.s = ((w.s + w.v * dt) % w.len + w.len) % w.len;
-      const x = w.ax + w.dx * w.s - w.dz * w.off, z = w.az + w.dz * w.s + w.dx * w.off;
-      const y = hAt(x, z) * U + .077 + Math.abs(Math.sin(time * 7 + w.ph)) * .004;   // standing on the pavement, with a step's bob
-      dummy.position.set(x * U, y, z * U); dummy.rotation.set(0, Math.atan2(w.dx * Math.sign(w.v), w.dz * Math.sign(w.v)), 0); dummy.updateMatrix(); people.setMatrixAt(i, dummy.matrix);
-      dummy.position.y += .09; dummy.updateMatrix(); heads.setMatrixAt(i, dummy.matrix);
-    });
-    dummy.rotation.set(0, 0, 0);
-    people.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
+    doorway(dt);
+    folk.forEach((p, i) => { step(p, dt); pose(p, i, time); });
+    pBody.instanceMatrix.needsUpdate = pHead.instanceMatrix.needsUpdate = pLeg.instanceMatrix.needsUpdate = pArm.instanceMatrix.needsUpdate = true;
   }
 
   // ── pins ──
@@ -1666,7 +1756,9 @@ async function start() {
     const hit = range(t, .36, .6);                                       // a little squash on the first touchdown
     const sq = Math.sin(Math.PI * hit) * .18;
     pin.body.scale.set(1 + sq, 1 - sq, 1 + sq);
-    pin.rings.forEach((r, j) => {
+    const above = camera.position.y - pin.g.position.y > 1.5;          // drawn over the roofs only when looking down on it;
+    pin.rings.forEach((r, j) => {                                         // at street level a ripple seen edge-on is a line across the view
+      r.material.depthTest = !above;
       // ripples start at touchdown and slow as they spread; once landed they keep breathing
       const k = landed ? (time * .45 + pin.phase + j * .5) % 1 : range(t, .4 + j * .2, 1);
       const s = 1 - (1 - k) ** 3;
@@ -1714,6 +1806,7 @@ async function start() {
     ["numbersEnd",V(LL(34.0102, -118.4958), 45),  V(WHEEL, 28),                 1,   1],   // the head of the pier, across the wheel to the sea
     ["end",       V(LL(33.99, -118.54), 1000),    V(off(DT, 0, 0), 250),        1,   1],   // out over the bay, the whole basin lit up
   ];
+  const LIVE_END = PATH.findIndex((p) => p[0] === "liveEnd"), smooth = (x) => x * x * (3 - 2 * x);
   const posCurve = new THREE.CatmullRomCurve3(PATH.map((p) => new THREE.Vector3(...p[1])), false, "centripetal");
   const lookCurve = new THREE.CatmullRomCurve3(PATH.map((p) => new THREE.Vector3(...p[2])), false, "centripetal");
 
@@ -1860,7 +1953,9 @@ async function start() {
     const it = SPOT.intro ?? 0, h = SPOT.hero ?? 0, lv = SPOT.live ?? 0, pl = SPOT.place ?? 0;
     introPins.forEach((pin, k) => drop(pin, reduce ? 1 : range(it, .06 + k * .04, .14 + k * .04), time));
     heroPins.forEach((pin, i) => drop(pin, reduce ? 1 : range(h, i * .3 + .14, i * .3 + .21), time));
-    livePins.forEach((pin, k) => { const s = k / livePins.length * .75; drop(pin, reduce ? 1 : range(lv, s, s + .12), time); });
+    // the live feed's pins fold away as the camera leaves for Griffith, so they don't stand over the rest of the night
+    const away = 1 - smooth(range(sy, ys[LIVE_END], ys[LIVE_END + 1]));
+    livePins.forEach((pin, k) => { const s = k / livePins.length * .75; drop(pin, away > 0 ? (reduce ? 1 : range(lv, s, s + .12)) : 0, time); pin.g.scale.setScalar(liveScale * away); });
     drop(placePin, reduce ? 1 : range(pl, .3, .4), time);
     const on = reduce || pl > .42 ? 1 : pl < .28 ? .25 : (Math.sin(time * 41) > .2 ? 1 : .2);   // the neon stutters on as you arrive
     neonMat.color.setScalar((.5 + 1.6 * L.lamp) * on);
