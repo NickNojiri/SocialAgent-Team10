@@ -316,6 +316,12 @@
   .bars .val { text-align: right; font-variant-numeric: tabular-nums; }
   @media (max-width: 860px) { .nums .stats { grid-template-columns: 1fr 1fr; gap: 10px; } .stat .in { padding: 18px 16px; } .bars .row { grid-template-columns: 90px 1fr 46px; } }
 
+  /* ── 6b. live music: the words up top, the stage and the lasers under them ── */
+  .music .sticky { align-items: flex-start; padding-top: 100px; }
+  .musiccap { max-width: 600px; margin: 0 auto; text-align: center; opacity: 0; }
+  .musiccap .lede { margin: 12px auto 0; }
+  @media (max-width: 760px) { .music .sticky { padding-top: 84px; } .musiccap .lede { font-size: 15px; } }
+
   /* ── 7. privacy + end ── */
   .after { position: relative; padding: 120px 0 0; }
   .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
@@ -440,6 +446,7 @@
   <a href="#place"><span>Friday night</span><b>Fri 8:30</b><i></i></a>
   <a href="#np"><span>Not a place</span><b>9:40</b><i></i></a>
   <a href="#numbers"><span>Numbers</span><b>11:15</b><i></i></a>
+  <a href="#music"><span>Live music</span><b>11:40</b><i></i></a>
 </div>
 
 <main class="page">
@@ -631,6 +638,19 @@
   </div>
 </section>
 
+<!-- 6b. Live music: the night ends in the crowd at an outdoor show, lasers over the stage -->
+<section class="scene music" id="music" data-scene="music" style="height:320vh">
+  <div class="sticky">
+    <div class="wrap">
+      <div class="musiccap" id="musiccap">
+        <div class="eyebrow">Live music</div>
+        <h2>Shows, <span class="grad">too.</span></h2>
+        <p class="lede">Concert reels land as 🎶 live music cards, and the server votes on those as well.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- 7. Privacy + final -->
 <section class="after" id="privacy">
   <div class="wrap">
@@ -669,7 +689,7 @@
   const $ = (id) => document.getElementById(id);
   const bump = (el) => { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); };
   // Shared with the 3D city (module script below): how far through each scene we are.
-  const SPOT = window.SPOT = { intro: 0, hero: 0, how: 0, live: 0, demo: 0, place: 0, np: 0, numbers: 0 };
+  const SPOT = window.SPOT = { intro: 0, hero: 0, how: 0, live: 0, demo: 0, place: 0, np: 0, numbers: 0, music: 0 };
   // Every place on the page is from SpotBot's real catalog: the hand-labelled reels, pinned where the
   // place really is (la/spots.js, built by tools/build_spots.py). The people, captions and votes are a demo.
   const KIND = { food_drink: ["🍽️", "#FF8A4C", "food drink"], cafe_dessert: ["🍰", "#FF3D8B", "cafe dessert"], nightlife: ["🍸", "#9b87ff", "nightlife"],
@@ -981,7 +1001,13 @@
 
   // ── chapter rail, progress bar, and the one scroll loop that drives it all ──
   const railLinks = [...$("rail").children], bar = $("progress");
-  const RENDER = { intro, hero, how, live, demo, place, np, numbers };
+  // ── 6b. live music: the words come up once the camera is down in the crowd ──
+  const musiccap = $("musiccap");
+  function music(p) {
+    const e = reduce ? 1 : ease(range(p, .2, .34)) * (1 - range(p, .94, 1));
+    musiccap.style.opacity = e; musiccap.style.transform = `translateY(${(1 - e) * 24}px)`;
+  }
+  const RENDER = { intro, hero, how, live, demo, place, np, numbers, music };
   let queued = false;
   function frame() {
     queued = false;
@@ -1226,7 +1252,11 @@ async function start() {
   }
 
   // ── buildings: every footprint extruded to its height on the real ground, walls with baked contact shade ──
-  const tops = new Map(), cell = (x, z) => Math.floor(x / 10) * 100000 + Math.floor(z / 10);     // roof height over each 10 m cell a tall building covers, for the camera
+  // the show's field in LA State Historic Park (see the stage below): nothing else is built on it
+  const MUSIC = LL(34.0663, -118.2286);
+  const MDIR = (() => { const dx = DT[0] - MUSIC[0], dz = DT[1] - MUSIC[1], l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; })();   // from the crowd toward the stage and downtown
+  const inVenue = (x, z) => { const dx = x - MUSIC[0], dz = z - MUSIC[1], a = -(dx * MDIR[0] + dz * MDIR[1]), b = dx * MDIR[1] - dz * MDIR[0]; return a > -45 && a < 190 && Math.abs(b) < 75; };
+  const tops = new Map(), cell =(x, z) => Math.floor(x / 10) * 100000 + Math.floor(z / 10);     // roof height over each 10 m cell a tall building covers, for the camera
   const occupied = new Set(), occ = (x, z) => Math.floor(x / 40) * 100000 + Math.floor(z / 40);
   const tall = [];
   {
@@ -1237,7 +1267,7 @@ async function start() {
       o += 8;
       let cx = 0, cz = 0; for (let j = 0; j < n; j++) { cx += dv.getInt16(o + j * 4, true); cz += dv.getInt16(o + j * 4 + 2, true); }
       cx /= n; cz /= n;
-      const skip = Math.hypot(cx - STORE[0], cz - STORE[1]) < 24 || Math.hypot(cx - OBS[0], cz - OBS[1]) < 70 || (small && (k === 5 || h < 7));   // our own models stand there
+      const skip = Math.hypot(cx - STORE[0], cz - STORE[1]) < 24 || Math.hypot(cx - OBS[0], cz - OBS[1]) < 70 || inVenue(cx, cz) || (small && (k === 5 || h < 7));   // our own models stand there
       if (!skip) list.push({ o, n, h, mh, k, cx, cz });
       o += n * 4;
     }
@@ -1351,6 +1381,18 @@ async function start() {
   const WIDTH = [26, 8, 20, 8, 16, 13, 11, 9];
   const lift = (r, s) => r.layer > 0 ? r.layer * 7 * Math.min(1, s / 90, (r.len - s) / 90) : 0;   // ramps up to and down from a bridge
   const roadY = (r, x, z, s) => hAt(x, z) + .5 + lift(r, s);
+  // at each point of a road: its sideways direction, mitred so the road keeps its width round a bend, and its height.
+  // The road's surface and its cars both use these, so a car in a lane stays on the asphalt through every turn.
+  for (const r of roads) {
+    r.nx = new Float32Array(r.n); r.nz = new Float32Array(r.n); r.y = new Float32Array(r.n);
+    const dir = (j) => { const dx = r.pts[j * 2 + 2] - r.pts[j * 2], dz = r.pts[j * 2 + 3] - r.pts[j * 2 + 1], l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; };
+    for (let j = 0; j < r.n; j++) {
+      const a = dir(Math.max(0, j - 1)), b = dir(Math.min(r.n - 2, j));
+      let dx = a[0] + b[0], dz = a[1] + b[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      const m = 1 / Math.max(.6, dx * b[0] + dz * b[1]);
+      r.nx[j] = -dz * m; r.nz[j] = dx * m; r.y[j] = roadY(r, r.pts[j * 2], r.pts[j * 2 + 1], r.cum[j]);
+    }
+  }
   function laneCanvas() {
     const c = document.createElement("canvas"); c.width = 128; c.height = 512;
     const g = c.getContext("2d"), r = rand(13);
@@ -1382,7 +1424,7 @@ async function start() {
         const x = r.pts[j * 2], z = r.pts[j * 2 + 1];
         const pj = Math.max(0, j - 1), nj = Math.min(r.n - 1, j + 1);
         let dx = r.pts[nj * 2] - r.pts[pj * 2], dz = r.pts[nj * 2 + 1] - r.pts[pj * 2 + 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-        const px = -dz * w, pz = dx * w, s = r.cum[j], y = roadY(r, x, z, s);
+        const px = r.nx[j] * w, pz = r.nz[j] * w, s = r.cum[j], y = r.y[j];
         for (const [sx, uu] of [[1, 0], [-1, urep]]) {
           const v = B.v++; B.p.set([(x + px * sx) * U, y * U, (z + pz * sx) * U], v * 3); B.u.set([uu, s / vrep], v * 2); B.q.set([0, 127, 0], v * 3);
         }
@@ -1436,8 +1478,9 @@ async function start() {
             palms.push([x - dz * (w + 2) * sd, z + dx * (w + 2) * sd, pz]);
             if (pz) palms.push([x + dx * step / 2 - dz * (w + 2) * sd, z + dz * step / 2 + dx * (w + 2) * sd, pz]);   // twice as close on the palm streets
           }
-          if (zone) continue;
+          if (zone || inVenue(x, z)) continue;
           const off = k === 2 ? w + 9 : w + 13, hx = x - dz * off * sd, hz = z + dx * off * sd;
+          if (inVenue(hx, hz)) continue;
           const key = occ(hx, hz);
           if (occupied.has(key)) continue;
           const g0 = hAt(hx, hz);
@@ -1491,7 +1534,7 @@ async function start() {
   const cars = [];
   {
     const DENS = [.03, .012, .016, .01, .012, .007, .004, 0];          // cars per metre, each way
-    const LANES = [[4, 7.5, 10.5], [0], [3.5, 7], [0], [3, 5.5], [0], [2.5, 4.5], [2.5], [2.5]];
+    const LANES = [[4, 7.5, 10.5], [0], [3.5, 7], [0], [3, 5.5], [0], [1.8, 3.4], [2.2], [2.2]];   // every lane a car's width inside the road's edge
     const CAP = small ? 1600 : 7000;
     const busy = roads.filter((r) => { const m = Math.floor(r.n / 2); return near(r.pts[m * 2], r.pts[m * 2 + 1]) < (r.t <= 3 ? 6000 : 2500); });   // traffic where the camera can see it
     let want = 0; for (const r of busy) want += r.len * DENS[r.t] * (r.t === 1 || r.t === 3 ? 1 : 2);
@@ -1526,8 +1569,9 @@ async function start() {
       c.seg = j;
       const f = (c.s - r.cum[j - 1]) / ((r.cum[j] - r.cum[j - 1]) || 1);
       let dx = r.pts[j * 2] - r.pts[j * 2 - 2], dz = r.pts[j * 2 + 1] - r.pts[j * 2 - 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      const x = lerp(r.pts[j * 2 - 2], r.pts[j * 2], f) - dz * c.off, z = lerp(r.pts[j * 2 - 1], r.pts[j * 2 + 1], f) + dx * c.off;
-      const y = roadY(r, x, z, c.s) + .7, a = Math.atan2(dx * c.dir, dz * c.dir), fx = Math.sin(a) * .24, fz = Math.cos(a) * .24;
+      // the lane is the same fraction of the way across the road as at the two points either side, so it bends with the asphalt
+      const x = lerp(r.pts[j * 2 - 2] + r.nx[j - 1] * c.off, r.pts[j * 2] + r.nx[j] * c.off, f), z = lerp(r.pts[j * 2 - 1] + r.nz[j - 1] * c.off, r.pts[j * 2 + 1] + r.nz[j] * c.off, f);
+      const y = lerp(r.y[j - 1], r.y[j], f) + .7, a = Math.atan2(dx * c.dir, dz * c.dir), fx = Math.sin(a) * .24, fz = Math.cos(a) * .24;
       dummy.rotation.set(0, a, 0); dummy.scale.set(1, 1, 1);
       dummy.position.set(x * U, y * U, z * U); dummy.updateMatrix(); carBody.setMatrixAt(i, dummy.matrix);
       dummy.scale.set(1, 1, c.trail);
@@ -1905,7 +1949,7 @@ async function start() {
       s.scale.set(60 + CR() * 60, 22 + CR() * 20, 1); scene.add(s); puffs.push({ s, x, z, y: 30 + CR() * 90, ox: CR() * 1500 });
     }
     night.push((time) => {
-      marineK = range(sy, key("numbersMid"), key("end"));
+      marineK = range(sy, key("numbersMid"), key("numbersEnd")) * (1 - range(sy, key("numbersEnd"), key("musicUp")));   // at the pier, gone by the show
       puffs.forEach((q) => {
         const ph = ((time * 8 + q.ox) % 1500) / 1500;                    // each drifts inland, fading out before it wraps round
         q.s.visible = marineK > 0; q.s.material.opacity = .55 * marineK * Math.sin(Math.PI * ph);
@@ -1960,6 +2004,125 @@ async function start() {
         });
       });
       g.attributes.position.needsUpdate = g.attributes.color.needsUpdate = true;
+    });
+  }
+
+  // the last stop of the night: an outdoor show in LA State Historic Park, downtown's towers standing behind the stage.
+  // Seen from inside the crowd: LED pillars and a screen, laser fans sweeping over the haze, a field of silhouettes.
+  let musicK = 0;
+  {
+    const g0 = hAt(...MUSIC), st = new THREE.Group(); st.position.set(MUSIC[0] * U, g0 * U, MUSIC[1] * U); st.rotation.y = Math.atan2(-MDIR[0], -MDIR[1]); scene.add(st);
+    // local metres: +z faces the crowd, x runs across the stage
+    const M = (o) => { o.scale.multiplyScalar(U); return o; }, add = (o, x, y, z) => { o.position.set(x * U, y * U, z * U); st.add(o); return o; };
+    const black = new THREE.MeshStandardMaterial({ color: "#121318", roughness: .7, metalness: .3 });
+    add(solid(M(new THREE.Mesh(new THREE.BoxGeometry(34, 2.2, 16), black))), 0, 1.1, 0);                      // the deck
+    for (const x of [-17.5, 17.5]) add(solid(M(new THREE.Mesh(new THREE.BoxGeometry(1.2, 17, 1.2), black))), x, 8.5, 6);   // the truss towers
+    add(solid(M(new THREE.Mesh(new THREE.BoxGeometry(36.2, 1.4, 1.4), black))), 0, 17, 6);                    // and the span across them
+    // the screen behind the band: bars of colour rolling across, in time with the lasers
+    const screenM = new THREE.ShaderMaterial({ toneMapped: false, uniforms: { t: { value: 0 }, k: { value: 0 } },
+      vertexShader: "varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: `uniform float t; uniform float k; varying vec2 vU;
+        vec3 hue(float h){ return clamp(abs(mod(h * 6.0 + vec3(0., 4., 2.), 6.) - 3.) - 1., 0., 1.); }
+        void main(){ float b = step(.5, fract(vU.x * 9. - t * .8)) * .7 + .3, w = .5 + .5 * sin(vU.y * 14. + t * 3.);
+          vec3 c = hue(fract(vU.x * .4 + t * .05)) * (b * .8 + w * .4); gl_FragColor = vec4(c * k * 1.6, 1.); }` });
+    add(new THREE.Mesh(new THREE.PlaneGeometry(26 * U, 10 * U), screenM), 0, 9.5, -6);
+    // LED pillars down both sides, each a column of colour that climbs with the beat
+    const pillarM = [], PH = [-15, -11, -7, 7, 11, 15];
+    PH.forEach((x, i) => { const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(), toneMapped: false }); pillarM.push(m); add(M(new THREE.Mesh(new THREE.BoxGeometry(1.1, 12, 1.1), m)), x, 8.2, 2 - Math.abs(x) * .15); });
+    // the lasers, the heart of it: thirteen heads along the deck, up the towers and out on the wings, each firing a fan of
+    // nine thin beams. Every couple of bars the rig changes look: a sunburst up into the sky, flat sheets scanning over the
+    // crowd's heads, fans crossing into an X, or the lot sweeping together. Mostly green, like the real ones, rainbow between.
+    const RAIN = ["#39ff6a", "#2f7bff", "#ff2b3a", "#ffe02e", "#ff3df0", "#25f0ff"].map((c) => new THREE.Color(c));
+    const laserGeo = new THREE.CylinderGeometry(1, 1, 1, 5, 1, true); laserGeo.translate(0, -.5, 0);
+    const laserM = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      vertexShader: "varying float vV; varying vec3 vC; void main(){ vV = uv.y; vC = instanceColor; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }",
+      fragmentShader: "varying float vV; varying vec3 vC; void main(){ gl_FragColor = vec4(vC * (.12 + .88 * vV * vV), 1.0); }" });
+    const HEADS = [...[-15, -10, -5, 0, 5, 10, 15].map((x) => [x, 2.8, 7.5]), [-17.5, 17.5, 7], [17.5, 17.5, 7], [-17.5, 9, 7], [17.5, 9, 7], [-30, 4, 12], [30, 4, 12]];
+    const FAN = 9, NB = HEADS.length * FAN, lasers = new THREE.InstancedMesh(laserGeo, laserM, NB);
+    for (let i = 0; i < NB; i++) lasers.setColorAt(i, new THREE.Color(0, 0, 0));
+    lasers.frustumCulled = false; st.add(lasers);
+    // and, between the thin ones, wide soft beams in the smoke, a rainbow fanned up from the middle of the deck
+    const washes = Array.from({ length: 7 }, (_, j) => { const m = shine("#ffffff"), b = new THREE.Mesh(unitBeam, m); b.position.set((j - 3) * 2.5 * U, 3 * U, 6 * U); st.add(b); return { b, m, j }; });
+    // haze over the front of the crowd, lit by whatever colour the lasers are
+    const hazeM = new THREE.SpriteMaterial(additive({ map: sprite, color: "#8a7cff", opacity: 0 })), haze = [];
+    for (let i = 0; i < 9; i++) { const s = new THREE.Sprite(hazeM); s.scale.set(26 * U, 10 * U, 1); add(s, (i % 3 - 1) * 14, 4 + (i / 3 | 0) * 3.5, 10 + (i / 3 | 0) * 8); haze.push(s); }
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial(additive({ map: sprite, color: "#b98cff", opacity: 0, fog: false }))); glow.scale.set(160 * U, 70 * U, 1); add(glow, 0, 14, -4);
+    // the crowd: a wedge of people from the barrier back past the camera, a few on shoulders, some with phones up
+    const CRW = small ? 700 : 1500, cr = rand(31), crowd = [];
+    for (let i = 0; i < CRW + 320; i++) {
+      const pack = i >= CRW;                                                                             // the last few hundred packed in round the camera
+      const z = pack ? 82 + cr() * 34 : 14 + cr() * 125, x = (cr() - .5) * (pack ? 22 : 26 + (z - 14) * .55);
+      if (Math.abs(x) < 1.8 && z > 93 && z < 112) continue;                                           // room for the camera to stand
+      crowd.push({ x, z, h: 1.55 + cr() * .35, ph: cr() * 6.28, up: cr() < .22, phone: cr() < .12 });
+    }
+    const body = new THREE.CapsuleGeometry(.24, .9, 3, 8); body.translate(0, .69, 0);
+    const head = new THREE.SphereGeometry(.13, 10, 8); head.translate(0, 1.45, 0);
+    const shadowM = new THREE.MeshBasicMaterial({ color: "#05050a" });
+    // the field under the crowd catches the stage's light, so the people nearest read as shapes against it
+    const field = new THREE.Mesh(new THREE.PlaneGeometry(90 * U, 150 * U), new THREE.MeshBasicMaterial({ color: "#1a1626", fog: false }));
+    field.rotation.x = -Math.PI / 2; add(field, 0, .15, 70);
+    const people = new THREE.InstancedMesh(mergeGeometries([body, head]), shadowM, crowd.length), arms = new THREE.InstancedMesh((() => { const g = new THREE.CapsuleGeometry(.06, .7, 2, 6); g.translate(0, .35, 0); return g; })(), shadowM, crowd.length * 2);
+    const phones = new THREE.InstancedMesh(new THREE.PlaneGeometry(.09, .16), new THREE.MeshBasicMaterial({ color: new THREE.Color(.9, .95, 1.1), toneMapped: false }), crowd.length);
+    people.frustumCulled = arms.frustumCulled = phones.frustumCulled = false; st.add(people, arms, phones);
+    // festival flags on poles, standing up out of the crowd
+    const FLAG = ["#ff4f8b", "#ffd23f", "#3ddc97", "#4f8bff", "#ff8a3d"];
+    for (let i = 0; i < 9; i++) {                                                                        // tall feather flags, lit by the stage
+      const x = (cr() - .5) * 56, z = 18 + cr() * 60, h = 6 + cr() * 3;
+      add(M(new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, h, 5), shadowM)), x, h / 2, z);
+      add(M(new THREE.Mesh(new THREE.PlaneGeometry(.7, 3), new THREE.MeshBasicMaterial({ color: new THREE.Color(FLAG[i % FLAG.length]).multiplyScalar(.7), side: THREE.DoubleSide }))), x + .36, h - 1.6, z);
+    }
+    const q = new THREE.Quaternion(), e = new THREE.Euler(), mt = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3(), lv = new THREE.Vector3(), tc = new THREE.Color();
+    // everyone bounces on the beat, a little out of step; hands go up and wave
+    function dance(time) {
+      const beat = time * 2.1 * Math.PI;
+      crowd.forEach((p, i) => {
+        const y = Math.max(0, Math.sin(beat + p.ph * .3)) * .09, sy = p.h / 1.6;
+        mt.compose(pv.set(p.x * U, y * U, p.z * U), q.identity(), one.set(U, sy * U, U)); people.setMatrixAt(i, mt);
+        for (const s of [-1, 1]) {
+          e.set(0, 0, -s * (p.up ? .3 + .2 * Math.sin(time * 3 + p.ph + s) : Math.PI - .15)); q.setFromEuler(e);   // up and waving, or hanging at the side
+          mt.compose(pv.set((p.x + s * .27 * sy) * U, (y + 1.22 * sy) * U, p.z * U), q, one.set(U, sy * U, U)); arms.setMatrixAt(i * 2 + (s > 0 ? 1 : 0), mt);
+        }
+        mt.compose(pv.set((p.x + .3) * U, (y + 2.1 * sy) * U, (p.z - .1) * U), q.identity(), one.setScalar(p.phone ? U : 0)); phones.setMatrixAt(i, mt);
+      });
+      people.instanceMatrix.needsUpdate = arms.instanceMatrix.needsUpdate = phones.instanceMatrix.needsUpdate = true;
+    }
+    dance(0);
+    night.push((time, n) => {
+      st.visible = n > .05; if (!st.visible) return;
+      musicK = n * range(sy, key("numbersEnd"), key("music"));                                       // the show comes up as the camera arrives
+      const k = .25 + .75 * musicK, beat = time * 2.1 * Math.PI, pulse = .5 + .5 * Math.sin(beat);  // 126 bpm
+      screenM.uniforms.t.value = time; screenM.uniforms.k.value = k;
+      pillarM.forEach((m, i) => m.color.copy(RAIN[(i + Math.floor(time * 1.05)) % RAIN.length]).multiplyScalar((1.2 + 1.6 * pulse) * k));
+      const ci = Math.floor(time * .5) % RAIN.length, cn = (ci + 1) % RAIN.length, cf = smooth(clamp((time * .5 % 1) * 4 - 3));
+      const beats = time * 2.1, bars = beats / 4, look = Math.floor(bars / 2) % 4, pm = [0, 1, 0, 2][Math.floor(bars / 3) % 4];
+      HEADS.forEach(([hx, hy, hz], h) => {
+        const side = Math.sign(hx), s = Math.sin(time * .8 + h * .3);
+        // look 1 chases the heads round in threes; look 2 strobes on the beat
+        const on = look === 1 ? ((Math.floor(beats * 2) + h) % 4 < 3 ? 1 : 0) : look === 2 ? (beats % 1 < .7 ? 1 : .15) : 1;
+        for (let j = 0; j < FAN; j++) {
+          const f = j / (FAN - 1) - .5;
+          let len = 46;
+          if (look === 0) { const a = f * 1.3 + hx / 40 + .15 * s; lv.set(Math.sin(a), Math.cos(a), .35); }                     // a sunburst
+          else if (look === 1) { const a = f * 2.4 + s * .4; lv.set(Math.sin(a), .05 + (h % 3) * .04, Math.cos(a)); len = 32; }   // flat over the heads
+          else if (look === 2) { const a = side ? -side * (.5 + f * .6) + .2 * s : f * 1.2; lv.set(Math.sin(a), Math.cos(a), .3); }   // crossing
+          else { const a = Math.sin(time * 1.2) * .9 + f * .5; lv.set(Math.sin(a), Math.cos(a), .45 + .3 * Math.sin(time * .9 + f * 4)); }   // sweeping as one
+          lv.normalize(); q.setFromUnitVectors(DOWN, lv);
+          mt.compose(pv.set(hx * U, hy * U, hz * U), q, one.set(.007, len, .007)); lasers.setMatrixAt(h * FAN + j, mt);
+          if (pm === 0) tc.copy(j % 4 === 3 ? RAIN[(h + 1) % RAIN.length] : RAIN[0]);
+          else if (pm === 1) tc.setHSL(((f + .5) * .85 + time * .05) % 1, 1, .5);
+          else tc.copy(RAIN[(h + Math.floor(bars)) % RAIN.length]);
+          lasers.setColorAt(h * FAN + j, tc.multiplyScalar(.75 * musicK * on * (.8 + .2 * pulse)));
+        }
+      });
+      lasers.instanceMatrix.needsUpdate = lasers.instanceColor.needsUpdate = true;
+      washes.forEach(({ b, m, j }) => {
+        const a = (j - 3) * .22 + Math.sin(time * .5) * .15; lv.set(Math.sin(a), Math.cos(a), .25).normalize();
+        b.quaternion.setFromUnitVectors(DOWN, lv); b.scale.set(1.4, 30, 1.4);
+        m.uniforms.c.value.setHSL(j / 7 * .85, 1, .5); m.uniforms.o.value = (pm === 1 ? .16 : 0) * musicK;
+      });
+      hazeM.color.copy(RAIN[ci]).lerp(RAIN[cn], cf).multiplyScalar(.5); hazeM.opacity = .07 * musicK;
+      glow.material.color.copy(hazeM.color); glow.material.opacity = .08 * k;
+      if (musicK > 0) dance(time);
     });
   }
 
@@ -2085,7 +2248,11 @@ async function start() {
     ["numbers",   V(LL(34.104, -118.355), 900),   V(LL(34.035, -118.49), 0),    1,   0],   // a drone drift west along Sunset to the ocean
     ["numbersMid",V(LL(34.065, -118.425), 650),   V(PIER0, 0),                  1,   0],
     ["numbersEnd",V(LL(34.0128, -118.4922), 85),  V(off(WHEEL, -60, 40), 40),   1,   1],   // back over the head of the pier: the wheel, the water and the fireworks
-    ["end",       V(LL(33.99, -118.54), 1000),    V(off(DT, 0, 0), 250),        1,   1],   // out over the bay, the whole basin lit up
+    // across the basin to the show by the river, then down into the crowd: eye level, heads and phones, lasers over the stage
+    ["musicUp",   V(off(MUSIC, -MDIR[0] * 700, -MDIR[1] * 700), 260), V(MUSIC, 0), 1, 0],
+    ["music",     V(off(MUSIC, -MDIR[0] * 108, -MDIR[1] * 108), 1.75), V(MUSIC, 24), 1, 1],   // tilted up a little: the stage low, the lasers filling the sky
+    ["musicEnd",  V(off(MUSIC, -MDIR[0] * 96, -MDIR[1] * 96), 1.75), V(MUSIC, 26), 1,   1],
+    ["end",       V(off(MUSIC, -MDIR[0] * 190, -MDIR[1] * 190), 75), V(off(MUSIC, MDIR[0] * 700, MDIR[1] * 700), 40), 1, 1],   // up over the crowd: the stage, the lasers and downtown behind
   ];
   const LIVE_END = PATH.findIndex((p) => p[0] === "liveEnd"), smooth = (x) => x * x * (3 - 2 * x);
   const posCurve = new THREE.CatmullRomCurve3(PATH.map((p) => new THREE.Vector3(...p[1])), false, "centripetal");
@@ -2120,6 +2287,7 @@ async function start() {
                 how: top("how"), howEnd: fr("how", .9), live: top("live"), liveEnd: fr("live", .92), demo: top("demo"), demoEnd: end("demo"),
                 over: (end("demo") + top("place")) / 2, place: top("place"), placeIn: fr("place", .42), placeEnd: fr("place", .9), placeUp: end("place"),
                 np: top("np"), npEnd: fr("np", .9), numbers: top("numbers"), numbersMid: fr("numbers", .45), numbersEnd: end("numbers"),
+                musicUp: (end("numbers") + top("music")) / 2, music: fr("music", .22), musicEnd: fr("music", .9),
                 end: document.documentElement.scrollHeight - innerHeight };
     ARRIVE.forEach((_, i) => { A["reel" + i] = fr("reels", i * .3 + .17); A["hop" + i] = fr("reels", i * .3 + .3); });   // each reel has 30% of the hero
     ys = PATH.map(([k]) => A[k]);
@@ -2175,7 +2343,7 @@ async function start() {
   const DAY = pal(["#2a170d", "#4d2c18", "#9a2d12", "#c2410c", "#9d174d", "#7c2d12"]);
   const DUSK = pal(["#fff3ec", "#f6d3c4", "#ffc59a", "#f59cc0", "#c3b2ff", "#ffc8a6"]);
   const NIGHT = pal(["#f1f0ff", "#c5c6ea", "#b4a6ff", "#f59cc0", "#7fe0f0", "#8fd2df"]);
-  const rootStyle = document.documentElement.style, inkC = new THREE.Color(), skyC = new THREE.Color();
+  const rootStyle = document.documentElement.style, inkC = new THREE.Color(), skyC = new THREE.Color(), themeMeta = document.querySelector('meta[name="theme-color"]');
   let inkT = -1;
   function ink(t) {
     if (Math.abs(t - inkT) < .006) return;
@@ -2189,6 +2357,11 @@ async function start() {
       rootStyle.setProperty("--sky-" + k, inkC.getStyle());
     });
     rootStyle.setProperty("--sky-shadow", dark > .5 ? "0 0 2px rgba(255,240,222,.5), 0 2px 26px rgba(255,228,196,.8)" : "0 1px 3px rgba(0,0,0,.5), 0 4px 30px rgba(0,0,0,.55)");
+    // an iPhone tints its status bar and Safari's toolbars with the page's own colour, so the page wears the sky's,
+    // and those bars read as more sky instead of two black stripes
+    inkC.lerpColors(L.zen, L.hor, .5).multiplyScalar(.8);
+    const bar = inkC.getStyle();
+    rootStyle.background = bar; document.body.style.background = bar; themeMeta?.setAttribute("content", bar);
     SPOT.onTod?.(t);
   }
 
