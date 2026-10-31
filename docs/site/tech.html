@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpotBot reference</title>
+<meta name="description" content="The SpotBot reference: every command, button, web page, API endpoint, pipeline stage and setting, on one light page.">
+<!-- The light companion to the 3D landing page (spotbot.html, published as index.html), laid
+     out like the cplusplus.com reference: a header with search, a sidebar index, tables of
+     entries, and one entry per command. No WebGL, no web fonts, no framework; two small
+     scripts (search filter, demo-video placeholder). Keep it in step with README.md and the
+     code it documents (app/bot.py, app/cards.py, src/ingestion/serving/admin.py). -->
+<style>
+  :root { --bg: #e9ecf0; --paper: #fff; --line: #c9ced6; --line2: #e3e6ea; --ink: #1d1f22; --ink2: #4b5058;
+          --ink3: #767c85; --link: #1a4fa0; --visited: #5b3c94; --head: #f2f4f7; --code: #f6f7f9; --accent: #c2185b; }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 64px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 Verdana, Geneva, "DejaVu Sans", sans-serif; }
+  a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
+  a:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, .mono { font: 13px/1.5 Consolas, "Courier New", "DejaVu Sans Mono", monospace; }
+  /* header */
+  .top { position: sticky; top: 0; z-index: 4; background: #fff; border-bottom: 1px solid var(--line); }
+  .top .in { max-width: 1180px; margin: 0 auto; padding: 8px 14px; display: flex; align-items: center; gap: 16px; }
+  .logo { font: bold 20px Georgia, "Times New Roman", serif; color: var(--ink); white-space: nowrap; }
+  .logo b { color: var(--accent); } .logo small { font: 13px Verdana, sans-serif; color: var(--ink3); }
+  .search { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--ink2); }
+  .search input { width: 210px; font: 13px Verdana, sans-serif; padding: 4px 6px; border: 1px solid var(--line); border-radius: 2px; }
+  .toplinks { font-size: 13px; white-space: nowrap; }
+  /* layout */
+  .page { max-width: 1180px; margin: 14px auto; padding: 0 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: start; }
+  aside { position: sticky; top: 62px; max-height: calc(100vh - 76px); overflow: auto; }
+  .box { background: var(--paper); border: 1px solid var(--line); margin-bottom: 10px; }
+  .box h4 { margin: 0; padding: 4px 8px; background: var(--head); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .box ul { list-style: none; margin: 0; padding: 4px 0; } .box li a { display: block; padding: 1px 8px 1px 18px; font-size: 13px; }
+  .box li a::before { content: "›"; color: var(--ink3); margin: 0 6px 0 -11px; }
+  .box li.grp { padding: 4px 8px 0; font-size: 12px; font-weight: bold; color: var(--ink2); }
+  main { background: var(--paper); border: 1px solid var(--line); padding: 14px 22px 30px; min-width: 0; }
+  .crumbs { font-size: 12px; color: var(--ink3); margin-bottom: 4px; }
+  h1 { font: bold 26px Georgia, "Times New Roman", serif; margin: 2px 0 8px; }
+  h2.sec { font: bold 17px Verdana, sans-serif; margin: 30px 0 8px; padding-bottom: 3px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 14px; margin: 16px 0 4px; }
+  p { margin: 0 0 10px; }
+  .lead { font-size: 15px; color: var(--ink2); }
+  /* index tables */
+  table.ref { width: 100%; border-collapse: collapse; margin: 4px 0 10px; }
+  table.ref td, table.ref th { padding: 4px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; text-align: left; }
+  table.ref th { background: var(--head); font-size: 12px; color: var(--ink2); border-bottom: 1px solid var(--line); }
+  table.ref tr:nth-child(even) td { background: #fafbfc; }
+  table.ref td.n { white-space: nowrap; width: 1%; } table.ref td.n a, table.ref td.n { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+  table.ref td.t { color: var(--ink3); font-size: 12px; white-space: nowrap; width: 1%; text-align: right; }
+  /* entries */
+  .entry { border: 1px solid var(--line); margin: 18px 0; }
+  .entry > .eh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; background: var(--head);
+                 border-bottom: 1px solid var(--line); padding: 6px 10px; }
+  .entry > .eh h3 { margin: 0; font: bold 18px Consolas, "Courier New", monospace; }
+  .entry > .eh .ty { color: var(--ink3); font-size: 12px; white-space: nowrap; }
+  .entry > .eb { padding: 8px 12px 10px; }
+  .proto { font: 13px/1.5 Consolas, "Courier New", "DejaVu Sans Mono", monospace; background: var(--code); border: 1px solid var(--line2); padding: 6px 10px; margin: 0 0 10px; overflow-x: auto; white-space: pre; }
+  dl.params { margin: 4px 0 10px; } dl.params dt { font-family: Consolas, "Courier New", monospace; font-weight: bold; margin-top: 4px; }
+  dl.params dd { margin: 0 0 0 18px; color: var(--ink2); }
+  .shot img { max-width: 100%; height: auto; border: 1px solid var(--line); display: block; }
+  .see { font-size: 13px; color: var(--ink2); } .see a { font-family: Consolas, "Courier New", monospace; }
+  .note { background: #fffbe6; border: 1px solid #ecdca0; padding: 6px 10px; font-size: 13px; margin: 6px 0 12px; }
+  .video { aspect-ratio: 16 / 9; background: #1d1f22; border: 1px solid var(--line); display: grid; place-items: center; margin: 6px 0 4px; }
+  .video video { width: 100%; height: 100%; display: block; }
+  .video .soon { color: #d7dbe0; text-align: center; padding: 16px; } .video .soon b { display: block; font-size: 17px; color: #fff; }
+  .bars { max-width: 560px; margin: 6px 0 4px; }
+  .bar { display: grid; grid-template-columns: 200px 1fr 54px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
+  .bar i { height: 12px; background: var(--line2); display: block; } .bar i::after { content: ""; display: block; height: 100%; width: var(--w); background: var(--link); }
+  .bar b { text-align: right; }
+  footer { max-width: 1180px; margin: 0 auto 30px; padding: 0 14px; font-size: 12px; color: var(--ink3); }
+  .hide { display: none !important; }
+  @media (max-width: 820px) {
+    .page { grid-template-columns: 1fr; } aside { position: static; max-height: none; order: 2; }
+    .search input { width: 140px; } .toplinks { display: none; } main { padding: 12px 14px 24px; }
+    .bar { grid-template-columns: 120px 1fr 50px; } table.ref td.n { white-space: normal; overflow-wrap: anywhere; } table.ref td, table.ref th { padding: 4px 5px; }
+  }
+</style>
+</head>
+<body>
+<div class="top"><div class="in">
+  <a class="logo" href="#top">📍 spot<b>bot</b> <small>reference</small></a>
+  <label class="search">Search: <input id="q" type="search" placeholder="e.g. plan, vote, /api" autocomplete="off"></label>
+  <span class="toplinks"><a href="./">3D tour</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a></span>
+</div></div>
+
+<div class="page">
+<aside aria-label="Index">
+  <div class="box"><h4>SpotBot</h4><ul>
+    <li><a href="#top">Overview</a></li><li><a href="#demo">Live demo</a></li>
+    <li><a href="#numbers">Numbers</a></li><li><a href="#team">Team</a></li>
+  </ul></div>
+  <div class="box"><h4>Reference</h4><ul id="side">
+    <li class="grp">Capture:</li>
+    <li><a href="#paste">paste a link</a></li><li><a href="#buttons">card buttons</a></li>
+    <li class="grp">Commands:</li>
+    <li><a href="#setup">/setup</a></li><li><a href="#plan">/plan</a></li><li><a href="#events">/events</a></li>
+    <li><a href="#browse">/browse</a></li><li><a href="#catalog">/catalog</a></li><li><a href="#digest">/digest</a></li>
+    <li><a href="#share">/share</a></li><li><a href="#app">/app</a></li><li><a href="#privacy">/privacy</a></li><li><a href="#feedback">/feedback</a></li>
+    <li><a href="#survey">/survey</a></li><li><a href="#mute">/mute</a></li><li><a href="#suggestions">/suggestions</a></li>
+    <li><a href="#help">/help</a></li>
+    <li class="grp">System:</li>
+    <li><a href="#web">web pages</a></li><li><a href="#api">admin API</a></li><li><a href="#recommend">recommend API</a></li>
+    <li><a href="#pipeline">pipeline</a></li><li><a href="#failures">failure messages</a></li>
+    <li><a href="#categories">categories</a></li><li><a href="#config">configuration</a></li>
+    <li><a href="#stack">technology</a></li><li><a href="#security">security</a></li>
+  </ul></div>
+</aside>
+
+<main id="top">
+  <div class="crumbs">SpotBot › Reference</div>
+  <h1>SpotBot reference</h1>
+  <p class="lead">SpotBot is a Discord bot that turns the Instagram and TikTok reels your friends share
+  into places you actually go. Paste a reel: it reads the caption, the audio and the text on the video,
+  works out the place, and posts a card the server votes on. At three votes it's on the calendar.</p>
+  <p>This page documents every part of it. Capture, commands and buttons are what users touch; the
+  system section covers the web pages, the APIs, the pipeline and the settings behind them.
+  CSULB CECS 491A, Team 10.</p>
+
+  <h2 class="sec" id="demo">Live demo</h2>
+  <!-- To add the demo: put the file at docs/site/media/demo.mp4 (H.264, ideally under 50 MB) and
+       republish; optionally add poster="media/demo.jpg" to the <video> with that image. For YouTube
+       instead, replace the <video> with:
+       <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" title="SpotBot demo"
+               allow="encrypted-media; picture-in-picture" allowfullscreen loading="lazy"
+               style="width:100%;height:100%;border:0"></iframe> -->
+  <div class="video" id="video"><video controls preload="none" playsinline><source src="media/demo.mp4" type="video/mp4"></video></div>
+  <p class="see">Paste a reel → card → vote → lock it in → plan a night out, in a real server.</p>
+
+  <h2 class="sec">Index</h2>
+  <table class="ref" id="index">
+    <tr><th>name</th><th>description</th><th></th></tr>
+    <tr><td class="n"><a href="#paste">paste a link</a></td><td>Save a spot from an Instagram or TikTok reel or post</td><td class="t">capture</td></tr>
+    <tr><td class="n"><a href="#buttons">card buttons</a></td><td>Want to go, Not for me, Add suggestions, Edit, Remove, Not a place, Lock it in, We went!</td><td class="t">buttons</td></tr>
+    <tr><td class="n"><a href="#setup">/setup</a></td><td>Pick the reels channel and home city, or see how SpotBot works</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#plan">/plan</a></td><td>Read the recent chat and plan an outing together</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#events">/events</a></td><td>Find saved spots matching a vibe</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#browse">/browse</a></td><td>Flip through the saved spots, filtered by kind, area or date</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#catalog">/catalog</a></td><td>The top-voted spots, grouped by kind</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#digest">/digest</a></td><td>A one-message summary of the catalog</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#share">/share</a></td><td>A read-only web link to this server's spots</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#app">/app</a></td><td>Your phone app: spots, Going / Maybe / Can't, a time poll, invite links</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#privacy">/privacy</a></td><td>What SpotBot keeps about this server, and deleting it</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#feedback">/feedback</a></td><td>Report a bug or share an idea</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#survey">/survey</a></td><td>The 2-minute usability survey for study participants</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#mute">/mute</a></td><td>Toggle reel capture in this channel</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#suggestions">/suggestions</a></td><td>Toggle automatic spot suggestions in this channel</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#help">/help</a></td><td>How to save spots with the bot</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#web">/ · /share · /dash</a></td><td>Catalog admin, public share page, operations dashboard</td><td class="t">web pages</td></tr>
+    <tr><td class="n"><a href="#api">:8010 /api/…</a></td><td>Capture jobs, catalog, votes, settings, privacy</td><td class="t">HTTP API</td></tr>
+    <tr><td class="n"><a href="#recommend">:8003 /recommend /plan</a></td><td>Vibe search and group planning</td><td class="t">HTTP API</td></tr>
+    <tr><td class="n"><a href="#pipeline">pipeline</a></td><td>Fetch → extract → listen/read → normalize → time → validate → store</td><td class="t">system</td></tr>
+    <tr><td class="n"><a href="#failures">failure classes</a></td><td>Why a capture made no spot, and what the user is told</td><td class="t">system</td></tr>
+    <tr><td class="n"><a href="#categories">categories</a></td><td>The eight kinds of spot</td><td class="t">system</td></tr>
+    <tr><td class="n"><a href="#config">environment</a></td><td>Settings that change behaviour</td><td class="t">system</td></tr>
+  </table>
+
+  <!-- ───────── Capture ───────── -->
+  <h2 class="sec">Capture</h2>
+  <div class="entry" id="paste"><div class="eh"><h3>paste a link</h3><span class="ty">capture · any channel or DM</span></div><div class="eb">
+    <div class="proto">https://www.instagram.com/reel/…   or   https://www.tiktok.com/@…/video/…</div>
+    <p>No command. Paste one or more public Instagram or TikTok links. SpotBot reacts with ⏳, replies with
+    what it is doing, and edits that reply into a spot card in about 20–45 seconds. In a DM the spot goes to
+    your private list instead of the server's.</p>
+    <h3>Where it listens</h3>
+    <p>Every channel it can read, unless <a href="#setup">/setup</a> picked one reels channel, and never in a
+    channel turned off with <a href="#mute">/mute</a>.</p>
+    <h3>Example</h3><div class="shot"><img src="img/01_capture.webp" width="860" height="210" loading="lazy" alt="A member pastes a reel link; SpotBot reacts and replies that it is reading the reel."></div>
+    <div class="shot" style="margin-top:8px"><img src="img/02_spot_card.webp" width="860" height="436" loading="lazy" alt="The resulting spot card with a description, map link, who's in and buttons."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#buttons">card buttons</a> · <a href="#failures">failure messages</a> · <a href="#pipeline">pipeline</a></p>
+  </div></div>
+
+  <div class="entry" id="buttons"><div class="eh"><h3>card buttons</h3><span class="ty">buttons · on every spot card</span></div><div class="eb">
+    <table class="ref">
+      <tr><th>button</th><th>effect</th><th>who</th></tr>
+      <tr><td class="n">👍 Want to go</td><td>Adds you to "Who's in". Counts once per person.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">👎 Not for me</td><td>Takes your name off.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">✨ Add suggestions</td><td>Posts up to 3 similar saved spots as new cards.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">✏️ Edit</td><td>Fix the place name or vibe in a pre-filled form.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">🗑️ Remove</td><td>Deletes the spot.</td><td class="t">moderators</td></tr>
+      <tr><td class="n">💭 Not a place</td><td>Moves it to the 💭 list; "Move it back" undoes it, votes kept.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">📅 Lock it in</td><td>Appears at 3 votes; creates a Discord Scheduled Event (the reel's time, or next Friday 7 pm).</td><td class="t">anyone</td></tr>
+      <tr><td class="n">We went! / Didn't happen</td><td>After the date; places you went rank higher in <a href="#plan">/plan</a>.</td><td class="t">anyone</td></tr>
+      <tr><td class="n">🔁 Retry · ✍️ Add manually</td><td>Under a failed capture: try again, or type the place and vibe.</td><td class="t">anyone</td></tr>
+    </table>
+    <div class="shot"><img src="img/03_lock_in.webp" width="860" height="258" loading="lazy" alt="Lock it in at three votes, and the We went check-in."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#api">POST /api/events/{id}/vote</a> · <a href="#api">/lock</a> · <a href="#api">/went</a></p>
+  </div></div>
+
+  <!-- ───────── Commands ───────── -->
+  <h2 class="sec">Commands</h2>
+  <div class="entry" id="setup"><div class="eh"><h3>/setup</h3><span class="ty">command · Manage Server</span></div><div class="eb">
+    <div class="proto">/setup</div>
+    <p>Someone with Manage Server gets a private three-step form: (1) the reels channel, or every channel, or
+    <i>Create #spot-drops</i>; (2) the home city, used for distances on cards; (3) Save. Re-running it changes
+    only what you change. Everyone else sees a 20-second explainer and the current settings.</p>
+    <div class="shot"><img src="img/07_setup.webp" width="860" height="466" loading="lazy" alt="The /setup form."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#api">GET/PUT /api/settings</a> · <a href="#mute">/mute</a></p>
+  </div></div>
+
+  <div class="entry" id="plan"><div class="eh"><h3>/plan</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/plan</div>
+    <p>Reads the last 25 messages (not kept), sums up the vibe, area, budget and time it heard, opens a thread
+    and posts the best saved spots as votable cards. A spot named in the chat is 📌 pinned; "I'm in Irvine",
+    or two people in different places, sorts picks by distance or by the midpoint. Keep chatting and run it
+    again to refine.</p>
+    <div class="shot"><img src="img/08_plan.webp" width="860" height="422" loading="lazy" alt="/plan summarising what it heard."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#recommend">POST /plan</a> · <a href="#events">/events</a></p>
+  </div></div>
+
+  <div class="entry" id="events"><div class="eh"><h3>/events</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/events vibe:&lt;text&gt;</div>
+    <dl class="params"><dt>vibe</dt><dd>What you're in the mood for, e.g. <code>late night tacos</code>.</dd></dl>
+    <p>Searches this server's saved spots by meaning (embeddings), not just words.</p>
+    <div class="shot"><img src="img/14_events.webp" width="860" height="528" loading="lazy" alt="/events results."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#recommend">POST /recommend</a> · <a href="#browse">/browse</a></p>
+  </div></div>
+
+  <div class="entry" id="browse"><div class="eh"><h3>/browse</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/browse [category:&lt;kind&gt;] [area:&lt;text&gt;] [when:&lt;dated|undated&gt;]</div>
+    <dl class="params">
+      <dt>category</dt><dd>One of the <a href="#categories">categories</a>, everything, or 💭 not a place.</dd>
+      <dt>area</dt><dd>Only spots in this area; suggests this server's areas as you type.</dd>
+      <dt>when</dt><dd>📅 has a date, or 🗓️ no date yet.</dd>
+    </dl>
+    <p>A numbered, page-by-page list sorted by votes, with ◀ ▶ to turn pages.</p>
+    <div class="shot"><img src="img/09_browse.webp" width="860" height="476" loading="lazy" alt="/browse filtered to food and drink."></div>
+  </div></div>
+
+  <div class="entry" id="catalog"><div class="eh"><h3>/catalog</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/catalog</div>
+    <p>The leaderboard: top-voted spots grouped by kind, with not-a-place reels in a quiet 💭 section at the end.</p>
+    <div class="shot"><img src="img/10_catalog.webp" width="860" height="561" loading="lazy" alt="/catalog and /digest output."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#digest">/digest</a></p>
+  </div></div>
+
+  <div class="entry" id="digest"><div class="eh"><h3>/digest</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/digest</div>
+    <p>One message: spot count, nights out, the top three spots, and how many are still waiting for a plan.</p>
+  </div></div>
+
+  <div class="entry" id="share"><div class="eh"><h3>/share</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/share</div>
+    <p>A link to this server's spots as a web page anyone can view. The link carries a read-only signed token,
+    so it can't vote, delete, or show another server. Changing the signing key revokes every link.</p>
+    <div class="shot"><img src="img/web_share.webp" width="1000" height="672" loading="lazy" alt="The share page."></div>
+  </div></div>
+
+  <div class="entry" id="app"><div class="eh"><h3>/app</h3><span class="ty">command · prototype (ADR-0008)</span></div><div class="eb">
+    <div class="proto">/app</div>
+    <p>A personal link, visible only to you, to the SpotBot phone app at <code>:8010/app</code>: your spots with a
+    Restaurants filter, add a reel by link (or from Android's share sheet once installed), and an event page per spot
+    with <b>Going / Maybe / Can't</b>, a <b>find a time</b> poll and <b>Invite friends</b>, a link anyone can RSVP
+    from without Discord. The link holds a guest token and one signed for you; neither can delete, forget or change
+    settings.</p>
+    <p class="see">See also: <a href="#api">POST /api/events/{id}/rsvp</a> · <a href="#api">/poll</a> · <a href="#api">/api/invite</a></p>
+  </div></div>
+
+  <div class="entry" id="privacy"><div class="eh"><h3>/privacy</h3><span class="ty">command · Manage Server to delete</span></div><div class="eb">
+    <div class="proto">/privacy</div>
+    <p>What's saved (spots, votes with display names, settings, capture history, anonymous feedback), what
+    isn't (your chat; audio is deleted once transcribed), where it goes, who can see it, and
+    <i>Delete all of this data…</i>, confirmed by typing the server name. In a DM it deletes your own list.</p>
+    <div class="shot"><img src="img/11_privacy.webp" width="860" height="761" loading="lazy" alt="The /privacy card."></div>
+    <p class="see" style="margin-top:8px">See also: <a href="#api">POST /api/forget</a></p>
+  </div></div>
+
+  <div class="entry" id="feedback"><div class="eh"><h3>/feedback</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/feedback kind:&lt;bug|idea&gt;</div>
+    <dl class="params"><dt>kind</dt><dd><code>bug</code> or <code>idea</code>; opens a short form.</dd></dl>
+    <p>Saved without your name.</p>
+    <div class="shot"><img src="img/12_feedback.webp" width="860" height="608" loading="lazy" alt="The bug form and the survey."></div>
+  </div></div>
+
+  <div class="entry" id="survey"><div class="eh"><h3>/survey</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/survey [participant:&lt;code&gt;]</div>
+    <dl class="params"><dt>participant</dt><dd>The code from the researcher, e.g. <code>P3</code> (optional).</dd></dl>
+    <p>The System Usability Scale: 10 statements, tap 1–5. Scores are kept without names; the team reads the
+    count, mean and SD.</p>
+  </div></div>
+
+  <div class="entry" id="mute"><div class="eh"><h3>/mute</h3><span class="ty">command · moderators</span></div><div class="eb">
+    <div class="proto">/mute</div>
+    <p>Toggles capture in this channel. "🔇 Capture muted here" / "🎬 Capture is back on".</p>
+  </div></div>
+
+  <div class="entry" id="suggestions"><div class="eh"><h3>/suggestions</h3><span class="ty">command · moderators</span></div><div class="eb">
+    <div class="proto">/suggestions state:&lt;on|off&gt;</div>
+    <p>When on, SpotBot suggests saved spots in a thread when the chat sounds like a plan.</p>
+  </div></div>
+
+  <div class="entry" id="help"><div class="eh"><h3>/help</h3><span class="ty">command</span></div><div class="eb">
+    <div class="proto">/help</div>
+    <p>The quick how-to card, visible only to you.</p>
+    <div class="shot"><img src="img/13_help_share.webp" width="860" height="418" loading="lazy" alt="/help and /share replies."></div>
+  </div></div>
+
+  <!-- ───────── System ───────── -->
+  <h2 class="sec" id="web">Web pages <span class="mono" style="font-weight:normal">(admin app, :8010)</span></h2>
+  <table class="ref">
+    <tr><th>path</th><th>what it is</th><th>access</th></tr>
+    <tr><td class="n">/</td><td>Catalog admin: paste links, add a spot by hand, vote, remove</td><td class="t">localhost</td></tr>
+    <tr><td class="n">/share?guild_id=…&amp;t=…</td><td>One server's spots, read-only; made by <a href="#share">/share</a></td><td class="t">signed link</td></tr>
+    <tr><td class="n">/app</td><td>The phone app (installable web app): spots, event pages, RSVP, polls, invites; demo mode without a link</td><td class="t">fragment token</td></tr>
+    <tr><td class="n">/dash</td><td>Live operations: services, per-server counts, time-to-card, capture health, queue. Counts only.</td><td class="t">localhost</td></tr>
+  </table>
+  <div class="shot"><img src="img/web_dash.webp" width="1000" height="746" loading="lazy" alt="The /dash operations dashboard."></div>
+
+  <h2 class="sec" id="api">Admin API <span class="mono" style="font-weight:normal">(src/ingestion/serving/admin.py, :8010)</span></h2>
+  <p>Every request that names a <code>guild_id</code> must carry <code>X-Tenant-Token</code>, an HMAC token for that
+  server; read scope is enough for reads, full scope for writes, and votes are signed for the voting user.
+  A <b>guest</b> token (invite links) reads and may RSVP or vote in a poll, nothing else.</p>
+  <table class="ref">
+    <tr><th>endpoint</th><th>purpose</th><th>scope</th></tr>
+    <tr><td class="n">POST /api/jobs</td><td>Queue a capture of one or more links; returns a job id (202)</td><td class="t">user</td></tr>
+    <tr><td class="n">GET /api/jobs/{id}</td><td>A job's stage and result, polled by the bot</td><td class="t">read</td></tr>
+    <tr><td class="n">GET /api/jobs</td><td>Recent jobs, e.g. the failed ones</td><td class="t">read</td></tr>
+    <tr><td class="n">POST /api/ingest</td><td>Capture and wait for the result (synchronous)</td><td class="t">user</td></tr>
+    <tr><td class="n">GET /api/events</td><td>The server's spots with votes, voters and schedule</td><td class="t">read</td></tr>
+    <tr><td class="n">POST /api/manual</td><td>Add a spot by hand (the "never waste a paste" fallback)</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/events/{id}/vote</td><td>Want to go / Not for me</td><td class="t">user</td></tr>
+    <tr><td class="n">POST /api/events/{id}/edit</td><td>Fix the place name or vibe</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/events/{id}/lock</td><td>Record the Discord Scheduled Event</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/events/{id}/went</td><td>We went! / Didn't happen</td><td class="t">user</td></tr>
+    <tr><td class="n">POST /api/events/{id}/not-a-place</td><td>Move a spot to the 💭 list</td><td class="t">full</td></tr>
+    <tr><td class="n">DELETE /api/events/{id}</td><td>Remove a spot</td><td class="t">full</td></tr>
+    <tr><td class="n">GET /api/gists</td><td>Not-a-place reels, newest first</td><td class="t">read</td></tr>
+    <tr><td class="n">POST /api/gists/{id}/restore</td><td>Put a spot back, votes included</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/events/{id}/rsvp</td><td>Going / Maybe / Can't under a typed name</td><td class="t">guest</td></tr>
+    <tr><td class="n">POST /api/events/{id}/poll</td><td>Open a "find a time" poll (2–5 times)</td><td class="t">user</td></tr>
+    <tr><td class="n">POST /api/events/{id}/poll/vote</td><td>Pick the times that work</td><td class="t">guest</td></tr>
+    <tr><td class="n">POST /api/invite</td><td>Mint a guest link for this catalog's event pages</td><td class="t">user</td></tr>
+    <tr><td class="n">GET /api/nights</td><td>Confirmed nights out</td><td class="t">read</td></tr>
+    <tr><td class="n">GET · PUT /api/settings</td><td>The <a href="#setup">/setup</a> settings; PUT changes only the fields sent</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/feedback</td><td>A <a href="#feedback">/feedback</a> report</td><td class="t">full</td></tr>
+    <tr><td class="n">POST · GET /api/survey</td><td>Save a SUS answer set; read count, mean, SD</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/time-to-card</td><td>Paste-to-card seconds, for the dashboard</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/forget</td><td>Delete everything kept for one server (irreversible)</td><td class="t">full</td></tr>
+    <tr><td class="n">GET /api/stats</td><td>Counts for /dash</td><td class="t">localhost</td></tr>
+    <tr><td class="n">GET /health</td><td>Liveness; touches nothing slow</td><td class="t">open</td></tr>
+  </table>
+
+  <h2 class="sec" id="recommend">Recommend API <span class="mono" style="font-weight:normal">(src/ingestion/serving/app.py, :8003)</span></h2>
+  <table class="ref">
+    <tr><th>endpoint</th><th>purpose</th><th>used by</th></tr>
+    <tr><td class="n">POST /recommend</td><td>Saved spots that match a vibe, by embedding similarity</td><td class="t"><a href="#events">/events</a></td></tr>
+    <tr><td class="n">POST /plan</td><td>Read a chat transcript: the request (vibe, area, budget, time) and a shortlist</td><td class="t"><a href="#plan">/plan</a></td></tr>
+    <tr><td class="n">GET /ready · /health</td><td>Readiness (database reachable) and liveness</td><td class="t">ops</td></tr>
+  </table>
+
+  <h2 class="sec" id="pipeline">Pipeline <span class="mono" style="font-weight:normal">(src/ingestion/pipeline/orchestrator.py)</span></h2>
+  <table class="ref">
+    <tr><th>stage</th><th>what it does</th><th>module</th></tr>
+    <tr><td class="n">1 fetch</td><td>Headless Chromium renders the page; an embed-page fallback handles login walls; optional logged-in path</td><td class="t">browser/</td></tr>
+    <tr><td class="n">2 extract</td><td>JSON-LD and Open Graph tags, then per-site selectors</td><td class="t">extractors/</td></tr>
+    <tr><td class="n">3 listen · read</td><td>faster-whisper turns audio into text; RapidOCR reads on-screen text (both optional)</td><td class="t">transcriber.py, ocr.py</td></tr>
+    <tr><td class="n">4 normalize</td><td>Rule parser picks venue, category and city, each with a confidence</td><td class="t">normalizer.py</td></tr>
+    <tr><td class="n">5 time</td><td>"this Friday 8pm" → a real date</td><td class="t">temporal_resolver.py</td></tr>
+    <tr><td class="n">6 validate</td><td>Strict Pydantic record; platform boilerplate is never a venue</td><td class="t">validator.py</td></tr>
+    <tr><td class="n">7 store</td><td>JSONL log (source of truth) + ChromaDB, one collection per server</td><td class="t">sinks/</td></tr>
+  </table>
+
+  <h2 class="sec" id="failures">Failure messages <span class="mono" style="font-weight:normal">(app/cards.py FAILURE_MESSAGES)</span></h2>
+  <table class="ref">
+    <tr><th>class</th><th>what the user sees</th></tr>
+    <tr><td class="n">private</td><td>🔒 That reel is private or needs a login, so I can't read it.</td></tr>
+    <tr><td class="n">removed</td><td>🚫 That post is gone — it was deleted, or the link is wrong.</td></tr>
+    <tr><td class="n">timeout</td><td>⏱️ The site took too long to answer. Retry — it usually works the second time.</td></tr>
+    <tr><td class="n">network</td><td>📶 I couldn't reach the site just now.</td></tr>
+    <tr><td class="n">unsupported</td><td>🔗 I can only read public Instagram and TikTok links.</td></tr>
+    <tr><td class="n">too_slow</td><td>⏱️ That one took too long to read (a long video?).</td></tr>
+    <tr><td class="n">no_text</td><td>🤷 I couldn't find a caption, spoken words or on-screen text to go on.</td></tr>
+    <tr><td class="n">not_a_place</td><td>🤔 That post doesn't look like it's about a place, an event or food.</td></tr>
+    <tr><td class="n">past_event</td><td>📅 That event has already happened, so I didn't save it.</td></tr>
+    <tr><td class="n">no_venue</td><td>🔎 I read it, but couldn't tell which place it's about.</td></tr>
+    <tr><td class="n">bug</td><td>😵 Something broke on our side.</td></tr>
+  </table>
+  <div class="shot"><img src="img/04_failure.webp" width="860" height="272" loading="lazy" alt="A private-reel failure with Retry and Add manually."></div>
+
+  <h2 class="sec" id="categories">Categories</h2>
+  <table class="ref">
+    <tr><th>value</th><th>shown as</th></tr>
+    <tr><td class="n">food_drink</td><td>🍽️ food &amp; drink</td></tr><tr><td class="n">cafe_dessert</td><td>🍰 cafés &amp; dessert</td></tr>
+    <tr><td class="n">nightlife</td><td>🍸 nightlife</td></tr><tr><td class="n">live_music</td><td>🎶 live music</td></tr>
+    <tr><td class="n">market_popup</td><td>🛍️ markets &amp; pop-ups</td></tr><tr><td class="n">outdoors</td><td>🏞️ outdoors</td></tr>
+    <tr><td class="n">community</td><td>🤝 community</td></tr><tr><td class="n">other</td><td>📍 other</td></tr>
+  </table>
+  <p>A reel that isn't a place gets a 💭 card instead (recipe, meme, game, music, ad, story).</p>
+  <div class="shot"><img src="img/06_not_a_place.webp" width="860" height="329" loading="lazy" alt="A not-a-place card for a recipe."></div>
+
+  <h2 class="sec" id="config">Configuration <span class="mono" style="font-weight:normal">(.env)</span></h2>
+  <table class="ref">
+    <tr><th>variable</th><th>effect</th></tr>
+    <tr><td class="n">DISCORD_TOKEN</td><td>The bot's token</td></tr>
+    <tr><td class="n">SPOTBOT_SIGNING_KEY</td><td>Required; signs every catalog call; the same in all three processes</td></tr>
+    <tr><td class="n">INGEST_URL · RECOMMEND_URL</td><td>Where the bot finds :8010 and :8003</td></tr>
+    <tr><td class="n">OLLAMA_URL · EMBED_MODEL</td><td>Local model server; the embedding model must match the catalog's</td></tr>
+    <tr><td class="n">TRANSCRIBE_ENABLED=0</td><td>Skip Whisper (fastest on CPU-only machines)</td></tr>
+    <tr><td class="n">WHISPER_MODEL</td><td>tiny · base (default) · small</td></tr>
+    <tr><td class="n">OCR_ENABLED=1</td><td>Read on-screen text</td></tr>
+    <tr><td class="n">CAPTURE_BUDGET_S</td><td>Time limit per link after the fetch (default 180)</td></tr>
+    <tr><td class="n">SPOT_QUORUM</td><td>Votes before "Lock it in" (default 3)</td></tr>
+    <tr><td class="n">IG_USERNAME · IG_PASSWORD</td><td>Logged-in capture path; burner account only</td></tr>
+  </table>
+  <p class="see">Full list: <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/RUNBOOK.md">docs/RUNBOOK.md</a></p>
+
+  <h2 class="sec" id="stack">Technology</h2>
+  <table class="ref">
+    <tr><th>layer</th><th>what we use</th></tr>
+    <tr><td class="n">bot</td><td>discord.py 2.7: slash commands, buttons that survive restarts, Scheduled Events</td></tr>
+    <tr><td class="n">services</td><td>FastAPI + Uvicorn (:8010 admin/ingest, :8003 recommend)</td></tr>
+    <tr><td class="n">capture</td><td>Playwright 1.60 + headless Chromium; httpx</td></tr>
+    <tr><td class="n">audio · screen</td><td>faster-whisper, RapidOCR</td></tr>
+    <tr><td class="n">AI models</td><td>Ollama, local: mxbai-embed-large embeddings; M2, a fine-tuned multilingual MiniLM cross-encoder (research)</td></tr>
+    <tr><td class="n">data</td><td>ChromaDB 1.5 on disk, one collection per server; JSONL log</td></tr>
+    <tr><td class="n">maps</td><td>OpenStreetMap: Nominatim, Overpass</td></tr>
+    <tr><td class="n">quality</td><td>pytest (1,196 offline tests), attack tests, frozen train/dev/test split with a test-read ledger</td></tr>
+    <tr><td class="n">delivery</td><td>Docker Compose, GitHub Actions</td></tr>
+  </table>
+
+  <h2 class="sec" id="security">Security</h2>
+  <table class="ref">
+    <tr><th>rule</th><th>how</th></tr>
+    <tr><td class="n">tenant isolation</td><td>Each server's data is reached only with an HMAC token for that server; keys rotate with a grace period</td></tr>
+    <tr><td class="n">no pings</td><td>Every message is sent with mentions disabled, so a pasted @everyone pings nobody</td></tr>
+    <tr><td class="n">local-first</td><td>Captions and audio are read on the host; no paid APIs, no post text sent off the machine</td></tr>
+    <tr><td class="n">safe fetching</td><td>Only public http(s) links; internal addresses refused (SSRF tests)</td></tr>
+  </table>
+  <p class="see">Threat model: <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/THREAT_MODEL.md">docs/THREAT_MODEL.md</a></p>
+
+  <h2 class="sec" id="numbers">Numbers</h2>
+  <div class="bars" aria-label="Right place on 271 dev reels">
+    <div class="bar"><span>hand-written rules (today)</span><i style="--w:62%"></i><b>62.0%</b></div>
+    <div class="bar"><span>M2 model (research)</span><i style="--w:74.2%"></i><b>74.2%</b></div>
+  </div>
+  <p>Right place on 271 held-out dev reels. The bot runs the rules today; M2 is the model we're moving it to.
+  1,196 automated offline tests; 0 posts sent to outside AI services; $0 to run.
+  Method and intervals: <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/results/2026-10-27-evaluation-report.html">evaluation report</a>.</p>
+
+  <h2 class="sec" id="team">Team</h2>
+  <table class="ref">
+    <tr><th>name</th><th>track</th></tr>
+    <tr><td class="n">Nick Nojiri</td><td>Lead · Platform (N) and Experience (C)</td></tr>
+    <tr><td class="n">Blessie Gabat</td><td>Capture (A)</td></tr>
+    <tr><td class="n">Valeria Mojarro</td><td>Accuracy and evaluation (B)</td></tr>
+    <tr><td class="n">Kimberly Reyes</td><td>Cybersecurity (D)</td></tr>
+  </table>
+  <p id="noresults" class="note hide">No entries match your search.</p>
+</main>
+</div>
+
+<footer>SpotBot · CSULB CECS 491A Team 10 · <a href="./">3D tour</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> ·
+<a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/README.md">README</a> ·
+<a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/USER_GUIDE.md">User guide</a> ·
+Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></footer>
+
+<script>
+  // Search: filter the index table, the sidebar and the entries by text.
+  (function () {
+    var q = document.getElementById("q"), none = document.getElementById("noresults");
+    var rows = [].slice.call(document.querySelectorAll("#index tr")).slice(1);
+    var side = [].slice.call(document.querySelectorAll("#side li:not(.grp)"));
+    var entries = [].slice.call(document.querySelectorAll(".entry"));
+    q.addEventListener("input", function () {
+      var t = q.value.trim().toLowerCase(), hits = 0;
+      function show(el) { var m = !t || el.textContent.toLowerCase().indexOf(t) >= 0; el.classList.toggle("hide", !m); return m; }
+      rows.forEach(function (r) { if (show(r)) hits++; });
+      side.forEach(show);
+      entries.forEach(function (e) { if (show(e)) hits++; });
+      none.classList.toggle("hide", !t || hits > 0);
+    });
+    q.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var first = rows.filter(function (r) { return !r.classList.contains("hide"); })[0];
+      if (first) location.hash = first.querySelector("a").getAttribute("href");
+    });
+  })();
+  // Until docs/site/media/demo.mp4 exists, show a placeholder instead of an empty player.
+  (function () {
+    var box = document.getElementById("video");
+    function soon() { box.innerHTML = '<div class="soon"><b>Demo video coming soon</b>We’re recording it in our test server.</div>'; }
+    fetch("media/demo.mp4", { method: "HEAD" }).then(function (r) { if (!r.ok) soon(); }).catch(soon);
+  })();
+</script>
+</body>
+</html>

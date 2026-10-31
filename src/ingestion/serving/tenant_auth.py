@@ -43,6 +43,9 @@ PREVIOUS_ENV_VAR = "SPOTBOT_SIGNING_KEY_PREVIOUS"
 
 SCOPE_READ = "r"
 SCOPE_WRITE = "rw"
+# An invite link for one server's event pages (ADR-0008): read the spots, and RSVP or
+# vote in a "find a time" poll under a typed name. Nothing else: no capture, edit or delete.
+SCOPE_GUEST = "g"
 
 
 def _key() -> bytes:
@@ -102,12 +105,15 @@ def authorize(
 ) -> None:
     """Raise 403 unless `token` proves the caller may act on this tenant.
 
-    A write token also satisfies a read requirement; a read token never
-    satisfies a write.
+    A write token also satisfies a read or guest requirement; a guest token satisfies
+    reads and guest actions (RSVP, poll votes); a read token satisfies only reads.
     """
     if not str(guild_id or ""):
         return  # legacy single-tenant catalog - see the module docstring
-    allowed = (SCOPE_WRITE,) if need == SCOPE_WRITE else (SCOPE_READ, SCOPE_WRITE)
+    allowed = {
+        SCOPE_WRITE: (SCOPE_WRITE,),
+        SCOPE_GUEST: (SCOPE_GUEST, SCOPE_WRITE),
+    }.get(need, (SCOPE_READ, SCOPE_GUEST, SCOPE_WRITE))
     if any(verify_token(token, guild_id, scope=s, user_id=user_id) for s in allowed):
         return
     raise HTTPException(status_code=403, detail="invalid or missing tenant token")

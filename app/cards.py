@@ -367,6 +367,17 @@ _TIKTOK_URL_RE = re.compile(
 )
 
 
+def app_link(base: str, guild: str, guest_token: str, user_token: str, user_id: str, name: str) -> str:
+    """The personal /app link (ADR-0008). Two narrow tokens, never the server's full one:
+    a guest token (read, RSVP, poll votes) and one signed for this user (add reels, vote,
+    start polls, invite) that can't delete, forget or change settings. Everything rides in
+    the #fragment, which the browser never sends to the server."""
+    from urllib.parse import urlencode
+    frag = urlencode({"g": guild, "t": guest_token, "v": user_token, "u": user_id,
+                      "n": name[:40], "r": "member"})
+    return f"{base.rstrip('/')}/app#{frag}"
+
+
 def emoji_for(category: str) -> str:
     return CATEGORY_EMOJI.get(category, "📍")
 

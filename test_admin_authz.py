@@ -25,7 +25,7 @@ from src.ingestion.serving.gists import GistStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.time_to_card import TimeToCardLog
-from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_READ, mint_token
+from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_GUEST, SCOPE_READ, mint_token
 
 KEY = "0" * 64
 MINE = "111111111111111111"
@@ -60,6 +60,10 @@ PROTECTED_ROUTES = {
     ("GET", "/api/gists"),
     ("POST", "/api/events/{event_id}/not-a-place"),
     ("POST", "/api/gists/{gid}/restore"),
+    ("POST", "/api/events/{event_id}/rsvp"),
+    ("POST", "/api/events/{event_id}/poll"),
+    ("POST", "/api/events/{event_id}/poll/vote"),
+    ("POST", "/api/invite"),
     ("POST", "/recommend"),
     ("POST", "/plan"),
     ("GET", "/share"),
@@ -696,3 +700,60 @@ def test_bot_and_api_mint_identical_tokens(monkeypatch):
         assert bot_side.mint_token(guild, scope=scope, user_id=user) == mint_token(guild, scope=scope, user_id=user)
     assert bot_side.tenant_headers("") == {}
     assert bot_side.tenant_headers(MINE, user_id=ME) == {"X-Tenant-Token": mint_token(MINE, user_id=ME)}
+
+
+# ── guest invite links (ADR-0008): read + RSVP/poll votes, nothing else ──────
+
+
+def _guest():
+    return mint_token(MINE, scope=SCOPE_GUEST)
+
+
+def test_guest_link_can_read_and_rsvp(client):
+    assert client.get(f"/api/events?guild_id={MINE}", headers=hdr(_guest())).status_code == 200
+    r = client.post(f"/api/events/{EVENT}/rsvp", headers=hdr(_guest()),
+                    json={"guild_id": MINE, "rsvp_id": "rsvp-12345678", "name": "Sam", "state": "going"})
+    assert r.status_code == 200 and r.json()["rsvps"]["going"] == ["Sam"]
+
+
+@pytest.mark.parametrize("method, path, body", [
+    ("post", "/api/manual", {"venue": "Casa Loma", "theme": "birria tacos"}),
+    ("post", f"/api/events/{EVENT}/edit", {"venue": "X", "theme": "y z"}),
+    ("post", f"/api/events/{EVENT}/poll", {"slots": ["2026-11-06T19:00", "2026-11-07T12:00"]}),
+    ("post", "/api/invite", {}),
+    ("post", "/api/jobs", {"urls": ["https://x.test/1"], "user_id": ME}),
+    ("post", "/api/forget", {"confirm": MINE}),
+    ("put", "/api/settings", {"home_city": "Long Beach, CA"}),
+])
+def test_guest_link_cannot_write(client, method, path, body):
+    r = getattr(client, method)(path, headers=hdr(_guest()), json={"guild_id": MINE, **body})
+    assert r.status_code == 403
+
+
+def test_guest_link_cannot_delete_or_vote_as_a_member(client):
+    assert client.delete(f"/api/events/{EVENT}?guild_id={MINE}", headers=hdr(_guest())).status_code == 403
+    r = client.post(f"/api/events/{EVENT}/vote?guild_id={MINE}", headers=hdr(_guest()),
+                    json={"delta": 1, "user_id": ME, "user_name": ME})
+    assert r.status_code == 403
+
+
+def test_share_link_cannot_rsvp(client):
+    r = client.post(f"/api/events/{EVENT}/rsvp", headers=hdr(mint_token(MINE, scope=SCOPE_READ)),
+                    json={"guild_id": MINE, "rsvp_id": "rsvp-12345678", "name": "Sam", "state": "going"})
+    assert r.status_code == 403
+
+
+def test_invite_mints_a_guest_token_for_that_guild_only(client):
+    token = client.post("/api/invite", headers=hdr(mint_token(MINE)), json={"guild_id": MINE}).json()["token"]
+    assert token == _guest()
+    assert client.get(f"/api/events?guild_id={THEIRS}", headers=hdr(token)).status_code == 403
+
+
+def test_member_app_token_acts_only_as_its_user(client):
+    """The /app link's user token can poll and invite as that user, never delete or forget."""
+    mine = mint_token(MINE, user_id=ME)
+    ok = client.post("/api/invite", headers=hdr(mine), json={"guild_id": MINE, "user_id": ME})
+    assert ok.status_code == 200
+    assert client.post("/api/invite", headers=hdr(mine), json={"guild_id": MINE, "user_id": YOU}).status_code == 403
+    assert client.post("/api/forget", headers=hdr(mine), json={"guild_id": MINE, "confirm": MINE}).status_code == 403
+    assert client.delete(f"/api/events/{EVENT}?guild_id={MINE}", headers=hdr(mine)).status_code == 403
