@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#06060c">
+<title>SpotBot: how it works</title>
+<meta name="description" content="SpotBot's features, technology and measured results on one light page: no 3D, no frameworks, fast on any device.">
+<!-- The light companion to the 3D landing page (spotbot.html, published as index.html).
+     No WebGL, no web fonts, no framework; one tiny script swaps in a placeholder until
+     the demo video exists. Keep it in step with README.md. -->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #06060c; --panel: #0f0e1e; --panel2: #15142a; --line: rgba(255,255,255,.1);
+    --ink: #eceefa; --ink2: #b3b6d0; --ink3: #82869f;
+    --violet: #7C5CFF; --pink: #FF3D8B; --orange: #FF8A4C;
+    --grad: linear-gradient(100deg, var(--violet), var(--pink) 55%, var(--orange));
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: #ff7ab0; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
+  code { font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--panel2);
+         padding: 1px 6px; border-radius: 5px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  nav { position: sticky; top: 0; z-index: 5; background: rgba(6,6,12,.92); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 18px; height: 58px; overflow-x: auto; white-space: nowrap; }
+  nav .logo { font-weight: 800; color: var(--ink); text-decoration: none; margin-right: auto; }
+  nav a { color: var(--ink2); text-decoration: none; font-size: 14.5px; }
+  nav a:hover { color: var(--ink); }
+  header { padding: 72px 0 40px; }
+  .kicker { color: #ff7ab0; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.05; margin: 12px 0 16px; letter-spacing: -.02em; }
+  h1 em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 19px; color: var(--ink2); max-width: 680px; }
+  .btns { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+  .btn { display: inline-block; padding: 11px 20px; border-radius: 999px; font-weight: 700; text-decoration: none; }
+  .btn.primary { background: var(--grad); color: #fff; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--ink); }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 8px; letter-spacing: -.01em; }
+  .sub { color: var(--ink2); margin: 0 0 28px; max-width: 700px; }
+  .video { aspect-ratio: 16 / 9; background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+           overflow: hidden; display: grid; place-items: center; }
+  .video video { width: 100%; height: 100%; display: block; }
+  .video .soon { text-align: center; color: var(--ink2); padding: 20px; }
+  .video .soon b { display: block; color: var(--ink); font-size: 22px; margin-bottom: 6px; }
+  .feature { display: grid; grid-template-columns: 1fr 1.25fr; gap: 28px; align-items: center; margin: 0 0 40px; }
+  .feature:nth-child(even) .shot { order: -1; }
+  .feature h3 { margin: 0 0 8px; font-size: 21px; }
+  .feature p { margin: 0 0 8px; color: var(--ink2); }
+  .feature .cmd { font-size: 14px; color: var(--ink3); }
+  .shot img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); }
+  .note { font-size: 14px; color: var(--ink3); margin-top: -8px; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: s; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .step::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center;
+                  width: 30px; height: 30px; border-radius: 50%; background: var(--grad); font-weight: 800; margin-bottom: 8px; }
+  .step b { display: block; margin-bottom: 4px; }
+  .step span { color: var(--ink2); font-size: 15px; }
+  ol.pipe { padding-left: 22px; color: var(--ink2); } ol.pipe b { color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink3); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  td { color: var(--ink2); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .stat b { display: block; font-size: 34px; line-height: 1.1; background: var(--grad); -webkit-background-clip: text;
+            background-clip: text; color: transparent; }
+  .stat span { color: var(--ink2); font-size: 14px; }
+  .bars { display: grid; gap: 10px; max-width: 640px; }
+  .bar { display: grid; grid-template-columns: 190px 1fr 60px; gap: 12px; align-items: center; font-size: 15px; color: var(--ink2); }
+  .bar i { display: block; height: 12px; border-radius: 6px; background: var(--panel2); overflow: hidden; }
+  .bar i::after { content: ""; display: block; height: 100%; width: var(--w); background: var(--grad); }
+  .bar b { color: var(--ink); text-align: right; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--ink2); font-size: 15px; }
+  .team { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .team .card b { display: block; }
+  footer { padding: 36px 0 60px; color: var(--ink3); font-size: 14px; border-top: 1px solid var(--line); }
+  @media (max-width: 760px) {
+    .feature { grid-template-columns: 1fr; gap: 14px; } .feature:nth-child(even) .shot { order: 0; }
+    .steps, .stats, .team { grid-template-columns: 1fr 1fr; } .grid2 { grid-template-columns: 1fr; }
+    .bar { grid-template-columns: 120px 1fr 52px; }
+    td:first-child { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<nav aria-label="Sections"><div class="wrap">
+  <a class="logo" href="#top">📍 SpotBot</a>
+  <a href="#demo">Demo</a>
+  <a href="#features">Features</a>
+  <a href="#how">How it works</a>
+  <a href="#tech">Tech</a>
+  <a href="#numbers">Numbers</a>
+  <a href="#team">Team</a>
+  <a href="./">3D tour ↗</a>
+  <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub ↗</a>
+</div></nav>
+
+<main id="top">
+<header class="wrap">
+  <div class="kicker">CSULB CECS 491A · Team 10</div>
+  <h1>Turn the reels your friends share into <em>places you actually go.</em></h1>
+  <p class="lead">Your group chat is full of "we should go here!" reels that nobody acts on.
+  SpotBot lives in Discord: paste a reel and it reads the caption, the audio and the text on the
+  video, works out the place, and posts a card your friends can vote on. At three votes it's on
+  the server calendar.</p>
+  <div class="btns">
+    <a class="btn primary" href="#demo">Watch the demo</a>
+    <a class="btn ghost" href="https://github.com/NickNojiri/SocialAgent-Team10">View the code</a>
+    <a class="btn ghost" href="./">Take the 3D tour</a>
+  </div>
+</header>
+
+<section id="demo"><div class="wrap">
+  <h2>Live demo</h2>
+  <p class="sub">A real Discord server, start to finish: paste a reel, get a card, vote, lock it in, plan a night out.</p>
+  <!-- To add the demo: put the file at docs/site/media/demo.mp4 (H.264, ideally under 50 MB),
+       optionally add poster="media/demo.jpg" to the <video> with that image, then republish. For YouTube instead,
+       replace the <video> with:
+       <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" title="SpotBot demo"
+               allow="encrypted-media; picture-in-picture" allowfullscreen loading="lazy"
+               style="width:100%;height:100%;border:0"></iframe> -->
+  <div class="video" id="video">
+    <video controls preload="none" playsinline>
+      <source src="media/demo.mp4" type="video/mp4">
+    </video>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <h2>Features</h2>
+  <p class="sub">Every screen below is drawn from the bot's own card code, so it's exactly what
+  SpotBot posts. Only the people and the example link are made up.</p>
+
+  <div class="feature">
+    <div><h3>🎬 Paste a reel, that's it</h3>
+      <p>No command to learn. Paste an Instagram or TikTok link in any channel and SpotBot picks it up,
+      says what it's doing, and turns its reply into a card in about 20–45 seconds.</p>
+      <p class="cmd">Works in every channel, or one reels channel picked in <code>/setup</code>.</p></div>
+    <div class="shot"><img src="img/01_capture.webp" width="860" height="210" loading="lazy" alt="A member pastes a reel link; SpotBot reacts and replies that it is reading the reel."></div>
+  </div>
+  <div class="feature">
+    <div><h3>📇 A card the group can vote on</h3>
+      <p>The place, what it's about, a link back to the reel, a map, and who's in. Anyone can fix a
+      wrong name, ask for similar spots, or mark it "not a place".</p>
+      <p class="cmd">Buttons: Want to go · Not for me · Add suggestions · Edit · Remove · Not a place</p></div>
+    <div class="shot"><img src="img/02_spot_card.webp" width="860" height="436" loading="lazy" alt="A spot card for Chef Tian with a description, map link, who's in, and vote buttons."></div>
+  </div>
+  <div class="feature">
+    <div><h3>📅 Three votes → it's on the calendar</h3>
+      <p>At three "Want to go" votes, SpotBot offers to lock it in as a Discord Scheduled Event,
+      using the time from the reel. Afterwards it asks whether you went, and places you actually
+      went rank higher next time.</p></div>
+    <div class="shot"><img src="img/03_lock_in.webp" width="860" height="258" loading="lazy" alt="SpotBot says three people want Chef Tian and offers a Lock it in button; later it asks We went or Didn't happen."></div>
+  </div>
+  <div class="feature">
+    <div><h3>🧭 /plan reads the room</h3>
+      <p>Chat as usual, then type <code>/plan</code>. SpotBot sums up the vibe, area and budget it
+      heard and pitches saved spots that fit, each one votable. Name a place and it's pinned; say
+      where you are and picks are sorted by distance.</p></div>
+    <div class="shot"><img src="img/08_plan.webp" width="860" height="422" loading="lazy" alt="Three friends chat about food; SpotBot replies with what it heard: tacos or dim sum, Irvine, cheap."></div>
+  </div>
+  <div class="feature">
+    <div><h3>🔎 Find anything you saved</h3>
+      <p><code>/events</code> searches by vibe, <code>/browse</code> pages through spots by kind, area
+      or date, and <code>/catalog</code> and <code>/digest</code> show what's most wanted.</p></div>
+    <div class="shot"><img src="img/14_events.webp" width="860" height="528" loading="lazy" alt="SpotBot answers /events cheap late lunch with two matching spots and distances."></div>
+  </div>
+  <div class="feature">
+    <div><h3>🤷 Honest when it can't read a reel</h3>
+      <p>Private, deleted, too slow or no venue: SpotBot says which, in plain words, and offers Retry
+      or Add manually. A paste is never wasted.</p></div>
+    <div class="shot"><img src="img/04_failure.webp" width="860" height="272" loading="lazy" alt="SpotBot explains a reel is private and offers Retry and Add manually buttons."></div>
+  </div>
+  <div class="feature">
+    <div><h3>💭 Knows a recipe isn't a place</h3>
+      <p>Recipes, memes and ads get a small grey card saying what they're about, kept out of the
+      spot list. "Add it anyway" overrides it.</p></div>
+    <div class="shot"><img src="img/06_not_a_place.webp" width="860" height="329" loading="lazy" alt="A grey card for a blueberry cinnamon roll recipe marked not a place."></div>
+  </div>
+  <div class="feature">
+    <div><h3>⚙️ Set up in 30 seconds</h3>
+      <p><code>/setup</code> is a private three-step form: which channel to watch, your home city for
+      distances, and save. Running it again changes only what you change.</p></div>
+    <div class="shot"><img src="img/07_setup.webp" width="860" height="466" loading="lazy" alt="The /setup form with the reels channel, home city and save steps."></div>
+  </div>
+  <div class="feature">
+    <div><h3>🔒 Your data, and a delete button</h3>
+      <p><code>/privacy</code> lists exactly what's kept and what isn't, where it goes and who can see it,
+      with a button to delete all of it. Your chat is never saved.</p></div>
+    <div class="shot"><img src="img/11_privacy.webp" width="860" height="761" loading="lazy" alt="The /privacy card listing what SpotBot saves and a delete button."></div>
+  </div>
+  <div class="feature">
+    <div><h3>🌐 A web page for friends outside Discord</h3>
+      <p><code>/share</code> gives a read-only link to the server's spot list. Nobody can vote or
+      delete through it.</p></div>
+    <div class="shot"><img src="img/web_share.webp" width="1000" height="672" loading="lazy" alt="The public share page listing five saved spots with vote counts."></div>
+  </div>
+  <p class="note">Also: <code>/feedback</code> and a 2-minute usability <code>/survey</code>,
+  <code>/mute</code> for channels where capture should stay off, <code>/suggestions</code> for
+  spot ideas when a chat sounds like a plan, and <code>/help</code>.</p>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">Everything runs on one computer the group controls. Nothing goes to paid AI services.</p>
+  <div class="steps">
+    <div class="step"><b>Paste</b><span>The bot spots the link and queues a capture with a signed server token.</span></div>
+    <div class="step"><b>Read</b><span>Headless Chromium opens the reel; Whisper turns the audio into text; OCR reads text on the video.</span></div>
+    <div class="step"><b>Understand</b><span>Rules pick the place, kind, city and time from everything the reel offers.</span></div>
+    <div class="step"><b>Card</b><span>The spot is saved per server and posted as a votable card.</span></div>
+  </div>
+  <h3 style="margin-top:34px">The capture pipeline</h3>
+  <ol class="pipe">
+    <li><b>Fetch</b>: Playwright renders the page, with an embed-page fallback for login walls.</li>
+    <li><b>Extract</b>: Open Graph and JSON-LD tags, then per-site selectors.</li>
+    <li><b>Listen and read</b>: faster-whisper (audio) and RapidOCR (on-screen text), both optional.</li>
+    <li><b>Normalize</b>: the rule parser picks venue, category and city, each with a confidence.</li>
+    <li><b>Resolve time</b>: "this Friday 8pm" becomes a real date.</li>
+    <li><b>Validate</b>: strict Pydantic checks; platform boilerplate is never a venue.</li>
+    <li><b>Store</b>: a JSONL log (the source of truth) and ChromaDB, one collection per server.</li>
+  </ol>
+  <p class="note">If any step fails, the failure gets a class (private, timeout, not a place…) that
+  the bot turns into a plain-language message.</p>
+</div></section>
+
+<section id="tech"><div class="wrap">
+  <h2>Technology</h2>
+  <p class="sub">Python end to end, local AI, and nothing that costs money to run.</p>
+  <table>
+    <tr><th>Layer</th><th>What we use</th></tr>
+    <tr><td>Bot</td><td>discord.py 2.7: slash commands, persistent buttons that survive restarts, Scheduled Events</td></tr>
+    <tr><td>Services</td><td>FastAPI + Uvicorn: the admin/ingest app (:8010) and the recommend service (:8003)</td></tr>
+    <tr><td>Capture</td><td>Playwright 1.60 with headless Chromium; httpx</td></tr>
+    <tr><td>Audio and screen text</td><td>faster-whisper, RapidOCR (both optional)</td></tr>
+    <tr><td>AI models</td><td>Ollama, running locally: <code>mxbai-embed-large</code> embeddings; a fine-tuned multilingual MiniLM cross-encoder (M2) in research</td></tr>
+    <tr><td>Data</td><td>ChromaDB 1.5 on disk (one collection per server) and a JSONL log</td></tr>
+    <tr><td>Maps</td><td>OpenStreetMap: Nominatim and Overpass</td></tr>
+    <tr><td>Quality</td><td>pytest (1,196 offline tests), security attack tests, a frozen train/dev/test split with a test-read ledger</td></tr>
+    <tr><td>Delivery</td><td>Docker Compose, GitHub Actions CI</td></tr>
+  </table>
+  <div class="grid2" style="margin-top:22px">
+    <div class="card"><h3>🔐 Every catalog call is signed</h3><p>Each server's data is reached only with an HMAC token for that server, so one server can never read or vote in another's catalog. Keys rotate without downtime.</p></div>
+    <div class="card"><h3>🙊 The bot never pings</h3><p>Every message goes out with mentions disabled, so a pasted @everyone pings nobody.</p></div>
+    <div class="card"><h3>🏠 Local-first</h3><p>Captions and audio are read by models on the host machine. No paid APIs, no post text sent off the machine.</p></div>
+    <div class="card"><h3>📊 An operations dashboard</h3><p>/dash shows services, time-to-card, capture health and the job queue. Counts only, never post contents.</p></div>
+  </div>
+  <div class="shot" style="margin-top:22px"><img src="img/web_dash.webp" width="1000" height="746" loading="lazy" alt="The SpotBot live operations dashboard with counts, services and time-to-card panels."></div>
+</div></section>
+
+<section id="numbers"><div class="wrap">
+  <h2>By the numbers</h2>
+  <p class="sub">Measured on held-out reels, never on the data we tuned on.</p>
+  <div class="stats">
+    <div class="stat"><b>74.2%</b><span>right place, our M2 model, on 271 dev reels</span></div>
+    <div class="stat"><b>1,196</b><span>automated offline tests, access checks included</span></div>
+    <div class="stat"><b>0</b><span>posts sent to outside AI services</span></div>
+    <div class="stat"><b>$0</b><span>to run: local models and open map data</span></div>
+  </div>
+  <div class="bars" aria-label="Place accuracy on 271 dev reels">
+    <div class="bar"><span>Hand-written rules (today)</span><i style="--w:62%"></i><b>62.0%</b></div>
+    <div class="bar"><span>M2 model (research)</span><i style="--w:74.2%"></i><b>74.2%</b></div>
+  </div>
+  <p class="note" style="margin-top:14px">The bot runs the rules today; M2 is the model we're moving it to.
+  Full method and confidence intervals: <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/results/2026-10-27-evaluation-report.html">the evaluation report</a>.</p>
+</div></section>
+
+<section id="team"><div class="wrap">
+  <h2>The team</h2>
+  <p class="sub">Four people, five tracks. CSULB CECS 491A, Fall 2026.</p>
+  <div class="team">
+    <div class="card"><b>Nick Nojiri</b><p>Lead · Platform and Experience</p></div>
+    <div class="card"><b>Blessie Gabat</b><p>Capture</p></div>
+    <div class="card"><b>Valeria Mojarro</b><p>Accuracy and evaluation</p></div>
+    <div class="card"><b>Kimberly Reyes</b><p>Cybersecurity</p></div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <a href="./">3D tour</a> · <a href="https://github.com/NickNojiri/SocialAgent-Team10">GitHub</a> ·
+  <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/README.md">README</a> ·
+  <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/USER_GUIDE.md">User guide</a> ·
+  <a href="https://github.com/NickNojiri/SocialAgent-Team10/blob/main/docs/ARCHITECTURE.md">Architecture</a><br>
+  Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.
+</div></footer>
+
+<script>
+  // Until docs/site/media/demo.mp4 exists, show a placeholder instead of an empty player.
+  (function () {
+    var box = document.getElementById("video");
+    var v = box.querySelector("video");
+    function soon() {
+      box.innerHTML = '<div class="soon"><b>Demo video coming soon</b>We’re recording it in our test server.</div>';
+    }
+    fetch("media/demo.mp4", { method: "HEAD" }).then(function (r) { if (!r.ok) soon(); }).catch(soon);
+    v.querySelector("source").addEventListener("error", soon);
+  })();
+</script>
+</body>
+</html>
