@@ -45,7 +45,7 @@ import feedback
 import privacy
 import setup_wizard
 from tenant_auth import ENV_VAR as SIGNING_KEY_VAR
-from tenant_auth import SCOPE_READ, mint_token, tenant_headers
+from tenant_auth import SCOPE_GUEST, SCOPE_READ, mint_token, tenant_headers
 
 # Cards show distance from /setup's home city (#36). Looked up at call time, so
 # the cache (and a test's stand-in) is always the current one.
@@ -745,6 +745,32 @@ async def share_command(interaction: discord.Interaction):
         f"🔗 This catalog, as a web page anyone can view:\n{base}/share?guild_id={gid}&t={token}\n"
         "-# Send it to friends who aren't in the server — it's read-only. Localhost "
         "links only work on the machine running SpotBot."
+    )
+
+
+@tree.command(name="app", description="Open SpotBot on your phone: your spots, RSVPs and polls")
+async def app_command(interaction: discord.Interaction):
+    """A personal link to the phone app (ADR-0008). Only you see it: it carries a guest
+    token and one signed for you, so the app can add spots and vote as you, and nothing
+    that needs a moderator (delete, /privacy, /setup)."""
+    base = os.getenv("SHARE_BASE_URL", ADMIN_URL)
+    gid = cards.guild_key(interaction)
+    uid = str(interaction.user.id)
+    try:
+        guest, mine = mint_token(gid, scope=SCOPE_GUEST), mint_token(gid, user_id=uid)
+    except RuntimeError as exc:
+        log.error(f"[app] {exc}")
+        await interaction.response.send_message(
+            "⚠️ The app isn't set up on this bot yet (missing signing key).", ephemeral=True
+        )
+        return
+    name = getattr(interaction.user, "display_name", "") or interaction.user.name
+    await interaction.response.send_message(
+        f"📱 Your SpotBot app: {cards.app_link(base, gid, guest, mine, uid, name)}\n"
+        "-# This link is yours — it can add spots and vote as you, so don't share it. "
+        "Use \"Invite friends\" in the app to send a link anyone can RSVP from. "
+        "On Android, install it from the browser menu to get SpotBot in your share sheet.",
+        ephemeral=True,
     )
 
 

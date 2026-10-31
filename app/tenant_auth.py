@@ -23,6 +23,7 @@ ENV_VAR = "SPOTBOT_SIGNING_KEY"
 
 SCOPE_READ = "r"
 SCOPE_WRITE = "rw"
+SCOPE_GUEST = "g"  # event-page invite links (ADR-0008); minted by the admin app
 
 
 def _key() -> bytes:
