@@ -97,7 +97,7 @@
     <li class="grp">Commands:</li>
     <li><a href="#setup">/setup</a></li><li><a href="#plan">/plan</a></li><li><a href="#events">/events</a></li>
     <li><a href="#browse">/browse</a></li><li><a href="#catalog">/catalog</a></li><li><a href="#digest">/digest</a></li>
-    <li><a href="#share">/share</a></li><li><a href="#privacy">/privacy</a></li><li><a href="#feedback">/feedback</a></li>
+    <li><a href="#share">/share</a></li><li><a href="#app">/app</a></li><li><a href="#privacy">/privacy</a></li><li><a href="#feedback">/feedback</a></li>
     <li><a href="#survey">/survey</a></li><li><a href="#mute">/mute</a></li><li><a href="#suggestions">/suggestions</a></li>
     <li><a href="#help">/help</a></li>
     <li class="grp">System:</li>
@@ -140,6 +140,7 @@
     <tr><td class="n"><a href="#catalog">/catalog</a></td><td>The top-voted spots, grouped by kind</td><td class="t">command</td></tr>
     <tr><td class="n"><a href="#digest">/digest</a></td><td>A one-message summary of the catalog</td><td class="t">command</td></tr>
     <tr><td class="n"><a href="#share">/share</a></td><td>A read-only web link to this server's spots</td><td class="t">command</td></tr>
+    <tr><td class="n"><a href="#app">/app</a></td><td>Your phone app: spots, Going / Maybe / Can't, a time poll, invite links</td><td class="t">command</td></tr>
     <tr><td class="n"><a href="#privacy">/privacy</a></td><td>What SpotBot keeps about this server, and deleting it</td><td class="t">command</td></tr>
     <tr><td class="n"><a href="#feedback">/feedback</a></td><td>Report a bug or share an idea</td><td class="t">command</td></tr>
     <tr><td class="n"><a href="#survey">/survey</a></td><td>The 2-minute usability survey for study participants</td><td class="t">command</td></tr>
@@ -246,6 +247,16 @@
     <div class="shot"><img src="img/web_share.webp" width="1000" height="672" loading="lazy" alt="The share page."></div>
   </div></div>
 
+  <div class="entry" id="app"><div class="eh"><h3>/app</h3><span class="ty">command · prototype (ADR-0008)</span></div><div class="eb">
+    <div class="proto">/app</div>
+    <p>A personal link, visible only to you, to the SpotBot phone app at <code>:8010/app</code>: your spots with a
+    Restaurants filter, add a reel by link (or from Android's share sheet once installed), and an event page per spot
+    with <b>Going / Maybe / Can't</b>, a <b>find a time</b> poll and <b>Invite friends</b>, a link anyone can RSVP
+    from without Discord. The link holds a guest token and one signed for you; neither can delete, forget or change
+    settings.</p>
+    <p class="see">See also: <a href="#api">POST /api/events/{id}/rsvp</a> · <a href="#api">/poll</a> · <a href="#api">/api/invite</a></p>
+  </div></div>
+
   <div class="entry" id="privacy"><div class="eh"><h3>/privacy</h3><span class="ty">command · Manage Server to delete</span></div><div class="eb">
     <div class="proto">/privacy</div>
     <p>What's saved (spots, votes with display names, settings, capture history, anonymous feedback), what
@@ -291,13 +302,15 @@
     <tr><th>path</th><th>what it is</th><th>access</th></tr>
     <tr><td class="n">/</td><td>Catalog admin: paste links, add a spot by hand, vote, remove</td><td class="t">localhost</td></tr>
     <tr><td class="n">/share?guild_id=…&amp;t=…</td><td>One server's spots, read-only; made by <a href="#share">/share</a></td><td class="t">signed link</td></tr>
+    <tr><td class="n">/app</td><td>The phone app (installable web app): spots, event pages, RSVP, polls, invites; demo mode without a link</td><td class="t">fragment token</td></tr>
     <tr><td class="n">/dash</td><td>Live operations: services, per-server counts, time-to-card, capture health, queue. Counts only.</td><td class="t">localhost</td></tr>
   </table>
   <div class="shot"><img src="img/web_dash.webp" width="1000" height="746" loading="lazy" alt="The /dash operations dashboard."></div>
 
   <h2 class="sec" id="api">Admin API <span class="mono" style="font-weight:normal">(src/ingestion/serving/admin.py, :8010)</span></h2>
   <p>Every request that names a <code>guild_id</code> must carry <code>X-Tenant-Token</code>, an HMAC token for that
-  server; read scope is enough for reads, full scope for writes, and votes are signed for the voting user.</p>
+  server; read scope is enough for reads, full scope for writes, and votes are signed for the voting user.
+  A <b>guest</b> token (invite links) reads and may RSVP or vote in a poll, nothing else.</p>
   <table class="ref">
     <tr><th>endpoint</th><th>purpose</th><th>scope</th></tr>
     <tr><td class="n">POST /api/jobs</td><td>Queue a capture of one or more links; returns a job id (202)</td><td class="t">user</td></tr>
@@ -314,6 +327,10 @@
     <tr><td class="n">DELETE /api/events/{id}</td><td>Remove a spot</td><td class="t">full</td></tr>
     <tr><td class="n">GET /api/gists</td><td>Not-a-place reels, newest first</td><td class="t">read</td></tr>
     <tr><td class="n">POST /api/gists/{id}/restore</td><td>Put a spot back, votes included</td><td class="t">full</td></tr>
+    <tr><td class="n">POST /api/events/{id}/rsvp</td><td>Going / Maybe / Can't under a typed name</td><td class="t">guest</td></tr>
+    <tr><td class="n">POST /api/events/{id}/poll</td><td>Open a "find a time" poll (2–5 times)</td><td class="t">user</td></tr>
+    <tr><td class="n">POST /api/events/{id}/poll/vote</td><td>Pick the times that work</td><td class="t">guest</td></tr>
+    <tr><td class="n">POST /api/invite</td><td>Mint a guest link for this catalog's event pages</td><td class="t">user</td></tr>
     <tr><td class="n">GET /api/nights</td><td>Confirmed nights out</td><td class="t">read</td></tr>
     <tr><td class="n">GET · PUT /api/settings</td><td>The <a href="#setup">/setup</a> settings; PUT changes only the fields sent</td><td class="t">full</td></tr>
     <tr><td class="n">POST /api/feedback</td><td>A <a href="#feedback">/feedback</a> report</td><td class="t">full</td></tr>

@@ -119,6 +119,7 @@ Three things make the picks smarter:
 | `/catalog` | The leaderboard — your server's top-voted spots |
 | `/digest` | One-message summary: spot count, top picks, nights out |
 | `/share` | The link to your server's public catalog web page |
+| `/app` | Your personal link to the SpotBot phone app: your spots, Going / Maybe / Can't, a "find a time" poll, and **Invite friends** (anyone can RSVP from that link, no Discord needed). Only you see it; don't share it. On Android, install it from the browser menu and SpotBot shows up in Instagram's share sheet |
 | `/feedback bug` / `/feedback idea` | Tell the team what broke or what you'd like — a short form, saved without your name |
 | `/survey` | The 2-minute usability survey (10 statements, tap 1–5) for study participants; add the code you were given, e.g. `/survey participant:P3` |
 | `/privacy` | What SpotBot keeps about your server, where it goes, and who can see it — plus a delete-everything button *(Manage Server; in DMs, for your own saved spots)* |
