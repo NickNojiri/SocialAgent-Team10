@@ -1,0 +1,16 @@
+# Kept out of ripgrep searches (Claude Code's Grep/Glob and Codex both use rg), so a search
+# returns code instead of megabytes of generated data. Files are still in git and can be
+# opened directly. .gitignore already covers data/, .venv/ and caches.
+
+# The landing page's built 3D city data and textures
+docs/site/la/
+# Diagrams and screenshots
+docs/images/
+# Rendered reports (the .md and .html sources are searchable)
+docs/results/*.pdf
+# Generated or large reference data
+fixtures/venues_socal.json
+fixtures/labels.second.jsonl
+fixtures/review/
+fixtures/venue_aliases*.json
+*.bin
