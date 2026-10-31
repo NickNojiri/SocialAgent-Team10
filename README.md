@@ -3,7 +3,7 @@
 **Turn the Instagram reels your friends already share into places you actually go.**
 
 [![CI](https://github.com/NickNojiri/SocialAgent-Team10/actions/workflows/ci.yml/badge.svg)](https://github.com/NickNojiri/SocialAgent-Team10/actions/workflows/ci.yml)
-&nbsp;·&nbsp; Local-first (Ollama + OpenStreetMap) &nbsp;·&nbsp; 143 offline tests passing
+&nbsp;·&nbsp; Local-first (Ollama + OpenStreetMap) &nbsp;·&nbsp; 1,196 offline tests passing
 
 Your group chat is full of "we should go here!" reels that nobody ever acts on.
 SpotBot reads those reels — **caption *and* spoken audio** — figures out the venue,
