@@ -51,11 +51,15 @@ against Canvas.
 
 | | |
 |---|---|
-| Command | `python scripts/bench_security_attacks.py` |
-| Result | 66 attacks, 58 refused, 8 got through (2026-10-14) |
-| Coverage | yes — the suite fails when a protected endpoint has no attack case |
-| In CI | yes — its own CI step since 2026-10-14; the attack tests also run in the offline suite |
-| Got through | 8, all Track A: browser navigation to internal addresses (5), DNS to a private IP, embed redirect, video-download redirect. Status per probe: `docs/tracks/TRACK-D-SSRF-FINDINGS.md` |
+| Command | `python scripts/bench_security_attacks.py` (Kimberly's run 2026-10-17, commit `7600f0e5`) |
+| Result | **66 attacks, 58 refused, 8 got through** on 2026-10-17; tenant-auth benchmark accepted 23/23 authentic requests; focused tests: 67 passed, 8 expected failures. Rerun 2026-11-01 on main: 88 attacks, 80 refused, 8 got through (the new `/app` routes added cases) |
+| Coverage | **Yes.** Route inventory matches the admin/recommend apps, and every protected route has a benchmark attack case (`test_protected_route_inventory_matches_apps`, `test_every_protected_route_has_a_benchmark_attack_case`). |
+| In CI | **Yes**: its own CI step since 2026-10-14 (`.github/workflows/ci.yml`); the attack tests also run in the offline suite. |
+| Got through | 8 Track A SSRF probes: five direct browser internal-address URLs, a hostname resolving to a private IP, an embed redirect to loopback, and a video redirect to the metadata IP. Owners/status: [`TRACK-D-SSRF-FINDINGS.md`](tracks/TRACK-D-SSRF-FINDINGS.md) (all Track A, open). |
+
+Verification: `python -m pytest -k "not live" -q` → **777 passed, 6 deselected,
+8 xfailed** (2026-10-17). The eight expected failures are the open SSRF probes; the suite
+had to run outside the sandbox because Chromium could not start under its restrictions.
 
 ## Platform (Nick): #9, #23, #24, #25
 

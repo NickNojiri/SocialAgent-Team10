@@ -1,9 +1,11 @@
 # Track D — Feature #12 SSRF findings
 
 Each row is one probe in `test_attack_internal_address_ssrf.py`, with its owner and
-status. As of 2026-10-12: **18 probes, 10 refused, 8 open** (all 8 Track A);
-`python scripts/bench_security_attacks.py` prints **66 attacks, 58 refused, 8 got
-through** across every attack class.
+status. Rechecked 2026-10-17 at commit `7600f0e5`: **18 probes, 10 refused, 8 open**
+(all 8 Track A); `./.venv/bin/python scripts/bench_security_attacks.py` prints
+**66 attacks, 58 refused, 8 got through** across every attack class. The focused run
+reported 67 passed and 8 expected failures; the expected failures are the eight open
+Track A probes.
 
 The 8 open probes are marked `xfail(strict=True)`, so CI stays green while they are
 open and turns red the moment one is fixed: then delete that test's mark, and set the
