@@ -28,7 +28,7 @@ from src.ingestion.serving.gists import GistStore  # noqa: E402
 from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
 from src.ingestion.serving.time_to_card import TimeToCardLog  # noqa: E402
-from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token  # noqa: E402
+from src.ingestion.serving.tenant_auth import SCOPE_GUEST, SCOPE_READ, mint_token  # noqa: E402
 from test_admin_authz import StubSink, _StubService  # noqa: E402
 
 MINE = "111111111111111111"
@@ -76,6 +76,7 @@ def attack_class(label: str) -> str:
 MINE_RW = mint_token(MINE)
 MINE_R = mint_token(MINE, scope=SCOPE_READ)
 MINE_ME = mint_token(MINE, user_id=ME)
+MINE_G = mint_token(MINE, scope=SCOPE_GUEST)   # an event-page invite link (ADR-0008)
 URLS = ["https://x.test/1"]
 
 
@@ -126,6 +127,16 @@ def run(client):
         "/api/settings", json={"guild_id": g, "home_city": "Long Beach, CA"}, headers=hdr(t)
     )
     gists = lambda g, t: client.get(f"/api/gists?guild_id={g}", headers=hdr(t))  # noqa: E731
+    rsvp = lambda g, t: body_post(  # noqa: E731
+        f"/api/events/{EVENT}/rsvp", g, t, rsvp_id="rsvp-12345678", name="Sam", state="going"
+    )
+    start_poll = lambda g, t: body_post(  # noqa: E731
+        f"/api/events/{EVENT}/poll", g, t, slots=["2026-11-06T19:00", "2026-11-07T12:00"]
+    )
+    poll_vote = lambda g, t: body_post(  # noqa: E731
+        f"/api/events/{EVENT}/poll/vote", g, t, rsvp_id="rsvp-12345678", name="Sam", picks=[0]
+    )
+    invite = lambda g, t: body_post("/api/invite", g, t)  # noqa: E731
 
     def not_a_place(g, t, user):
         return client.post(f"/api/events/{EVENT}/not-a-place?guild_id={g}", json={"user_id": user}, headers=hdr(t))
@@ -198,6 +209,21 @@ def run(client):
         ("POST", "/api/events/{event_id}/not-a-place", "move a spot with a share token", lambda: not_a_place(MINE, MINE_R, ME)),
         ("POST", "/api/gists/{gid}/restore", "restore into another guild", lambda: restore(THEIRS, MINE_ME, ME)),
         ("POST", "/api/gists/{gid}/restore", "restore with no token", lambda: restore(MINE, None, ME)),
+        ("POST", "/api/events/{event_id}/rsvp", "RSVP in another guild with my invite link", lambda: rsvp(THEIRS, MINE_G)),
+        ("POST", "/api/events/{event_id}/rsvp", "RSVP with no token", lambda: rsvp(MINE, None)),
+        ("POST", "/api/events/{event_id}/rsvp", "RSVP with a share token", lambda: rsvp(MINE, MINE_R)),
+        ("POST", "/api/events/{event_id}/poll", "start a poll in another guild", lambda: start_poll(THEIRS, MINE_RW)),
+        ("POST", "/api/events/{event_id}/poll", "start a poll with a guest invite link", lambda: start_poll(MINE, MINE_G)),
+        ("POST", "/api/events/{event_id}/poll/vote", "vote in another guild's poll with my invite link", lambda: poll_vote(THEIRS, MINE_G)),
+        ("POST", "/api/events/{event_id}/poll/vote", "vote in a poll with a share token", lambda: poll_vote(MINE, MINE_R)),
+        ("POST", "/api/invite", "mint an invite for another guild", lambda: invite(THEIRS, MINE_RW)),
+        ("POST", "/api/invite", "mint an invite with a guest invite link", lambda: invite(MINE, MINE_G)),
+        ("POST", "/api/invite", "mint an invite with a share token", lambda: invite(MINE, MINE_R)),
+        ("POST", "/api/events/{event_id}/poll", "start a poll as another user", lambda: body_post(f"/api/events/{EVENT}/poll", MINE, MINE_ME, user_id=YOU, slots=["2026-11-06T19:00", "2026-11-07T12:00"])),
+        ("POST", "/api/invite", "mint an invite as another user", lambda: body_post("/api/invite", MINE, MINE_ME, user_id=YOU)),
+        ("POST", "/api/forget", "delete a guild's data with a member's app token", lambda: forget(MINE, MINE_ME)),
+        ("POST", "/api/manual", "add a manual spot with a guest invite link", lambda: manual(MINE, MINE_G)),
+        ("DELETE", "/api/events/{event_id}", "delete a spot with a guest invite link", lambda: delete(MINE, MINE_G)),
     ]
 
     authentic = [
@@ -226,6 +252,12 @@ def run(client):
         ("send feedback in my guild", lambda: feedback(MINE, MINE_RW)),
         ("report a time-to-card for my guild", lambda: timing(MINE, MINE_RW)),
         ("delete my own guild's data", lambda: forget(MINE, MINE_RW)),
+        ("read my guild with a guest invite link", lambda: get(MINE, MINE_G)),
+        ("RSVP from my invite link", lambda: rsvp(MINE, MINE_G)),
+        ("start a poll in my guild", lambda: start_poll(MINE, MINE_RW)),
+        ("mint an invite for my guild", lambda: invite(MINE, MINE_RW)),
+        ("start a poll from my phone app as myself", lambda: body_post(f"/api/events/{EVENT}/poll", MINE, MINE_ME, user_id=ME, slots=["2026-11-06T19:00", "2026-11-07T12:00"])),
+        ("mint an invite from my phone app as myself", lambda: body_post("/api/invite", MINE, MINE_ME, user_id=ME)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]
     return forged, authentic

@@ -5,8 +5,16 @@ cards" and plans outings from group chat. Python 3.11+ (CI uses 3.12). This is a
 four-person CSULB capstone — the human who asked you for a change must be able to
 explain every line of it, so keep changes small and say what you did and why.
 
-Start of every task: read `docs/KICKOFF.md` (team handoff) and, for anything
-structural, `docs/ARCHITECTURE.md`.
+Find docs through `docs/README.md` (one line each). Read `docs/ARCHITECTURE.md` before any
+structural change; `docs/KICKOFF.md` is onboarding, not needed for every task.
+
+## Context budget
+
+- Search before reading: `rg -n` a symbol, then open only the lines you need.
+- Don't open whole: `fixtures/labels.jsonl` (~1 MB; query it with a script), anything under
+  `docs/site/la/` or `docs/images/`, `*.bin`, `docs/results/*.pdf`. `.ignore` keeps them out
+  of searches.
+- Dated docs (listed under History in `docs/README.md`) describe the past; skip them unless asked.
 
 ## Setup
 
@@ -22,7 +30,7 @@ then use `.\.venv\Scripts\python.exe` in place of `python` below.
 ## Checks — run before you say a task is done
 
 ```bash
-python -m pytest -k "not live" -q                        # offline suite, must stay green (324+)
+python -m pytest -k "not live" -q                        # offline suite, must stay green (1196+)
 python -m src.ingestion.eval --offline --split dev       # accuracy scorecard (Track B work)
 ```
 Neither needs a Discord token, Ollama, or internet (the suite does need Chromium).
@@ -96,7 +104,4 @@ real Instagram and need internet. They run on a teammate's own machine.
 
 ## Where to look
 
-`docs/KICKOFF.md` (start) · `docs/ARCHITECTURE.md` (system) · `docs/adr/` (why) ·
-`docs/SRS.md` (requirements) · `docs/TEAM_TODO.md` (backlog) · `docs/RUNBOOK.md` (running
-it) · `docs/EXTRACTION_ACCURACY.md` + `docs/HANDOFF.md` (accuracy work) ·
-`docs/THREAT_MODEL.md` (security).
+`docs/README.md` indexes every doc.

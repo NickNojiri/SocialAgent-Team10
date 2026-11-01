@@ -3,9 +3,8 @@
 Last updated 2026-10-12. Owner: Nick. One prioritized list for the whole team.
 
 This is the "what do I pick up next" list. It rolls up `docs/PRODUCT_ROADMAP.md`
-(the why), `docs/MILESTONES.md` (the 100 Nights challenge), `docs/NEXT_SESSION.md`
-(the build queue) and `docs/EXTRACTION_ACCURACY.md` / `docs/HANDOFF.md` (the label
-loop) into a single ranked backlog. Who owns what, and when: `docs/CAPSTONE_PLAN.md`.
+(the why), `docs/MILESTONES.md` (the 100 Nights challenge) and
+`docs/EXTRACTION_ACCURACY.md` / `docs/HANDOFF.md` (the label loop) into a single ranked backlog. Who owns what, and when: `docs/CAPSTONE_PLAN.md`.
 
 **North star:** paste a reel → votable card in <15s, ≥95% of the time. The metric
 that actually counts is **captured spots that become attended outings** (the
@@ -419,6 +418,5 @@ captures grow the corpus (P0.3), is where accuracy is actually won.
 | `docs/MILESTONES.md` | the July-2026 scorecard + the "100 Nights Out" challenge |
 | `docs/EXTRACTION_ACCURACY.md` | the label loop — approach, round history, spam defense |
 | `docs/HANDOFF.md` | current extraction state + round-6 targets |
-| `docs/NEXT_SESSION.md` | the running build queue + carry-over notes |
 | `docs/IG_AUTH_INGESTION_PLAN.md` | the authed-capture plan (P0.1) |
 | `docs/RUNBOOK.md` | how to run the services locally |

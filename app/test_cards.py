@@ -255,3 +255,14 @@ async def test_build_spot_view_has_six_buttons_with_event_id():
         "spot:remove:deadbeef",
         "spot:nap:deadbeef",          # "Not a place", on the second row
     ]
+
+
+def test_app_link_keeps_the_token_in_the_fragment():
+    """ADR-0008: the /app link's token must never reach a server log or the query string."""
+    from urllib.parse import parse_qs, urlsplit
+    link = cards.app_link("http://host:8010/", "123", "guest", "mine", "42", "Maya " * 20)
+    parts = urlsplit(link)
+    assert parts.path == "/app" and parts.query == ""
+    frag = parse_qs(parts.fragment)
+    assert frag["t"] == ["guest"] and frag["v"] == ["mine"] and frag["u"] == ["42"] and frag["r"] == ["member"]
+    assert len(frag["n"][0]) <= 40

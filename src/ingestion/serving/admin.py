@@ -51,7 +51,11 @@ from src.ingestion.serving.jobs import (
     SqliteJobStore,
     retryable_urls,
 )
-from src.ingestion.serving.tenant_auth import SCOPE_READ, authorize
+from src.ingestion.serving import mobile_app
+from src.ingestion.serving.plans import (
+    PlanError, apply_rsvp, open_poll, poll_summary, rsvp_summary, vote_poll,
+)
+from src.ingestion.serving.tenant_auth import SCOPE_GUEST, SCOPE_READ, authorize, mint_token
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
@@ -333,6 +337,9 @@ def list_events(guild_id: str = "", x_tenant_token: str | None = TenantToken):
                 "area": m.get("raw_location_text", ""),
                 "start_epoch": m.get("start_epoch"),
                 "locked_end_epoch": m.get("locked_end_epoch"),
+                # Event pages (ADR-0008): Going/Maybe/Can't and the "find a time" poll.
+                "rsvps": rsvp_summary(m),
+                "poll": poll_summary(m),
             }
         )
     events.sort(key=lambda e: (-e["votes"], e["venue"]))
@@ -1161,6 +1168,125 @@ def vote(
         "votes": meta["votes"],
         "voters": sorted(_voters(meta).values()),
     }
+
+
+# ── Event pages: RSVPs, "find a time" polls, invite links (ADR-0008) ──────────
+
+
+class RsvpBody(BaseModel):
+    guild_id: str = ""
+    rsvp_id: str            # a random id the browser keeps, so changing your answer replaces it
+    name: str
+    state: str              # going | maybe | cant
+
+
+class PollBody(BaseModel):
+    guild_id: str = ""
+    user_id: str = ""       # set by the phone app: its token is signed for this user only
+    slots: list[str]        # 2-5 ISO date-times
+
+
+class PollVoteBody(BaseModel):
+    guild_id: str = ""
+    rsvp_id: str
+    name: str
+    picks: list[int]        # indexes into the poll's slots
+
+
+class InviteBody(BaseModel):
+    guild_id: str = ""
+    user_id: str = ""
+
+
+def _update_spot(guild_id: str, event_id: str, change) -> dict:
+    """Load one spot's metadata, apply `change` (a plans.py function), save it back."""
+    sink = _sink_for(guild_id, create=False)
+    res = sink.collection.get(ids=[event_id], include=["metadatas"])
+    if not res["ids"]:
+        raise HTTPException(404, "event not found")
+    try:
+        meta = change(dict(res["metadatas"][0] or {}))
+    except PlanError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    sink.collection.update(ids=[event_id], metadatas=[meta])
+    return meta
+
+
+@app.post("/api/events/{event_id}/rsvp")
+def rsvp(event_id: str, body: RsvpBody, x_tenant_token: str | None = TenantToken):
+    """Going / Maybe / Can't under a typed name. A guest invite link is enough."""
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    meta = _update_spot(body.guild_id, event_id,
+                        lambda m: apply_rsvp(m, body.rsvp_id, body.name, body.state))
+    return {"id": event_id, "rsvps": rsvp_summary(meta)}
+
+
+@app.post("/api/events/{event_id}/poll")
+def start_poll(event_id: str, body: PollBody, x_tenant_token: str | None = TenantToken):
+    """Open a "find a time" poll instead of defaulting to next Friday 7 pm. Members only:
+    the bot's tenant token, or a member's /app token signed for `user_id`."""
+    authorize(body.guild_id, x_tenant_token, user_id=body.user_id)
+    meta = _update_spot(body.guild_id, event_id, lambda m: open_poll(m, body.slots))
+    return {"id": event_id, "poll": poll_summary(meta)}
+
+
+@app.post("/api/events/{event_id}/poll/vote")
+def poll_vote(event_id: str, body: PollVoteBody, x_tenant_token: str | None = TenantToken):
+    """Pick the times that work for you. A guest invite link is enough."""
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    meta = _update_spot(body.guild_id, event_id,
+                        lambda m: vote_poll(m, body.rsvp_id, body.name, body.picks))
+    return {"id": event_id, "poll": poll_summary(meta)}
+
+
+@app.post("/api/invite")
+def invite(body: InviteBody, x_tenant_token: str | None = TenantToken):
+    """Mint a guest token for this server's event pages. Members only, as for polls."""
+    authorize(body.guild_id, x_tenant_token, user_id=body.user_id)
+    if not body.guild_id:
+        raise HTTPException(400, "invites need a server or personal catalog")
+    return {"token": mint_token(body.guild_id, scope=SCOPE_GUEST)}
+
+
+# ── The phone app (ADR-0008 prototype): a PWA served from here ────────────────
+
+
+@app.get("/app", response_class=HTMLResponse)
+def mobile():
+    """My Spots, event pages, RSVP and polls on a phone. The token rides in the URL
+    fragment, which browsers never send to the server, and is kept in localStorage."""
+    return mobile_app.APP_HTML
+
+
+@app.get("/app/manifest.webmanifest")
+def mobile_manifest():
+    from fastapi.responses import Response
+    return Response(mobile_app.MANIFEST, media_type="application/manifest+json")
+
+
+@app.get("/app/sw.js")
+def mobile_service_worker():
+    from fastapi.responses import Response
+    return Response(mobile_app.SERVICE_WORKER, media_type="text/javascript",
+                    headers={"Service-Worker-Allowed": "/app"})
+
+
+@app.get("/app/icon-{size}.png")
+def mobile_icon(size: int):
+    from fastapi.responses import FileResponse
+    if size not in (192, 512):
+        raise HTTPException(404, "no such icon")
+    return FileResponse(Path(__file__).parent / "app_icons" / f"icon-{size}.png", media_type="image/png")
+
+
+@app.get("/app/share")
+def mobile_share_target(url: str = "", text: str = "", title: str = ""):
+    """Android's share sheet lands here once the app is installed (manifest share_target).
+    The link goes on in the fragment, so it never reaches a server log."""
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse
+    shared = url or text or title
+    return RedirectResponse("/app#shared=" + quote(shared[:2000], safe=""), status_code=303)
 
 
 @app.get("/health")

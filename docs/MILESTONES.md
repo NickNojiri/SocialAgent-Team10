@@ -12,7 +12,7 @@ is location smarts, real-world hours, and other people.
 Four weeks, one theme per week. Each week ends with something demonstrable.
 
 ### Week 1 (Jul 6–12) — The bot learns *where*
-Execute `docs/NEXT_SESSION.md`:
+Execute the July build queue:
 - "I'm near X" → distance-ranked suggestions · midpoint-between-users mode
 - Transcribe + OCR validated on real reels (results tables filled in)
 - Ease-of-use v1 live smoke · codebase cleanup (UTF-16 reqs, legacy containers, full-suite CI)
