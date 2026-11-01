@@ -487,7 +487,7 @@ function connectView() {
       h("div", { class: "row" },
         h("a", { class: "btn", href: DYI_URL, target: "_blank", rel: "noopener", style: "text-decoration:none" }, "Open Instagram"),
         h("button", { class: "btn primary", on: { click: () => file.click() } }, "I have the file")),
-      importState ? h("p", { class: "status", style: "margin:10px 0 0;color:var(--red)" }, importState.message) : null,
+      importState ? h("p", { class: "status", style: "margin:10px 0 0;color:var(--red)" }, importState.message) : "",
       h("p", { class: "hint", style: "margin-bottom:0" }, "SpotBot reads the file on this phone and keeps only reel links. Your messages and your friends' names never leave it."));
   } else if (importState.stage === "reading") {
     box.append(h("p", { class: "status", id: "status" }, importState.message || "Reading your file…"));

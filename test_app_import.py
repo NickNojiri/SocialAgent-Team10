@@ -74,6 +74,7 @@ def test_first_run_opens_connect_with_the_download_checklist(page):
     assert page.get_by_role("heading", name="Get your reels in").is_visible()
     assert page.get_by_text("Messages", exact=True).is_visible()
     assert page.locator('a[href^="https://accountscenter.instagram.com/"]').count() >= 1
+    assert "null" not in page.locator("main").inner_text()
 
 
 def test_import_reads_the_zip_on_the_phone_and_keeps_food(page):
