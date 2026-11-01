@@ -100,12 +100,43 @@ effort.
   "find a time" poll, and **Invite friends** (a guest link; no Discord needed).
 - **Plans** (what you're in on, with the leading time) and **You** (name, privacy).
 - **Demo mode** with example spots when opened without a link.
+- **Connect Instagram** (§8a): the guided data download, read on the phone, links only.
 - Bot command **`/app`** sends the personal link, visible only to you.
 - API: `POST /api/events/{id}/rsvp`, `POST /api/events/{id}/poll`,
-  `POST /api/events/{id}/poll/vote`, `POST /api/invite`; `GET /api/events` now returns
-  `rsvps` and `poll`.
+  `POST /api/events/{id}/poll/vote`, `POST /api/invite`, `POST`/`GET /api/import`;
+  `GET /api/events` now returns `rsvps`, `poll` and `geo_confidence`.
 
 iPhone note: iOS has no share target for web apps; the native app (§9) adds it.
+
+## 8a. Getting reels in without copy and paste
+
+What a person wants: saving costs one tap, the app is useful before any setup, and
+spots are found the way they're remembered (the video, who sent it). So:
+
+1. **First run opens "Get your reels in"**, not an empty list. Two ways in:
+   - **From now on: share.** Share → SpotBot (Android share target today; the native app
+     adds iPhone). Later, DMs to the SpotBot account (ADR-0007, needs Meta App Review).
+   - **The past: your data download.** The app opens Instagram's download page and shows
+     the four choices people get wrong: only *Messages* and *Saved*, *All time*, *JSON*,
+     *Low* media. Instagram emails the file (minutes to a day or two).
+2. **The file is read on the phone.** The page unzips it itself (DecompressionStream, no
+   library), walks the JSON, and keeps reel links with who sent them and when. The name
+   that appears in every conversation is you, so your own shares aren't "from a friend".
+   Captions are checked for food words and food-account handles: "1,240 reels from
+   38 friends · 214 look like food". Only the links go to `POST /api/import`; message
+   text and names stay on the phone, where cards read "💬 Maya sent this".
+3. **The server drips them in.** `serving/imports.py` keeps waiting links per server
+   (canonical `instagram.com/reel/<code>/` only, so nothing else can be captured), skips
+   ones already imported, and hands 3 at a time to the capture queue only while it is
+   idle, so a live paste always goes first. `/api/forget` drops the backlog.
+4. **"Is this the right place?"**: spots with low geo confidence or no venue show one at a
+   time at the top of My Spots: Yes · Not a place · Fix it.
+5. **Paste a link** stays, as a small button.
+
+Next: the Tonight button (3 picks near you), the DM webhook with one-tap account
+linking (`ig.me/m/<account>?ref=<code>`, to verify), and a 5-person usability test
+(save a reel, find the dumpling place a friend sent, pick dinner with two friends;
+targets: first card within 60 s, a plan within 2 min).
 
 ## 9. Roadmap
 

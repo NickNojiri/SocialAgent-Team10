@@ -103,6 +103,8 @@ per-guild counts).
 | `IG_USERNAME` / `IG_PASSWORD` | enable the authenticated fetch path (burner account only) |
 | `BOT_INSECURE_SSL=1` | skip TLS verification on intercepting proxies |
 | `SPOT_QUORUM` | votes before "Lock it in" appears (default 3) |
+| `IMPORT_BATCH` / `IMPORT_INTERVAL_S` / `IMPORT_MAX_ACTIVE` | Instagram import drip: links per batch (3), seconds between batches (20), and captures that may already be running before a batch waits (1) |
+| `IMPORT_DB` | where waiting import links are kept (default `data/imports.json`; `off` keeps them in memory only) |
 
 Full list: `README.md` → Configuration.
 
