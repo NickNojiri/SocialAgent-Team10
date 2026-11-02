@@ -208,6 +208,17 @@ team moves to staging. The Caddyfile has not yet been run through `caddy validat
 (Docker's engine wasn't running when it was written), so the first deploy's smoke test
 (RUNBOOK) is its real check.
 
+**Desktop with a tunnel (SpotBot Control, 2026-11-02): same rule, in Python.** The
+Cloudflare quick tunnel points at the gatekeeper (`serving/gate.py`, `127.0.0.1:8080`),
+never at `:8010`. It forwards only `/app` and its files, `/share` with a server id and
+token, and the phone app's token-checked calls, each naming a server (query or JSON
+body); bodies over 512 KB get 413. Everything else, including the legacy `""` catalog,
+`/dash`, `/api/stats`, `/` and operator writes, is a 404 that never reaches the admin
+app, and only safe response headers come back. `test_gate.py` pins both lists and
+checks each rule still names a real admin route. The control window binds
+`127.0.0.1:8090`, checks the Host header (DNS rebinding) and needs a per-launch key
+(`test_spotbot_control.py`).
+
 ---
 
 ### T9 · Benchmark integrity · **process control**
