@@ -41,6 +41,9 @@ RULES: list[tuple[str, re.Pattern, str]] = [
         ("GET", r"/api/jobs/[0-9a-f]{12}", JOB),
         ("POST", r"/api/invite", API),
         ("POST", _EVENT + r"/(?:rsvp|poll|poll/vote|vote|not-a-place)", API),
+        ("POST", r"/api/match", API),
+        ("GET", r"/api/match/[A-Za-z0-9_-]{16,64}", API),
+        ("POST", r"/api/match/[A-Za-z0-9_-]{16,64}/(?:a|b|finish)", API),
     ]
 ]
 _PASS_REQ = ("content-type", "accept", "x-tenant-token")

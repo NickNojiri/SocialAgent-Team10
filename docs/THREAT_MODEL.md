@@ -253,6 +253,25 @@ the staging proxy points at `:8011`). Threats and controls:
   Breaking Meta's Platform Terms could still cost the app its access; read them before reusing
   webhook captions for model training.
 
+### T11 · Match between two phones (private set intersection) · B3 → B4 · **mitigated** (2026-11-02)
+
+`/api/match…` lets two people see what they have in common (`serving/psi.py`,
+`serving/match.py`, the Friends screen). Threats and controls:
+
+- **The server, or anyone reading its memory, learning people's lists:** it only ever holds
+  P-256 points blinded by secrets that never leave the phones, plus first names. Every point
+  is decoded and checked to lie on the curve before it's stored.
+- **The friend learning more than the overlap:** they see the shared items and the other
+  list's size, nothing else (the elliptic-curve Diffie-Hellman assumption). Each match uses
+  fresh secrets, so points can't be compared across matches. Not covered: a friend who puts
+  guesses in their own list learns whether you have those items; the cap is 2,000 items per
+  side and one friend per room.
+- **Someone else joining:** a room belongs to one server (guest token or member token for it,
+  `test_admin_authz.py`, 3 benchmark routes); the friend's seat is first come, first served,
+  and rooms close after 30 minutes. Only the starter's seat key can finish it.
+- **Floods:** 50 open rooms per server; requests through the tunnel pass the gatekeeper's
+  512 KB body cap. `/api/forget` drops a server's rooms.
+
 ---
 
 ## 4. Summary

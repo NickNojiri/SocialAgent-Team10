@@ -103,3 +103,28 @@ def test_only_links_are_kept_on_the_phone(page):
     stored = page.evaluate("localStorage.getItem('spotbot.import.v1')")
     assert "private words" not in stored and "ramen" not in stored
     assert set(json.loads(stored)) == {"DEMOthw001", "FOODAAAA02", "MINEAAAA03", "NOTEXTAA05", "SAVEDAAA06"}
+
+
+def test_the_phone_math_matches_the_python_reference(page):
+    """mobile_app.py's JavaScript PSI must produce exactly serving/psi.py's points."""
+    from src.ingestion.serving import psi
+    k = 0x1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
+    for item in ["reel:DEMOthw001", "place:tim ho wan|irvine ca", "reel:ü✓"]:
+        want = psi.encode(psi.mul(k, psi.hash_to_point(item)))
+        got = page.evaluate("async ([it, k]) => PSI.encode(PSI.mul(BigInt(k), await PSI.hashToPoint(it)))", [item, hex(k)])
+        assert got == want, item
+    assert page.evaluate("(p) => PSI.encode(PSI.decode(p))", want) == want
+    # The test page is plain http, so this used the built-in SHA-256; check it on long input too.
+    import hashlib
+    long = "x" * 1000
+    assert page.evaluate("(s) => PSI.sha256hex(s)", long) == hashlib.sha256(long.encode()).hexdigest()
+
+
+def test_demo_match_finds_only_the_overlap(page):
+    page.locator("button[data-tab=friends]").click()
+    page.get_by_role("button", name="Try it with a demo friend").click()
+    page.locator("div.big", has_text="in common").wait_for(timeout=30000)
+    text = page.locator("main").inner_text()
+    assert "Tim Ho Wan" in text and "Sunset Jazz Night" in text      # the demo friend's places that are also yours
+    assert "Chef Tian" not in text                                    # yours only: never revealed
+    assert "Only these were revealed" in text

@@ -41,6 +41,9 @@ def seen(monkeypatch):
     ("post", "/api/events/abc-1/poll/vote", {"headers": TOK, "json": {"guild_id": "1"}}),
     ("post", "/api/events/abc-1/vote?guild_id=1", {"headers": TOK, "json": {"delta": 1}}),
     ("post", "/api/events/abc-1/not-a-place?guild_id=1", {"headers": TOK, "json": {"user_id": "2"}}),
+    ("post", "/api/match", {"headers": TOK, "json": {"guild_id": "1"}}),
+    ("get", "/api/match/abcdefghijklmnop1234?guild_id=1", {"headers": TOK}),
+    ("post", "/api/match/abcdefghijklmnop1234/b", {"headers": TOK, "json": {"guild_id": "1"}}),
 ])
 def test_the_phone_app_and_its_calls_get_through(seen, method, path, kw):
     r = getattr(seen.client, method)(path, **kw)
@@ -72,6 +75,9 @@ def test_the_phone_app_and_its_calls_get_through(seen, method, path, kw):
     ("post", "/app", {}),
     ("get", "/app/../dash", {}),
     ("get", "/app/%2e%2e/dash", {}),
+    ("post", "/api/match", {"headers": TOK, "json": {"guild_id": ""}}),
+    ("post", "/api/match/abcdefghijklmnop1234/x", {"headers": TOK, "json": {"guild_id": "1"}}),
+    ("get", "/api/match/short?guild_id=1", {"headers": TOK}),
 ])
 def test_everything_else_never_reaches_the_admin_service(seen, method, path, kw):
     r = getattr(seen.client, method)(path, **kw)
@@ -100,6 +106,8 @@ def test_every_rule_names_a_real_admin_route():
     samples = {
         "/app/icon-(?:192|512)\\.png": "/app/icon-{size}.png",
         "/api/jobs/[0-9a-f]{12}": "/api/jobs/{job_id}",
+        "/api/match/[A-Za-z0-9_-]{16,64}": "/api/match/{room}",
+        "/api/match/[A-Za-z0-9_-]{16,64}/(?:a|b|finish)": "/api/match/{room}/{step}",
     }
     for method, pattern, _ in gate.RULES:
         p = pattern.pattern.replace("\\.", ".")

@@ -104,6 +104,7 @@ effort.
 - Bot command **`/app`** sends the personal link, visible only to you.
 - API: `POST /api/events/{id}/rsvp`, `POST /api/events/{id}/poll`,
   `POST /api/events/{id}/poll/vote`, `POST /api/invite`, `POST`/`GET /api/import`;
+  `/api/match` (create, read, steps a / b / finish);
   `GET /api/events` now returns `rsvps`, `poll` and `geo_confidence`.
 
 iPhone note: iOS has no share target for web apps; the native app (§9) adds it.
@@ -137,6 +138,22 @@ Next: the Tonight button (3 picks near you), the DM webhook with one-tap account
 linking (`ig.me/m/<account>?ref=<code>`, to verify), and a 5-person usability test
 (save a reel, find the dumpling place a friend sent, pick dinner with two friends;
 targets: first card within 60 s, a plan within 2 min).
+
+## 8b. Match: what you have in common, privately
+
+The social problem isn't saving spots, it's agreeing on one, and sharing a whole list
+exposes habits, dates and who you were with. **Friends → Start a match** sends one friend
+a link; both phones then see only what they both have: places they're both into (going,
+maybe, voted, or sent to them) and reels that are in both their Instagram imports
+(including the ones they sent each other), labelled from each phone's own data ("Maya
+sent you this"). Nothing else on either list is revealed, to the friend or to SpotBot.
+
+How: private set intersection on P-256 (`serving/psi.py`, the same math in the page).
+Each phone hashes its items to curve points and multiplies by a secret only it holds;
+the server's match room (`serving/match.py`, `/api/match…`) relays blinded points in
+three one-time steps; because the blinding commutes, shared items line up and nothing
+else can be read. Each side learns the overlap and the other's list size. First real
+run: `docs/results/2026-11-02-match-run.md`.
 
 ## 9. Roadmap
 

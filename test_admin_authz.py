@@ -25,6 +25,7 @@ from src.ingestion.serving.gists import GistStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.imports import ImportBacklog
+from src.ingestion.serving.match import MatchRooms
 from src.ingestion.serving.time_to_card import TimeToCardLog
 from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_GUEST, SCOPE_READ, mint_token
 
@@ -67,6 +68,9 @@ PROTECTED_ROUTES = {
     ("POST", "/api/invite"),
     ("POST", "/api/import"),
     ("GET", "/api/import"),
+    ("POST", "/api/match"),
+    ("GET", "/api/match/{room}"),
+    ("POST", "/api/match/{room}/{step}"),
     ("POST", "/recommend"),
     ("POST", "/plan"),
     ("GET", "/share"),
@@ -173,6 +177,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_TAPS", tmp_path / "taps.jsonl")
     monkeypatch.setattr(admin, "describe_post", lambda *a, **k: None)   # never Ollama
     monkeypatch.setattr(admin, "_imports", ImportBacklog())
+    monkeypatch.setattr(admin, "_matches", MatchRooms())
     with TestClient(admin.app) as c:
         yield c
 
@@ -791,3 +796,17 @@ def test_forget_drops_the_import_backlog(client):
                 json={"guild_id": MINE, "user_id": ME, "urls": [REEL]})
     r = client.post("/api/forget", headers=hdr(mint_token(MINE)), json={"guild_id": MINE, "confirm": MINE})
     assert r.status_code == 200 and r.json()["import_links"] == 1
+
+
+# ── Match rooms (private set intersection): guest scope, one server only ────
+
+
+def test_match_room_belongs_to_one_server(client):
+    room = client.post("/api/match", headers=hdr(_guest()), json={"guild_id": MINE, "name": "Nick"}).json()["room"]
+    assert client.get(f"/api/match/{room}?guild_id={MINE}", headers=hdr(_guest())).status_code == 200
+    theirs = mint_token(THEIRS, scope=SCOPE_GUEST)
+    assert client.get(f"/api/match/{room}?guild_id={THEIRS}", headers=hdr(theirs)).status_code == 404
+    assert client.get(f"/api/match/{room}?guild_id={MINE}", headers=hdr(theirs)).status_code == 403
+    assert client.get(f"/api/match/{room}?guild_id={MINE}").status_code == 403
+    assert client.post("/api/match", json={"guild_id": MINE}).status_code == 403
+    assert client.post("/api/match", headers=hdr(mint_token(MINE, scope=SCOPE_READ)), json={"guild_id": MINE}).status_code == 403

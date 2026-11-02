@@ -138,7 +138,7 @@ APP_HTML = r"""<!doctype html>
   .times input { width: 100%; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card2); margin-bottom: 8px; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; background: rgba(11,10,20,.95);
              border-top: 1px solid var(--line); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); }
-  nav.tabs .in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+  nav.tabs .in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
   nav.tabs button { background: none; border: 0; color: var(--ink3); font-size: 12px; padding: 4px; }
   nav.tabs button b { display: block; font-size: 22px; font-weight: 400; }
   nav.tabs button[aria-current="page"] { color: var(--ink); }
@@ -168,6 +168,7 @@ APP_HTML = r"""<!doctype html>
 <nav class="tabs" id="tabs" aria-label="Sections"><div class="in">
   <button data-tab="spots" aria-current="page"><b>🗺️</b>My Spots</button>
   <button data-tab="plans"><b>📅</b>Plans</button>
+  <button data-tab="friends"><b>🤝</b>Friends</button>
   <button data-tab="me"><b>🙂</b>You</button>
 </div></nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -197,7 +198,9 @@ function store(get, value) {
 }
 const frag = new URLSearchParams(location.hash.slice(1));
 let session = store(true) || {};
-if (frag.get("t")) {
+const matchRoom = frag.get("m");
+// A match link from a friend on the same server keeps your own session.
+if (frag.get("t") && !(matchRoom && session.t && session.g === frag.get("g"))) {
   session = { g: frag.get("g") || "", t: frag.get("t"), v: frag.get("v") || "", u: frag.get("u") || "", n: frag.get("n") || session.n || "",
               role: frag.get("r") === "guest" ? "guest" : "member", rid: session.rid };
 }
@@ -206,6 +209,8 @@ const sharedLink = frag.get("shared");
 const startSpot = frag.get("e");
 store(false, session);
 if (location.hash) history.replaceState(null, "", location.pathname);
+// A link opened while the app is already open (match, invite) only changes the #: reload to use it.
+window.addEventListener("hashchange", () => location.reload());
 const demo = !session.t;
 
 // ── tiny DOM helpers: data goes in as text nodes only ────────────────────────
@@ -399,6 +404,7 @@ function rememberSenders(rows) {
 async function sendImport(rows) {
   rememberSenders(rows);
   if (demo) return { added: rows.length, demo: true };
+  if (session.role === "guest") return { added: rows.length, local: true };   // kept on this phone, for matching
   if (!session.u || !session.v) throw new Error("Open your /app link from Discord first, so SpotBot knows whose reels these are.");
   let added = 0, dup = 0;
   for (let i = 0; i < rows.length; i += 2000) {
@@ -415,7 +421,7 @@ function sentLine(s) {
 }
 
 // ── views ────────────────────────────────────────────────────────────────────
-let tab = startSpot ? "spot" : session.role === "guest" || sharedLink || local("spotbot.onboarded") ? "spots" : "connect", openId = startSpot, filter = "food", spots = [];
+let tab = matchRoom ? "friends" : startSpot ? "spot" : session.role === "guest" || sharedLink || local("spotbot.onboarded") ? "spots" : "connect", openId = startSpot, filter = "food", spots = [];
 let pasteOpen = !!sharedLink;
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]"); if (!b) return; tab = b.dataset.tab; openId = null; render();
@@ -506,10 +512,11 @@ function connectView() {
   } else if (importState.stage === "sent") {
     box.append(h("div", { class: "big" }, "🎉 " + importState.added.toLocaleString() + " on the way"),
       h("p", { style: "margin:4px 0 8px;color:var(--ink2)" }, importState.demo ? "Demo: nothing was sent. In your real app they'd start showing up in My Spots." :
+        importState.local ? "Kept on this phone, ready to compare with your friend." :
         (importState.duplicates ? importState.duplicates + " were already in. " : "") + "New spots show up in My Spots as SpotBot reads them."),
       h("p", { class: "status", id: "importprog", style: "margin:0 0 10px" }, ""),
-      h("button", { class: "btn primary", on: { click: () => { tab = "spots"; render(); } } }, "See My Spots"));
-    if (!importState.demo) setTimeout(pollImport, 0);
+      h("button", { class: "btn primary", on: { click: () => { tab = match ? "friends" : "spots"; render(); } } }, match ? "Back to the match" : "See My Spots"));
+    if (!importState.demo && !importState.local) setTimeout(pollImport, 0);
   }
   wrap.append(box);
   wrap.append(h("button", { class: "btn", style: "width:100%", on: { click: () => { local("spotbot.onboarded", 1); tab = "spots"; render(); } } }, "Skip for now"));
@@ -558,6 +565,226 @@ async function notAPlace(s) {
   if (demo) return;
   if (!session.u || !session.v) throw new Error("Open your /app link from Discord to change spots.");
   await api(`/api/events/${encodeURIComponent(s.id)}/not-a-place?guild_id=${encodeURIComponent(session.g)}`, { method: "POST", body: JSON.stringify({ user_id: session.u }) }, true);
+}
+
+// ── Match: private set intersection on P-256 (same math as serving/psi.py) ──
+// Each phone multiplies hashed items by its own secret; the server only relays points.
+const PSI = (() => {
+  const P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+  const B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn;
+  const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const mod = a => { const r = a % P; return r < 0n ? r + P : r; };
+  function pow(b, e) { let r = 1n; b = mod(b); while (e > 0n) { if (e & 1n) r = r * b % P; b = b * b % P; e >>= 1n; } return r; }
+  const rhs = x => mod(x * x % P * x - 3n * x + B);
+  function sqrt(v) { const y = pow(v, (P + 1n) / 4n); return y * y % P === v ? y : null; }
+  function dbl(p) {                                  // Jacobian doubling, a = -3
+    if (!p || p[1] === 0n) return null;
+    const [X, Y, Z] = p, ZZ = Z * Z % P, YY = Y * Y % P;
+    const M = mod(3n * mod(X - ZZ) * (X + ZZ)), S = 4n * X * YY % P;
+    const X3 = mod(M * M - 2n * S);
+    return [X3, mod(M * mod(S - X3) - 8n * YY * YY), 2n * Y * Z % P];
+  }
+  function add(p, q) {
+    if (!p) return q; if (!q) return p;
+    const [X1, Y1, Z1] = p, [X2, Y2, Z2] = q, Z1Z1 = Z1 * Z1 % P, Z2Z2 = Z2 * Z2 % P;
+    const U1 = X1 * Z2Z2 % P, U2 = X2 * Z1Z1 % P, S1 = Y1 * Z2 % P * Z2Z2 % P, S2 = Y2 * Z1 % P * Z1Z1 % P;
+    const H = mod(U2 - U1), R = mod(S2 - S1);
+    if (H === 0n) return R === 0n ? dbl(p) : null;
+    const HH = H * H % P, HHH = H * HH % P, V = U1 * HH % P, X3 = mod(R * R - HHH - 2n * V);
+    return [X3, mod(R * mod(V - X3) - S1 * HHH), Z1 * Z2 % P * H % P];
+  }
+  function mul(k, [x, y]) {                          // 4-bit fixed window
+    const base = [x, y, 1n], table = [null, base];
+    for (let i = 2; i < 16; i++) table.push(add(table[i - 1], base));
+    let r = null;
+    for (let i = 63; i >= 0; i--) {
+      r = dbl(dbl(dbl(dbl(r))));
+      const w = Number((k >> BigInt(4 * i)) & 15n);
+      if (w) r = add(r, table[w]);
+    }
+    const zi = pow(r[2], P - 2n), zi2 = zi * zi % P;
+    return [r[0] * zi2 % P, r[1] * zi2 % P * zi % P];
+  }
+  const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, "0")).join("");
+  // SHA-256 in plain JS, for pages served over http (crypto.subtle needs https or localhost).
+  const KK = Uint32Array.from([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+  function sha256js(bytes) {
+    const l = bytes.length, n = ((l + 9 + 63) >> 6) << 6, m = new Uint8Array(n); m.set(bytes); m[l] = 0x80;
+    const dv = new DataView(m.buffer); dv.setUint32(n - 4, l * 8); dv.setUint32(n - 8, Math.floor(l / 0x20000000));
+    const H = Uint32Array.from([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]), W = new Uint32Array(64);
+    const r = (x, k) => (x >>> k) | (x << (32 - k));
+    for (let o = 0; o < n; o += 64) {
+      for (let i = 0; i < 16; i++) W[i] = dv.getUint32(o + 4 * i);
+      for (let i = 16; i < 64; i++) W[i] = (W[i - 16] + (r(W[i - 15], 7) ^ r(W[i - 15], 18) ^ (W[i - 15] >>> 3)) + W[i - 7] + (r(W[i - 2], 17) ^ r(W[i - 2], 19) ^ (W[i - 2] >>> 10))) >>> 0;
+      let [a, b, c, d, e, f, g, h] = H;
+      for (let i = 0; i < 64; i++) {
+        const t1 = (h + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + KK[i] + W[i]) >>> 0, t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      [a, b, c, d, e, f, g, h].forEach((v, i) => { H[i] = (H[i] + v) >>> 0; });
+    }
+    const out = new Uint8Array(32), ov = new DataView(out.buffer); H.forEach((v, i) => ov.setUint32(4 * i, v)); return out.buffer;
+  }
+  const sha256 = async bytes => (crypto.subtle ? crypto.subtle.digest("SHA-256", bytes) : sha256js(bytes));
+  async function hashToPoint(item) {
+    for (let ctr = 0; ; ctr++) {
+      const d = await sha256(new TextEncoder().encode(`spotbot-psi-v1|${ctr}|${item}`));
+      const x = BigInt("0x" + hex(d)) % P, y = sqrt(rhs(x));
+      if (y !== null) return [x, y % 2n === 0n ? y : P - y];
+    }
+  }
+  const encode = ([x, y]) => (y % 2n === 0n ? "02" : "03") + x.toString(16).padStart(64, "0");
+  function decode(s) {
+    if (!/^0[23][0-9a-f]{64}$/.test(s || "")) throw new Error("bad point");
+    const x = BigInt("0x" + s.slice(2)); if (x >= P) throw new Error("bad point");
+    let y = sqrt(rhs(x)); if (y === null) throw new Error("bad point");
+    if (Number(y % 2n) !== parseInt(s.slice(0, 2), 16) % 2) y = P - y;
+    return [x, y];
+  }
+  function secret() { const b = crypto.getRandomValues(new Uint8Array(32)); return BigInt("0x" + hex(b)) % (N - 1n) + 1n; }
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  async function blind(items, k, progress) {
+    const out = []; for (let i = 0; i < items.length; i++) { out.push(encode(mul(k, await hashToPoint(items[i])))); if (i % 8 === 7) { progress && progress(i + 1); await tick(); } } return out;
+  }
+  async function reblind(points, k, progress) {
+    const out = []; for (let i = 0; i < points.length; i++) { out.push(encode(mul(k, decode(points[i])))); if (i % 8 === 7) { progress && progress(i + 1); await tick(); } } return out;
+  }
+  const sha256hex = async str => hex(await sha256(new TextEncoder().encode(str)));
+  return { hashToPoint, mul, encode, decode, secret, blind, reblind, sha256hex };
+})();
+
+function norm(t) { return String(t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+const DEMO_MINE = ["d1", "d2", "d4"];
+// What this phone brings to a match: reels in your Instagram import, and places you're in on.
+function matchItems() {
+  const map = local(SENT_KEY) || {}, me = myName(), seen = new Set(), items = [];
+  const push = it => { if (!seen.has(it.key) && items.length < 2000) { seen.add(it.key); items.push(it); } };
+  for (const s of spots) {
+    const mine = demo ? DEMO_MINE.includes(s.id) : (me && s.rsvps && (s.rsvps.going.includes(me) || s.rsvps.maybe.includes(me))) ||
+      (me && (s.voters || []).includes(me)) || !!map[codeOf(s.source_url)];
+    if (mine && s.venue && s.venue !== "Unknown") push({ key: "place:" + norm(s.venue) + "|" + norm(s.area), kind: "place", spot: s });
+  }
+  for (const [code, r] of Object.entries(map)) push({ key: "reel:" + code, kind: "reel", code, from: r.f });
+  for (let i = items.length - 1; i > 0; i--) { const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1); [items[i], items[j]] = [items[j], items[i]]; }
+  return items;
+}
+let match = null;   // {role: "a"|"b", stage, room, key, k, items, link, friend, shared, theirs, ms, error}
+function matchLink(room) { return location.origin + "/app#" + new URLSearchParams({ g: session.g, t: session.t, m: room, r: "guest" }).toString(); }
+async function startMatch() {
+  const items = matchItems();
+  if (!items.length) { match = { stage: "empty" }; return render(); }
+  const t0 = performance.now();
+  match = { role: "a", stage: "working", items, msg: "Encrypting your list on this phone…" }; render();
+  try {
+    if (demo) return await demoMatch(items, t0);
+    const k = PSI.secret(), r = await api("/api/match", { method: "POST", body: JSON.stringify({ guild_id: session.g, name: myName() }) });
+    const a1 = await PSI.blind(items.map(i => i.key), k, n => setStatus(`Encrypting ${n} of ${items.length}…`));
+    await api(`/api/match/${encodeURIComponent(r.room)}/a`, { method: "POST", body: JSON.stringify({ guild_id: session.g, key: r.key, a1 }) });
+    Object.assign(match, { stage: "waiting", room: r.room, key: r.key, k, link: matchLink(r.room), ms: performance.now() - t0 }); render();
+    pollMatch();
+  } catch (err) { match = { stage: "error", msg: err.message }; render(); }
+}
+async function pollMatch() {
+  if (!match || match.role !== "a" || match.stage !== "waiting") return;
+  try {
+    const v = await api(`/api/match/${encodeURIComponent(match.room)}?guild_id=${encodeURIComponent(session.g)}`);
+    if (v.stage === "joined") {
+      const t0 = performance.now(); match.stage = "working"; match.msg = (v.name_b || "Your friend") + " joined. Comparing…"; render();
+      const b2 = await PSI.reblind(v.b1, match.k);
+      await api(`/api/match/${encodeURIComponent(match.room)}/finish`, { method: "POST", body: JSON.stringify({ guild_id: session.g, key: match.key, b2 }) });
+      const theirs = new Set(b2);
+      Object.assign(match, { stage: "done", friend: v.name_b || "Your friend", theirs: v.b1.length, ms: match.ms + performance.now() - t0,
+        shared: match.items.filter((it, i) => theirs.has(v.a2[i])) });
+      return render();
+    }
+  } catch (err) { match = { stage: "error", msg: err.message }; return render(); }
+  setTimeout(pollMatch, 2000);
+}
+async function joinMatch(room) {
+  const items = matchItems();
+  if (!items.length) { match = { stage: "empty", room }; return render(); }
+  const t0 = performance.now();
+  match = { role: "b", stage: "working", room, items, msg: "Encrypting your list on this phone…" }; render();
+  try {
+    const v = await api(`/api/match/${encodeURIComponent(room)}?guild_id=${encodeURIComponent(session.g)}`);
+    if (v.stage !== "waiting") throw new Error("This match is already finished. Ask for a new link.");
+    const k = PSI.secret();
+    const a2 = await PSI.reblind(v.a1, k, n => setStatus(`Working… ${n} of ${v.a1.length + items.length}`));
+    const b1 = await PSI.blind(items.map(i => i.key), k, n => setStatus(`Working… ${v.a1.length + n} of ${v.a1.length + items.length}`));
+    await api(`/api/match/${encodeURIComponent(room)}/b`, { method: "POST", body: JSON.stringify({ guild_id: session.g, name: myName(), a2, b1 }) });
+    Object.assign(match, { stage: "waiting-b", friend: v.name_a || "Your friend", a2, ms: performance.now() - t0, theirs: v.a1.length }); render();
+    pollJoined();
+  } catch (err) { match = { stage: "error", msg: err.message }; render(); }
+}
+async function pollJoined() {
+  if (!match || match.stage !== "waiting-b") return;
+  try {
+    const v = await api(`/api/match/${encodeURIComponent(match.room)}?guild_id=${encodeURIComponent(session.g)}`);
+    if (v.stage === "done") {
+      const theirs = new Set(match.a2);
+      match.shared = match.items.filter((it, i) => theirs.has(v.b2[i])); match.stage = "done"; return render();
+    }
+  } catch (err) { match = { stage: "error", msg: err.message }; return render(); }
+  setTimeout(pollJoined, 2000);
+}
+// Demo: a pretend friend on this phone, running the same math for both sides.
+async function demoMatch(items, t0) {
+  const friend = ["place:" + norm("Tim Ho Wan") + "|" + norm("Irvine, CA"), "place:" + norm("Sunset Jazz Night") + "|" + norm("Long Beach, CA"),
+    "place:" + norm("Le Cafe Du Parc") + "|" + norm("Irvine, CA"), "reel:DEMOthw001", "reel:FOODAAAA02", "reel:FRIENDONLY1", "reel:FRIENDONLY2", "reel:FRIENDONLY3"];
+  const a = PSI.secret(), b = PSI.secret();
+  const a1 = await PSI.blind(items.map(i => i.key), a), a2 = await PSI.reblind(a1, b);
+  const b1 = await PSI.blind(friend, b), b2 = new Set(await PSI.reblind(b1, a));
+  Object.assign(match, { stage: "done", friend: "Maya (demo)", theirs: friend.length, ms: performance.now() - t0,
+    shared: items.filter((it, i) => b2.has(a2[i])) });
+  render();
+}
+function friendsView() {
+  const wrap = h("main", {}, h("h2", { style: "margin:4px 0 4px" }, "What you have in common"),
+    h("p", { class: "hint", style: "margin:0 0 14px" }, "Compare with a friend and see only the places and reels you both have. Neither of you sees the rest of the other's list, and SpotBot can't either."));
+  const box = h("section", { class: "block" });
+  const m = match;
+  if (!m || m.stage === "error" || m.stage === "empty") {
+    if (m && m.stage === "error") box.append(h("p", { class: "status", style: "color:var(--red)" }, m.msg));
+    if (m && m.stage === "empty") box.append(h("p", { class: "status" }, "Nothing to compare yet. Import your Instagram reels, or tap Going on a few spots."),
+      h("button", { class: "btn", style: "margin-bottom:10px", on: { click: () => { tab = "connect"; render(); } } }, "📥 Import from Instagram"));
+    box.append(h("ol", { class: "steps" }, h("li", {}, "Tap ", h("b", {}, "Start a match"), " and send the link to one friend."),
+      h("li", {}, "They open it and tap ", h("b", {}, "Compare"), "."),
+      h("li", {}, "You both see what you have in common: places you're both into, and reels in both your Instagram.")));
+    box.append(m && m.room && m.role !== "a" ? h("button", { class: "btn primary", on: { click: () => joinMatch(m.room) } }, "Compare")
+      : h("button", { class: "btn primary", on: { click: startMatch } }, demo ? "Try it with a demo friend" : "Start a match"));
+  } else if (m.stage === "invited") {
+    box.append(h("div", { class: "big" }, "🤝 " + m.friend), h("p", { style: "color:var(--ink2)" }, "wants to see what you have in common. Only what you both have is shown to either of you."),
+      h("button", { class: "btn primary", on: { click: () => joinMatch(m.room) } }, "Compare"));
+  } else if (m.stage === "working") {
+    box.append(h("p", { class: "status", id: "status" }, m.msg || "Working…"));
+  } else if (m.stage === "waiting") {
+    box.append(h("p", { style: "margin-top:0" }, "Send this link to one friend. It works for 30 minutes."),
+      h("input", { class: "field", value: m.link, readonly: true, "aria-label": "Match link" }),
+      h("button", { class: "btn primary", on: { click: async () => {
+        try { if (navigator.share) await navigator.share({ title: "Compare spots on SpotBot", url: m.link }); else { await navigator.clipboard.writeText(m.link); toast("Link copied"); } }
+        catch (e) { if (e.name !== "AbortError") toast(e.message); } } } }, "📨 Send the link"),
+      h("p", { class: "hint" }, `Your ${m.items.length} items were encrypted on this phone. Waiting for your friend…`));
+  } else if (m.stage === "waiting-b") {
+    box.append(h("p", { class: "status" }, `Sent. Waiting for ${m.friend} to finish…`));
+  } else if (m.stage === "done") {
+    const places = m.shared.filter(i => i.kind === "place"), reels = m.shared.filter(i => i.kind === "reel");
+    box.append(h("div", { class: "big" }, m.shared.length ? `${m.shared.length} in common` : "Nothing in common yet"),
+      h("p", { style: "margin:4px 0 12px;color:var(--ink2)" }, `You and ${m.friend}` + (m.ms ? ` · compared privately in ${(m.ms / 1000).toFixed(1)} s` : "")));
+    if (places.length) {
+      box.append(h("h3", {}, "Places you're both into"));
+      for (const it of places) box.append(h("button", { class: "spot", on: { click: () => { tab = "spot"; openId = it.spot.id; render(); } } }, thumb(it.spot),
+        h("div", {}, h("b", {}, it.spot.venue), h("div", { class: "meta" }, [LABEL[it.spot.category] || "Spot", it.spot.area].filter(Boolean).join(" · ")), h("div", { class: "sent" }, "Tap to plan it"))));
+    }
+    if (reels.length) {
+      box.append(h("h3", { style: "margin-top:12px" }, "Reels in both your Instagram"));
+      for (const it of reels) box.append(h("div", { class: "slot" }, h("div", { class: "when" }, it.from ? (it.from === "You saved" ? "🔖 You saved this" : "💬 " + it.from + " sent you this") : "🎞️ In both your messages"),
+        h("a", { class: "pill", href: "https://www.instagram.com/reel/" + encodeURIComponent(it.code) + "/", target: "_blank", rel: "noopener" }, "▶ Watch")));
+    }
+    box.append(h("p", { class: "hint" }, `Only these were revealed. You brought ${m.items.length} items and ${m.friend} brought ${m.theirs}; nobody saw the rest.`),
+      h("button", { class: "btn", on: { click: () => { match = null; render(); } } }, "New match"));
+  }
+  wrap.append(box);
+  return wrap;
 }
 function plansView() {
   const wrap = h("main", {}, h("h2", { style: "margin:4px 0 12px" }, "Plans"));
@@ -642,12 +869,18 @@ function render() {
   document.getElementById("tabs").style.display = session.role === "guest" ? "none" : "";
   for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false");
   const v = document.getElementById("view"); v.replaceChildren();
-  v.append(tab === "spot" ? spotView(spots.find(s => s.id === openId)) : tab === "plans" ? plansView() : tab === "me" ? meView() : tab === "connect" ? connectView() : spotsView());
+  v.append(tab === "spot" ? spotView(spots.find(s => s.id === openId)) : tab === "plans" ? plansView() : tab === "me" ? meView() : tab === "connect" ? connectView() : tab === "friends" ? friendsView() : spotsView());
   window.scrollTo(0, 0);
 }
 (async () => {
   try { spots = await loadSpots(); } catch (err) { toast(err.message); }
-  if (session.role === "guest" && !openId && spots[0]) { tab = "spot"; openId = spots[0].id; }
+  if (session.role === "guest" && !openId && !matchRoom && spots[0]) { tab = "spot"; openId = spots[0].id; }
+  if (matchRoom) {
+    match = { stage: "invited", room: matchRoom, friend: "A friend" };
+    try { const v = await api(`/api/match/${encodeURIComponent(matchRoom)}?guild_id=${encodeURIComponent(session.g)}`); match.friend = v.name_a || "A friend";
+      if (v.stage !== "waiting") match = { stage: "error", msg: "This match is already finished. Ask for a new link." }; }
+    catch (err) { match = { stage: "error", msg: err.message }; }
+  }
   render();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/app/sw.js", { scope: "/app" }).catch(() => {});
 })();

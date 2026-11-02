@@ -54,6 +54,7 @@ from src.ingestion.serving.jobs import (
 )
 from src.ingestion.serving import mobile_app
 from src.ingestion.serving.imports import ImportBacklog, ImportRequestError
+from src.ingestion.serving.match import MatchError, MatchRooms
 from src.ingestion.serving.plans import (
     PlanError, apply_rsvp, open_poll, poll_summary, rsvp_summary, vote_poll,
 )
@@ -629,6 +630,60 @@ async def _import_drip() -> None:
             _import_tick()
         except Exception:                      # one bad tick never stops the drip
             log.exception("[import] tick failed")
+
+
+# ── Match: private set intersection between two phones (ADR-0008) ────────
+# The rooms only ever hold blinded P-256 points (serving/psi.py); the phones do the
+# math. A guest invite link may take part, like an RSVP.
+_matches = MatchRooms()
+
+
+class MatchCreateBody(BaseModel):
+    guild_id: str
+    name: str = ""
+
+
+class MatchStepBody(BaseModel):
+    guild_id: str
+    key: str = ""
+    name: str = ""
+    a1: list[str] = []
+    a2: list[str] = []
+    b1: list[str] = []
+    b2: list[str] = []
+
+
+def _match(fn, *args):
+    try:
+        return fn(*args)
+    except MatchError as exc:
+        raise HTTPException(exc.status, str(exc))
+
+
+@app.post("/api/match")
+def match_create(body: MatchCreateBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    if not body.guild_id:
+        raise HTTPException(400, "a match belongs to a server")
+    return _match(_matches.create, body.guild_id, body.name)
+
+
+@app.get("/api/match/{room}")
+def match_get(room: str, guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    authorize(guild_id, x_tenant_token, need=SCOPE_GUEST)
+    return _match(_matches.get, guild_id, room)
+
+
+@app.post("/api/match/{room}/{step}")
+def match_step(room: str, step: str, body: MatchStepBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    if step == "a":
+        return _match(_matches.step_a, body.guild_id, room, body.key, body.a1)
+    if step == "b":
+        return _match(_matches.step_b, body.guild_id, room, body.a2, body.b1, body.name)
+    if step == "finish":
+        return _match(_matches.finish, body.guild_id, room, body.key, body.b2)
+    raise HTTPException(404, "no such step")
 
 
 @app.get("/api/jobs")
@@ -1207,6 +1262,7 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
     _CAPTURE_LOG.extend(kept)
     _capture_limits.forget_guild(gid)
     report["import_links"] = _imports.forget_guild(gid)
+    report["match_rooms"] = _matches.forget_guild(gid)
     log.info("[forget] deleted server %s: %d spot(s)", gid, report["catalog"]["spots"])
     return report
 
