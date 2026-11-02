@@ -1,6 +1,6 @@
 # SpotBot client design: a phone app beside Discord
 
-Status: **proposed** (ADR-0008). Owner: Nick. Written 2026-10-31. A working prototype ships
+Status: **accepted** (ADR-0008). Owner: Nick. Written 2026-10-31. A working prototype ships
 with this doc: `/app` on the admin service (see "Prototype" below).
 
 ## 1. Problem
@@ -155,5 +155,5 @@ targets: first card within 60 s, a plan within 2 min).
   under any name (capped). Rotating the signing key revokes every link.
 - Store accounts cost money (Apple $99/yr, Google $25 once); class demos can use Expo Go
   and Android sideloading.
-- Scope: the SRS lists other chat platforms as out of scope; ADR-0008 needs the
-  professor's OK before it counts toward deliverables.
+- Scope: the SRS lists other chat platforms as out of scope; that line changes now that
+  ADR-0008 is accepted.
