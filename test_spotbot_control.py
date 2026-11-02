@@ -66,13 +66,75 @@ def test_bot_gets_the_public_link_and_restarts_when_it_changes(tmp_path, monkeyp
     c.stop_all()
 
 
-def test_crash_and_missing_setup_show_up_as_problems(tmp_path, monkeypatch):
+def test_missing_setup_shows_up_as_problems(tmp_path, monkeypatch):
     monkeypatch.setattr(ctl_mod, "LOGS", tmp_path / "logs")
-    c = ctl_mod.Control(env={}, services=[ctl_mod.Service("bot", "Bot", [PY, "-c", "raise SystemExit(1)"])])
-    c.start("bot")
-    assert _wait(lambda: c.by_name["bot"].state() == "crashed")
+    c = ctl_mod.Control(env={}, services=[ctl_mod.Service("bot", "Bot", WAIT)])
     probs = " ".join(c.problems())
-    assert "DISCORD_TOKEN" in probs and "SPOTBOT_SIGNING_KEY" in probs and "stopped unexpectedly" in probs
+    assert "DISCORD_TOKEN" in probs and "SPOTBOT_SIGNING_KEY" in probs
+
+
+DIES = [PY, "-c", "raise SystemExit(3)"]
+
+
+def test_a_crashed_service_is_restarted_with_backoff(tmp_path, monkeypatch):
+    monkeypatch.setattr(ctl_mod, "LOGS", tmp_path / "logs")
+    c = ctl_mod.Control(env={}, services=[ctl_mod.Service("worker", "Worker", DIES)])
+    w = c.by_name["worker"]
+    c.start("worker")
+    assert _wait(lambda: w.proc.poll() is not None)
+    t0 = time.time()
+    assert c.watch_once(t0) == [] and w.state() == "crashed"     # noticed: wait 2 s first
+    assert c.watch_once(t0 + 1) == []
+    assert c.watch_once(t0 + 2.1) == ["worker"] and w.restarts == 1
+    assert any("restarting in 2 s" in line for line in w.lines)
+
+
+def test_a_crash_loop_is_left_stopped_and_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr(ctl_mod, "LOGS", tmp_path / "logs")
+    c = ctl_mod.Control(env={"DISCORD_TOKEN": "x", "SPOTBOT_SIGNING_KEY": "k"},
+                        services=[ctl_mod.Service("worker", "Worker", DIES)])
+    w = c.by_name["worker"]
+    c.start("worker")
+    now = time.time()
+    for _ in range(ctl_mod.CRASH_LIMIT):
+        assert _wait(lambda: w.proc is not None and w.proc.poll() is not None)
+        c.watch_once(now)                       # count the crash
+        now += ctl_mod.BACKOFF_CAP_S
+        c.watch_once(now)                       # restart (except after the last one)
+    assert not w.wanted and "Kept crashing" in " ".join(c.problems())
+    c.start("worker")                           # pressing Start clears it
+    assert "Kept crashing" not in " ".join(c.problems())
+
+
+def test_chaos_monkey_kills_and_self_healing_brings_it_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(ctl_mod, "LOGS", tmp_path / "logs")
+    c = ctl_mod.Control(env={}, services=[ctl_mod.Service("worker", "Worker", WAIT)])
+    stop = threading.Event()
+    threading.Thread(target=c.loop, args=(stop,), daemon=True).start()
+    try:
+        c.start("worker")
+        assert _wait(lambda: c.by_name["worker"].state() == "running")
+        event = c.chaos_kill()
+        assert event["service"] == "worker"
+        assert _wait(lambda: event["result"] == "recovered", timeout=15)
+        assert 0 < event["recovered_s"] < 15
+        assert c.by_name["worker"].crashes == []                   # a chaos kill isn't a crash
+        assert c.chaos_summary()["recovered"] == 1
+    finally:
+        stop.set()
+        c.stop_all()
+
+
+def test_chaos_only_runs_when_switched_on_and_due(tmp_path, monkeypatch):
+    c = _control(tmp_path, monkeypatch)
+    killed = []
+    monkeypatch.setattr(c, "chaos_kill", lambda name=None: killed.append(1) or {})
+    assert c.chaos_tick() is None and killed == []
+    c.set_chaos(True)
+    assert c.chaos_tick() is None                                 # not due yet
+    assert c.chaos_tick(time.time() + c.chaos["interval_s"] + 1) == {} and killed == [1]
+    c.set_chaos(False)
+    assert c.chaos_tick(time.time() + 10_000) is None and killed == [1]
 
 
 def test_tunnel_off_or_missing_is_explained(tmp_path, monkeypatch):
@@ -124,5 +186,8 @@ def test_dashboard_buttons_work_with_the_key(server):
     status, body = _req(port, "GET", "/api/status", key)
     assert status == 200 and b'"state": "running"' in body and b"DISCORD_TOKEN" not in body
     assert _req(port, "POST", "/api/nope/start", key)[0] == 404
+    assert _req(port, "POST", "/api/chaos/on")[0] == 403 and not c.chaos["enabled"]
+    assert _req(port, "POST", "/api/chaos/on", key)[0] == 200 and c.chaos["enabled"]
+    assert _req(port, "POST", "/api/chaos/off", key)[0] == 200 and not c.chaos["enabled"]
     assert _req(port, "POST", "/api/admin/stop", key)[0] == 200
     assert _wait(lambda: c.by_name["admin"].state() == "stopped")

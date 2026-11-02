@@ -96,6 +96,16 @@ tunnel, put the computer on a phone hotspot. `--no-tunnel` (or
 `install_shortcut.ps1 -NoTunnel`) keeps SpotBot on this computer only. Closing the window
 leaves SpotBot running; **Quit** stops everything.
 
+**Self-healing and the chaos monkey.** A service that dies on its own is restarted after
+2, 4, 8 … 60 s; after 5 crashes in 5 minutes Control stops trying and lists it under
+"Needs attention" (Start clears it). The 🐒 card's switch kills one running service at
+random every 3 minutes, and **Kill one now** does it once; the table shows how long each
+took to be healthy again (health checks: `/health` on :8010 and :8003, `/app` through the
+gatekeeper, a new link for the tunnel). Control runs capture jobs with `JOB_STORE=sqlite`,
+so a kill mid-capture requeues the job (ADR-0005) instead of losing it. First live run,
+2026-11-02, without the tunnel: 4 kills (catalog twice, gatekeeper twice), all back in
+2.0–2.5 s.
+
 ## Docker
 
 `docker compose up --build` runs **only** the bot and the recommend service. The admin

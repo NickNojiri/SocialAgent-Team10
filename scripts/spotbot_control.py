@@ -12,6 +12,11 @@ this starts the whole stack on this computer, then opens a dashboard window:
 Everything runs and is stored here. The tunnel only relays traffic for the gate, which
 lets through the phone app and token-checked calls, nothing else.
 
+Self-healing: a service that dies on its own is restarted, waiting 2, 4, 8 … 60 s between
+tries; after 5 crashes in 5 minutes it is left stopped and listed under "Needs attention".
+Chaos monkey (off by default, a switch in the window): every few minutes it kills one
+running service at random and records how long SpotBot took to be healthy again.
+
 The dashboard listens on 127.0.0.1 only and needs a per-session key, so web pages in
 your browser can't press its buttons. Closing the window leaves SpotBot running; the
 shortcut reopens it. Quit (in the window) stops everything.
@@ -23,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import secrets
 import shutil
@@ -42,6 +48,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LOGS = ROOT / "data" / "logs"
 SESSION = ROOT / "data" / "control_session.json"
 ADMIN = "http://127.0.0.1:8010"
+HEALTH = {"admin": ADMIN + "/health", "recommend": "http://127.0.0.1:8003/health",
+          "gate": "http://127.0.0.1:8080/app"}
+CRASH_LIMIT, CRASH_WINDOW_S, BACKOFF_CAP_S = 5, 300, 60
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0          # CREATE_NO_WINDOW
 
@@ -89,6 +98,9 @@ class Service:
     lines: deque = field(default_factory=lambda: deque(maxlen=300))
     wanted: bool = False
     note: str = ""
+    crashes: list = field(default_factory=list)     # when it died on its own
+    next_try: float = 0.0
+    chaos_hit: bool = False                         # killed on purpose: restart, don't count it
 
     def state(self) -> str:
         if self.proc is None:
@@ -114,6 +126,8 @@ class Control:
             Service("bot", "Discord bot", [py, "app/bot.py"]),
         ]
         self.by_name = {s.name: s for s in self.services}
+        self.chaos = {"enabled": False, "interval_s": 180, "next_at": 0.0, "history": deque(maxlen=50)}
+        self.rng = random.Random()
         if "tunnel" in self.by_name:
             t = self.by_name["tunnel"]
             if not tunnel:
@@ -128,6 +142,9 @@ class Control:
         env.update({"PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "OLLAMA_URL": "http://localhost:11434",
                     "INGEST_URL": ADMIN, "ADMIN_URL": ADMIN, "RECOMMEND_URL": "http://127.0.0.1:8003",
                     "GATE_UPSTREAM": ADMIN})
+        # Durable capture jobs (ADR-0005): a crash, or the chaos monkey, mid-capture
+        # requeues the job on restart instead of losing it.
+        env.setdefault("JOB_STORE", "sqlite")
         return env
 
     # ── processes ─────────────────────────────────────────────────────────
@@ -135,6 +152,8 @@ class Control:
     def start(self, name: str) -> str:
         with self.lock:
             s = self.by_name[name]
+            if s.note.startswith("Kept crashing"):
+                s.note, s.crashes = "", []
             if not s.cmd:
                 return s.note or "not available"
             if s.state() == "running":
@@ -211,6 +230,102 @@ class Control:
         if bot and bot.state() == "running":
             threading.Thread(target=self.restart, args=("bot",), daemon=True).start()
 
+    # ── self-healing ──────────────────────────────────────────────────────
+
+    def watch_once(self, now: float | None = None) -> list[str]:
+        """Restart services that died on their own. Returns the names restarted."""
+        now = time.time() if now is None else now
+        restarted = []
+        for s in self.services:
+            if not (s.wanted and s.proc is not None and s.proc.poll() is not None):
+                continue
+            if s.chaos_hit:                             # the monkey did it: come straight back
+                s.chaos_hit, s.next_try = False, now + 1
+                s.lines.append("── restarting after the chaos monkey ──")
+                continue
+            if not s.next_try:                          # just noticed: count it, wait
+                s.crashes = [t for t in s.crashes if now - t < CRASH_WINDOW_S] + [now]
+                if len(s.crashes) >= CRASH_LIMIT:
+                    s.wanted = False
+                    s.note = f"Kept crashing ({CRASH_LIMIT} times in {CRASH_WINDOW_S // 60} min). Check its log, fix it, then press Start."
+                    s.lines.append("── gave up restarting ──")
+                    continue
+                s.next_try = now + min(BACKOFF_CAP_S, 2 ** len(s.crashes))
+                s.lines.append(f"── exited (code {s.proc.returncode}); restarting in {int(s.next_try - now)} s ──")
+            elif now >= s.next_try:
+                s.next_try = 0.0
+                s.restarts += 1
+                s.proc = None
+                self.start(s.name)
+                restarted.append(s.name)
+        return restarted
+
+    def healthy(self, s: Service) -> bool:
+        if s.state() != "running":
+            return False
+        if s.name == "tunnel":
+            return bool(self.public_url)
+        url = HEALTH.get(s.name)
+        if not url:
+            return True
+        try:
+            with urlopen(url, timeout=2) as r:
+                return r.status < 500
+        except Exception:
+            return False
+
+    # ── chaos monkey ──────────────────────────────────────────────────────
+
+    def set_chaos(self, enabled: bool) -> None:
+        self.chaos["enabled"] = enabled
+        self.chaos["next_at"] = time.time() + self.chaos["interval_s"] if enabled else 0.0
+
+    def chaos_kill(self, name: str | None = None) -> dict | None:
+        """Kill one running service the hard way (as a crash would), then time its recovery."""
+        running = [s for s in self.services if s.state() == "running" and (name is None or s.name == name)]
+        if not running:
+            return None
+        s = self.rng.choice(running)
+        event = {"service": s.name, "label": s.label, "at": time.strftime("%H:%M:%S"), "killed": time.time(),
+                 "recovered_s": None, "result": "recovering"}
+        s.lines.append("── 🐒 chaos monkey killed this ──")
+        s.chaos_hit = True
+        s.proc.kill()
+        self.chaos["history"].appendleft(event)
+        threading.Thread(target=self._time_recovery, args=(s, event), daemon=True).start()
+        return event
+
+    def _time_recovery(self, s: Service, event: dict, timeout_s: float = 180) -> None:
+        while time.time() - event["killed"] < timeout_s:
+            if s.started > event["killed"] and self.healthy(s):
+                event["recovered_s"] = round(time.time() - event["killed"], 1)
+                event["result"] = "recovered"
+                return
+            time.sleep(0.5)
+        event["result"] = "did not recover"
+
+    def chaos_tick(self, now: float | None = None) -> dict | None:
+        now = time.time() if now is None else now
+        if not self.chaos["enabled"] or now < self.chaos["next_at"]:
+            return None
+        self.chaos["next_at"] = now + self.chaos["interval_s"]
+        return self.chaos_kill()
+
+    def chaos_summary(self) -> dict:
+        h = list(self.chaos["history"])
+        times = sorted(e["recovered_s"] for e in h if e["recovered_s"] is not None)
+        return {"kills": len(h), "recovered": len(times), "failed": sum(1 for e in h if e["result"] == "did not recover"),
+                "median_s": times[len(times) // 2] if times else None, "worst_s": times[-1] if times else None}
+
+    def loop(self, stop: threading.Event) -> None:
+        """The background heartbeat: self-healing every second, chaos when it's due."""
+        while not stop.wait(1.0):
+            try:
+                self.watch_once()
+                self.chaos_tick()
+            except Exception as exc:                    # the heartbeat must never die
+                print(f"[control] heartbeat error: {exc}")
+
     # ── what the dashboard shows ──────────────────────────────────────────
 
     def admin_stats(self) -> dict | None:
@@ -242,8 +357,8 @@ class Control:
         if st and not (st.get("services") or {}).get("ollama"):
             out.append("Ollama isn't running: new spots can't be saved. Open the Ollama app.")
         for s in self.services:
-            if s.state() == "crashed":
-                out.append(f"{s.label} stopped unexpectedly. Check its log, then press Restart.")
+            if s.note.startswith("Kept crashing"):
+                out.append(f"{s.label}: {s.note}")
         return out
 
     def status(self) -> dict:
@@ -257,6 +372,10 @@ class Control:
                          for s in self.services],
             "stats": self.admin_stats(),
             "problems": self.problems(),
+            "chaos": {"enabled": self.chaos["enabled"], "interval_s": self.chaos["interval_s"],
+                      "next_in_s": max(0, int(self.chaos["next_at"] - now)) if self.chaos["enabled"] else None,
+                      "history": [{k: v for k, v in e.items() if k != "killed"} for e in list(self.chaos["history"])[:15]],
+                      "summary": self.chaos_summary()},
         }
 
 
@@ -301,6 +420,14 @@ def make_handler(ctl: Control, key: str, port: int, on_quit):
             if not self._ok(True):
                 return self._send(403, b"{}")
             m = re.fullmatch(r"/api/(\w+)/(start|stop|restart)", urlsplit(self.path).path)
+            cm = re.fullmatch(r"/api/chaos/(on|off|now)", urlsplit(self.path).path)
+            if cm:
+                act = cm.group(1)
+                if act == "now":
+                    threading.Thread(target=ctl.chaos_kill, daemon=True).start()
+                else:
+                    ctl.set_chaos(act == "on")
+                return self._send(200, b'{"ok":true}')
             if urlsplit(self.path).path == "/api/quit":
                 self._send(200, b'{"ok":true}')
                 return threading.Thread(target=on_quit, daemon=True).start()
@@ -357,6 +484,7 @@ def main() -> None:
     done = threading.Event()
 
     def quit_all():
+        ctl.set_chaos(False)
         ctl.stop_all()
         done.set()
 
@@ -367,6 +495,8 @@ def main() -> None:
     url = f"http://127.0.0.1:{args.port}/?k={key}"
     print(f"SpotBot Control: {url}")
     threading.Thread(target=ctl.start_all, daemon=True).start()
+    beat = threading.Event()
+    threading.Thread(target=ctl.loop, args=(beat,), daemon=True).start()
     if not args.no_window:
         open_window(url)
     try:
@@ -374,6 +504,7 @@ def main() -> None:
     except KeyboardInterrupt:
         ctl.stop_all()
     finally:
+        beat.set()
         server.shutdown()
         try:
             SESSION.unlink()
@@ -436,6 +567,13 @@ PAGE = r"""<!doctype html>
   <section class="card s12"><h2>At a glance</h2><div class="stats" id="stats"></div></section>
   <section class="card s4"><h2>Services</h2><div id="svcs"></div></section>
   <section class="card s8"><h2>Logs</h2><div class="tabs" id="logtabs"></div><pre id="log"></pre></section>
+  <section class="card s12"><h2>🐒 Chaos monkey</h2>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button id="chaosToggle">Turn on</button><button id="chaosNow">Kill one now</button>
+      <span class="muted" id="chaosNote"></span></div>
+    <div class="stats" id="chaosStats" style="margin-bottom:10px"></div>
+    <table><thead><tr><th>Time</th><th>Killed</th><th>Result</th><th>Back in</th></tr></thead><tbody id="chaosRows"></tbody></table>
+  </section>
   <section class="card s6"><h2>Servers</h2><table><thead><tr><th>Server</th><th>Spots</th><th>Votes</th><th>Nights out</th><th>Last capture</th></tr></thead><tbody id="servers"></tbody></table></section>
   <section class="card s6"><h2>Captures</h2><table><tbody id="caps"></tbody></table></section>
 </main>
@@ -478,12 +616,24 @@ function render(d) {
     ["Median capture time", ch.duration_s ? ch.duration_s.median + " s" : "—"], ["Slowest (p95)", ch.duration_s ? ch.duration_s.p95 + " s" : "—"],
     ["Failed in the last hour", st.queue ? q.failed_recent : "—"]];
   $("caps").replaceChildren(...rows.map(([k, v]) => el("tr", {}, el("th", {}, k), el("td", {}, v))));
+  const c = d.chaos, cs = c.summary;
+  $("chaosToggle").textContent = c.enabled ? "Turn off" : "Turn on";
+  $("chaosToggle").className = c.enabled ? "danger" : "";
+  $("chaosNote").textContent = c.enabled ? `On: kills a random running service every ${Math.round(c.interval_s / 60)} min. Next in ${dur(c.next_in_s) || "a moment"}.`
+    : "Off. When on, it kills a random running service every few minutes to prove SpotBot heals itself.";
+  $("chaosStats").replaceChildren(stat("Kills", cs.kills), stat("Recovered", cs.recovered), stat("Didn't recover", cs.failed),
+    stat("Median recovery", cs.median_s != null ? cs.median_s + " s" : null), stat("Slowest", cs.worst_s != null ? cs.worst_s + " s" : null));
+  $("chaosRows").replaceChildren(...(c.history.length ? c.history.map(e => el("tr", {}, el("td", {}, e.at), el("td", {}, e.label),
+    el("td", { style: "color:" + (e.result === "recovered" ? "var(--green)" : e.result === "recovering" ? "var(--amber)" : "var(--red)") }, e.result),
+    el("td", {}, e.recovered_s != null ? e.recovered_s + " s" : "—"))) : [el("tr", {}, el("td", { colspan: "4", class: "muted" }, "Nothing killed yet."))]));
 }
 async function refresh() {
   try { const r = await fetch("/api/status", { headers: { "X-Control-Key": KEY } }); if (r.ok) render(await r.json()); } catch (e) { $("overall").textContent = "Control stopped"; }
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-act],[data-open]"); if (!b) return;
   if (b.dataset.act) call(b.dataset.act); else window.open(b.dataset.open, "_blank"); });
+$("chaosToggle").onclick = () => call("chaos/" + (last && last.chaos.enabled ? "off" : "on"));
+$("chaosNow").onclick = () => call("chaos/now");
 $("copy").onclick = async () => { if (last) { await navigator.clipboard.writeText(last.app_url); $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy link", 1500); } };
 $("quit").onclick = async () => { if (!confirm("Stop SpotBot and close Control?")) return; await call("quit"); document.body.replaceChildren(el("p", { style: "padding:30px" }, "SpotBot is stopped. You can close this window.")); };
 refresh(); setInterval(refresh, 3000);
