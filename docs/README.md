@@ -15,6 +15,7 @@ the task asks.
 | Doc | What it's for |
 |---|---|
 | [RUNBOOK.md](RUNBOOK.md) | Start the services, env vars, secrets and key rotation, staging, troubleshooting |
+| RUNBOOK → SpotBot Control | The desktop launcher, its dashboard, and the tunnel + gatekeeper for phones |
 | [RUN_AT_WORK.md](RUN_AT_WORK.md) | Running the capture stack on another machine |
 | [MODEL_GUIDE.md](MODEL_GUIDE.md) | Which local models to run on which hardware |
 | [SPRINT_BOARD.md](SPRINT_BOARD.md) | The Discord sprint board: commands and the Mon/Wed/Fri routine |
