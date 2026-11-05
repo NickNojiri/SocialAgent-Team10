@@ -67,6 +67,55 @@ webhook refuses unsigned and accepts signed deliveries, the handshake through th
 the admin app. Deliveries are logged with hashed ids to `data/ig_webhook/events.jsonl`.
 `cloudflared` is a one-time install: `winget install --id Cloudflare.cloudflared`.
 
+## SpotBot Control: the desktop launcher and phone link
+
+One double-click starts everything on your computer and opens a control window.
+
+1. Once: `.\scripts\setup.ps1`, then `winget install Cloudflare.cloudflared` (for phones on
+   other networks), then `powershell -ExecutionPolicy Bypass -File .\scripts\install_shortcut.ps1`.
+   That puts **SpotBot Control** on the desktop and in the Start menu.
+2. Double-click it. It starts the catalog service (:8010), plans and search (:8003), the
+   **gatekeeper** (:8080), a Cloudflare quick tunnel to the gatekeeper, and the bot. Ollama is
+   the one thing you open yourself.
+3. The window shows the phone link (`https://….trycloudflare.com/app`), what needs attention,
+   counts from `/api/stats`, each service with Start/Stop/Restart, its log, your servers and
+   capture health. Logs are also written to `data/logs/`.
+4. In Discord, `/app` sends your personal link on that address. Phones open it from school
+   Wi-Fi, cell data, anywhere; over `https` they can install it and share reels to it.
+
+What's private: everything runs and is stored on your computer. The tunnel only relays
+traffic to the gatekeeper (`serving/gate.py`), which lets through `/app`, the share page and
+the token-checked calls those pages make, each naming a server. The dashboard, `/api/stats`,
+the admin UI, the open legacy catalog and every operator write get a 404 there
+(`test_gate.py`). The control window itself listens on 127.0.0.1 only and needs a key that
+changes every launch.
+
+The quick-tunnel address changes each time the tunnel starts; Control restarts the bot so
+new `/app` links use it (send `/app` again for a fresh link). If school Wi-Fi blocks the
+tunnel, put the computer on a phone hotspot. `--no-tunnel` (or
+`install_shortcut.ps1 -NoTunnel`) keeps SpotBot on this computer only. Closing the window
+leaves SpotBot running; **Quit** stops everything.
+
+**Self-healing and the chaos monkey.** A service that dies on its own is restarted after
+2, 4, 8 … 60 s; after 5 crashes in 5 minutes Control stops trying and lists it under
+"Needs attention" (Start clears it). The 🐒 card's switch kills one running service at
+random every 3 minutes, and **Kill one now** does it once; the table shows how long each
+took to be healthy again (health checks: `/health` on :8010 and :8003, `/app` through the
+gatekeeper, a new link for the tunnel). Control runs capture jobs with `JOB_STORE=sqlite`,
+so a kill mid-capture requeues the job (ADR-0005) instead of losing it. First live run,
+2026-11-02, without the tunnel: 4 kills (catalog twice, gatekeeper twice), all back in
+2.0–2.5 s.
+
+## Always on: the desktop as SpotBot's home
+
+`powershell -ExecutionPolicy Bypass -File .\scripts\desktop_always_on.ps1` (once; it asks for
+admin rights) makes the desktop stay up: no sleep or hibernate while plugged in, SpotBot Control
+starts at every sign-in with no window, and, when the Claude CLI is installed, `claude
+remote-control` starts in the repo folder so the folder shows up in the Claude app and you can
+ask Claude to fix things from anywhere. Run `claude remote-control` by hand once first to sign in
+and approve it. Windows must be signed in: turn on Settings > Accounts > Sign-in options > "Use my
+sign-in info to automatically finish setting up after an update". `-Undo` puts it all back.
+
 ## Docker
 
 `docker compose up --build` runs **only** the bot and the recommend service. The admin
@@ -103,6 +152,9 @@ per-guild counts).
 | `IG_USERNAME` / `IG_PASSWORD` | enable the authenticated fetch path (burner account only) |
 | `BOT_INSECURE_SSL=1` | skip TLS verification on intercepting proxies |
 | `SPOT_QUORUM` | votes before "Lock it in" appears (default 3) |
+| `IMPORT_BATCH` / `IMPORT_INTERVAL_S` / `IMPORT_MAX_ACTIVE` | Instagram import drip: links per batch (3), seconds between batches (20), and captures that may already be running before a batch waits (1) |
+| `PLACE_PICKER_MODEL` | folder of the trained M2 place picker (e.g. `data/models/reranker_v5_tune_e5_frac1.0`); needs `pip install torch transformers`. Unset = rules only. Check it first: `python -m src.ingestion.pipeline.place_picker --model <folder> --split dev` |
+| `IMPORT_DB` | where waiting import links are kept (default `data/imports.json`; `off` keeps them in memory only) |
 
 Full list: `README.md` → Configuration.
 

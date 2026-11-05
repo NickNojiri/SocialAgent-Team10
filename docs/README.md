@@ -15,6 +15,7 @@ the task asks.
 | Doc | What it's for |
 |---|---|
 | [RUNBOOK.md](RUNBOOK.md) | Start the services, env vars, secrets and key rotation, staging, troubleshooting |
+| RUNBOOK → SpotBot Control | The desktop launcher, its dashboard, and the tunnel + gatekeeper for phones |
 | [RUN_AT_WORK.md](RUN_AT_WORK.md) | Running the capture stack on another machine |
 | [MODEL_GUIDE.md](MODEL_GUIDE.md) | Which local models to run on which hardware |
 | [SPRINT_BOARD.md](SPRINT_BOARD.md) | The Discord sprint board: commands and the Mon/Wed/Fri routine |
@@ -25,7 +26,7 @@ the task asks.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Processes, ports, data stores, one capture end to end (current; wins over older docs) |
 | [STACK.md](STACK.md) | The full technology stack on one page |
 | [PIPELINE.md](PIPELINE.md) | The ingestion pipeline's phases in detail |
-| [adr/](adr/README.md) | Why: ADR-0001 (Chroma per guild) … ADR-0008 (phone app and event pages, proposed) |
+| [adr/](adr/README.md) | Why: ADR-0001 (Chroma per guild) … ADR-0008 (phone app and event pages) |
 | [CLIENT_DESIGN.md](CLIENT_DESIGN.md) | The phone app and invite-link event pages: design, Instagram options, the `/app` prototype |
 | [SRS.md](SRS.md) | Requirements and constraints (C-1/C-2: no paid APIs, no post text off the machine) |
 

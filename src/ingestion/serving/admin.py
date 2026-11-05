@@ -11,6 +11,7 @@ Votes are stored in each event's Chroma metadata (`votes`), so the recommender
 can later rank by popularity.
 """
 
+import asyncio
 import ipaddress
 import json
 import logging
@@ -52,6 +53,8 @@ from src.ingestion.serving.jobs import (
     retryable_urls,
 )
 from src.ingestion.serving import mobile_app
+from src.ingestion.serving.imports import ImportBacklog, ImportRequestError
+from src.ingestion.serving.match import MatchError, MatchRooms
 from src.ingestion.serving.plans import (
     PlanError, apply_rsvp, open_poll, poll_summary, rsvp_summary, vote_poll,
 )
@@ -73,7 +76,9 @@ async def _lifespan(_app: FastAPI):
     _jobs.start()
     if counts["requeued"] or counts["failed"]:
         print(f"[jobs] after restart: requeued {counts['requeued']}, failed {counts['failed']}")
+    drip = asyncio.create_task(_import_drip())
     yield
+    drip.cancel()
     _jobs.shutdown()
 
 
@@ -327,6 +332,8 @@ def list_events(guild_id: str = "", x_tenant_token: str | None = TenantToken):
                 "image": m.get("image_url", ""),
                 "lat": m.get("lat"),
                 "lng": m.get("lng"),
+                # The phone app asks "is this the right place?" when this is low.
+                "geo_confidence": m.get("geo_confidence"),
                 "blurb": m.get("summary", ""),
                 "votes": int(m.get("votes", 0)),
                 "voters": sorted(_voters(m).values()),
@@ -559,6 +566,124 @@ async def create_job(body: IngestBody, x_tenant_token: str | None = TenantToken)
     if not duplicate:
         _capture_limits.record(body.guild_id, body.user_id)
     return {"job_id": job.id, "state": job.state, "duplicate": duplicate}
+
+
+# ── Instagram import (ADR-0008) ───────────────────────────────────────────
+# The phone reads the user's own "Download your information" file and sends only reel
+# links. They wait here and enter the capture queue a few at a time, only while the
+# queue is nearly idle, so live pastes always go first.
+_imports = ImportBacklog(
+    None if os.getenv("IMPORT_DB", "").strip().lower() == "off"
+    else (os.getenv("IMPORT_DB", "").strip() or "data/imports.json")
+)
+_IMPORT_BATCH = int(os.getenv("IMPORT_BATCH", "").strip() or 3)
+_IMPORT_INTERVAL_S = float(os.getenv("IMPORT_INTERVAL_S", "").strip() or 20)
+_IMPORT_MAX_ACTIVE = int(os.getenv("IMPORT_MAX_ACTIVE", "").strip() or 1)
+
+
+class ImportBody(BaseModel):
+    guild_id: str
+    user_id: str
+    urls: list[str]
+
+
+@app.post("/api/import", status_code=202)
+def import_links(body: ImportBody, x_tenant_token: str | None = TenantToken):
+    """Queue reel links from the user's Instagram data download. Signed for the user,
+    like a capture; only canonical Instagram post links are kept."""
+    authorize(body.guild_id, x_tenant_token, user_id=body.user_id)
+    if not body.guild_id or not body.user_id:
+        raise HTTPException(400, "guild_id and user_id are required")
+    try:
+        return _imports.add(body.guild_id, body.user_id, body.urls)
+    except ImportRequestError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/import")
+def import_status(guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    """How many imported links are still waiting, and how many went to capture."""
+    authorize(guild_id, x_tenant_token, need=SCOPE_READ)
+    return _imports.status(guild_id)
+
+
+def _import_tick():
+    """Hand one batch of imported links to the capture queue if it is nearly idle.
+    Returns the job, or None. Called from the event loop."""
+    if _jobs.pending >= _IMPORT_MAX_ACTIVE:
+        return None
+    batch = _imports.take(_IMPORT_BATCH)
+    if batch is None:
+        return None
+    gid, user, urls = batch
+    try:
+        return _jobs.submit(urls, gid)
+    except QueueFull:
+        _imports.put_back(gid, user, urls)
+        return None
+
+
+async def _import_drip() -> None:
+    while True:
+        await asyncio.sleep(_IMPORT_INTERVAL_S)
+        try:
+            _import_tick()
+        except Exception:                      # one bad tick never stops the drip
+            log.exception("[import] tick failed")
+
+
+# ── Match: private set intersection between two phones (ADR-0008) ────────
+# The rooms only ever hold blinded P-256 points (serving/psi.py); the phones do the
+# math. A guest invite link may take part, like an RSVP.
+_matches = MatchRooms()
+
+
+class MatchCreateBody(BaseModel):
+    guild_id: str
+    name: str = ""
+
+
+class MatchStepBody(BaseModel):
+    guild_id: str
+    key: str = ""
+    name: str = ""
+    a1: list[str] = []
+    a2: list[str] = []
+    b1: list[str] = []
+    b2: list[str] = []
+
+
+def _match(fn, *args):
+    try:
+        return fn(*args)
+    except MatchError as exc:
+        raise HTTPException(exc.status, str(exc))
+
+
+@app.post("/api/match")
+def match_create(body: MatchCreateBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    if not body.guild_id:
+        raise HTTPException(400, "a match belongs to a server")
+    return _match(_matches.create, body.guild_id, body.name)
+
+
+@app.get("/api/match/{room}")
+def match_get(room: str, guild_id: str = "", x_tenant_token: str | None = TenantToken):
+    authorize(guild_id, x_tenant_token, need=SCOPE_GUEST)
+    return _match(_matches.get, guild_id, room)
+
+
+@app.post("/api/match/{room}/{step}")
+def match_step(room: str, step: str, body: MatchStepBody, x_tenant_token: str | None = TenantToken):
+    authorize(body.guild_id, x_tenant_token, need=SCOPE_GUEST)
+    if step == "a":
+        return _match(_matches.step_a, body.guild_id, room, body.key, body.a1)
+    if step == "b":
+        return _match(_matches.step_b, body.guild_id, room, body.a2, body.b1, body.name)
+    if step == "finish":
+        return _match(_matches.finish, body.guild_id, room, body.key, body.b2)
+    raise HTTPException(404, "no such step")
 
 
 @app.get("/api/jobs")
@@ -1136,6 +1261,8 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
     _CAPTURE_LOG.clear()
     _CAPTURE_LOG.extend(kept)
     _capture_limits.forget_guild(gid)
+    report["import_links"] = _imports.forget_guild(gid)
+    report["match_rooms"] = _matches.forget_guild(gid)
     log.info("[forget] deleted server %s: %d spot(s)", gid, report["catalog"]["spots"])
     return report
 

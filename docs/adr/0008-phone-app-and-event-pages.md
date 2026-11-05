@@ -1,7 +1,7 @@
 # ADR-0008: A phone app and invite-link event pages beside Discord
 
-- **Status:** proposed (needs the team's review and the professor's OK on scope)
-- **Decided:** — · **Recorded:** 2026-10-31 · **Owner:** Nick
+- **Status:** accepted (the professor's sign-off isn't needed)
+- **Decided:** 2026-11-02 · **Recorded:** 2026-10-31 · **Owner:** Nick
 - **Related:** ADR-0003 (Discord-first, chat-agnostic backend), ADR-0007 (Instagram DM
   webhook), `docs/CLIENT_DESIGN.md`, `docs/THREAT_MODEL.md` T2
 
@@ -42,4 +42,4 @@ their phones, reels arrive in Instagram, and friends outside a server can't take
 - Invite links are bearer capabilities (read + RSVP under any name, capped at 200 per spot);
   rotating `SPOTBOT_SIGNING_KEY` revokes them.
 - The SRS's "no other chat platforms" line changes to "Discord for groups; a phone app and
-  event pages for people and guests" once this is accepted.
+  event pages for people and guests" now that this is accepted.

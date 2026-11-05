@@ -27,6 +27,8 @@ from src.ingestion.serving.feedback import FeedbackStore  # noqa: E402
 from src.ingestion.serving.gists import GistStore  # noqa: E402
 from src.ingestion.serving.guild_settings import GuildSettingsStore  # noqa: E402
 from src.ingestion.serving.jobs import JobQueue  # noqa: E402
+from src.ingestion.serving.imports import ImportBacklog
+from src.ingestion.serving.match import MatchRooms
 from src.ingestion.serving.time_to_card import TimeToCardLog  # noqa: E402
 from src.ingestion.serving.tenant_auth import SCOPE_GUEST, SCOPE_READ, mint_token  # noqa: E402
 from test_admin_authz import StubSink, _StubService  # noqa: E402
@@ -51,6 +53,8 @@ admin._time_to_card = TimeToCardLog(Path(tempfile.mkdtemp(prefix="bench_ttc_")) 
 admin._gists = GistStore(Path(tempfile.mkdtemp(prefix="bench_gists_")))
 admin._TAPS = Path(tempfile.mkdtemp(prefix="bench_taps_")) / "taps.jsonl"
 admin.describe_post = lambda *a, **k: None                   # never Ollama
+admin._imports = ImportBacklog()                             # never the real data/
+admin._matches = MatchRooms()
 serving_app.get_service = lambda guild_id="": _StubService()
 rec = TestClient(serving_app.app)
 
@@ -77,6 +81,7 @@ MINE_RW = mint_token(MINE)
 MINE_R = mint_token(MINE, scope=SCOPE_READ)
 MINE_ME = mint_token(MINE, user_id=ME)
 MINE_G = mint_token(MINE, scope=SCOPE_GUEST)   # an event-page invite link (ADR-0008)
+THEIRS_G = mint_token(THEIRS, scope=SCOPE_GUEST)  # another server's invite link
 URLS = ["https://x.test/1"]
 
 
@@ -137,6 +142,13 @@ def run(client):
         f"/api/events/{EVENT}/poll/vote", g, t, rsvp_id="rsvp-12345678", name="Sam", picks=[0]
     )
     invite = lambda g, t: body_post("/api/invite", g, t)  # noqa: E731
+    reels = ["https://www.instagram.com/reel/ABCDE12345/"]
+    import_as = lambda g, t, user: body_post("/api/import", g, t, user_id=user, urls=reels)  # noqa: E731
+    import_status = lambda g, t: client.get(f"/api/import?guild_id={g}", headers=hdr(t))  # noqa: E731
+    match_new = lambda g, t: body_post("/api/match", g, t, name="Sam")  # noqa: E731
+    my_room = lambda: client.post("/api/match", json={"guild_id": MINE}, headers=hdr(MINE_G)).json()["room"]  # noqa: E731
+    match_read = lambda g, t: client.get(f"/api/match/{my_room()}?guild_id={g}", headers=hdr(t))  # noqa: E731
+    match_join = lambda g, t: body_post(f"/api/match/{my_room()}/b", g, t, a2=[], b1=[])  # noqa: E731
 
     def not_a_place(g, t, user):
         return client.post(f"/api/events/{EVENT}/not-a-place?guild_id={g}", json={"user_id": user}, headers=hdr(t))
@@ -221,6 +233,19 @@ def run(client):
         ("POST", "/api/invite", "mint an invite with a share token", lambda: invite(MINE, MINE_R)),
         ("POST", "/api/events/{event_id}/poll", "start a poll as another user", lambda: body_post(f"/api/events/{EVENT}/poll", MINE, MINE_ME, user_id=YOU, slots=["2026-11-06T19:00", "2026-11-07T12:00"])),
         ("POST", "/api/invite", "mint an invite as another user", lambda: body_post("/api/invite", MINE, MINE_ME, user_id=YOU)),
+        ("POST", "/api/import", "import into another guild", lambda: import_as(THEIRS, MINE_ME, ME)),
+        ("POST", "/api/import", "import as another user", lambda: import_as(MINE, MINE_ME, YOU)),
+        ("POST", "/api/import", "import with a guest invite link", lambda: import_as(MINE, MINE_G, ME)),
+        ("POST", "/api/import", "import with no token", lambda: import_as(MINE, None, ME)),
+        ("GET", "/api/import", "read another guild's import progress", lambda: import_status(THEIRS, MINE_G)),
+        ("GET", "/api/import", "read import progress with no token", lambda: import_status(MINE, None)),
+        ("POST", "/api/match", "open a match in another guild with my invite link", lambda: match_new(THEIRS, MINE_G)),
+        ("POST", "/api/match", "open a match with no token", lambda: match_new(MINE, None)),
+        ("POST", "/api/match", "open a match with a share token", lambda: match_new(MINE, MINE_R)),
+        ("GET", "/api/match/{room}", "read my match from another guild's link", lambda: match_read(MINE, THEIRS_G)),
+        ("GET", "/api/match/{room}", "read a match with no token", lambda: match_read(MINE, None)),
+        ("POST", "/api/match/{room}/{step}", "join my match from another guild's link", lambda: match_join(MINE, THEIRS_G)),
+        ("POST", "/api/match/{room}/{step}", "join a match with no token", lambda: match_join(MINE, None)),
         ("POST", "/api/forget", "delete a guild's data with a member's app token", lambda: forget(MINE, MINE_ME)),
         ("POST", "/api/manual", "add a manual spot with a guest invite link", lambda: manual(MINE, MINE_G)),
         ("DELETE", "/api/events/{event_id}", "delete a spot with a guest invite link", lambda: delete(MINE, MINE_G)),
@@ -258,6 +283,10 @@ def run(client):
         ("mint an invite for my guild", lambda: invite(MINE, MINE_RW)),
         ("start a poll from my phone app as myself", lambda: body_post(f"/api/events/{EVENT}/poll", MINE, MINE_ME, user_id=ME, slots=["2026-11-06T19:00", "2026-11-07T12:00"])),
         ("mint an invite from my phone app as myself", lambda: body_post("/api/invite", MINE, MINE_ME, user_id=ME)),
+        ("import my Instagram reels as myself", lambda: import_as(MINE, MINE_ME, ME)),
+        ("read my import progress from my invite link", lambda: import_status(MINE, MINE_G)),
+        ("open a match from my invite link", lambda: match_new(MINE, MINE_G)),
+        ("read my own match", lambda: match_read(MINE, MINE_G)),
         ("legacy single-tenant catalog (documented carve-out)", lambda: get("", None)),
     ]
     return forged, authentic

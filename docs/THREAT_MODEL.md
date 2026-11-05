@@ -208,6 +208,17 @@ team moves to staging. The Caddyfile has not yet been run through `caddy validat
 (Docker's engine wasn't running when it was written), so the first deploy's smoke test
 (RUNBOOK) is its real check.
 
+**Desktop with a tunnel (SpotBot Control, 2026-11-02): same rule, in Python.** The
+Cloudflare quick tunnel points at the gatekeeper (`serving/gate.py`, `127.0.0.1:8080`),
+never at `:8010`. It forwards only `/app` and its files, `/share` with a server id and
+token, and the phone app's token-checked calls, each naming a server (query or JSON
+body); bodies over 512 KB get 413. Everything else, including the legacy `""` catalog,
+`/dash`, `/api/stats`, `/` and operator writes, is a 404 that never reaches the admin
+app, and only safe response headers come back. `test_gate.py` pins both lists and
+checks each rule still names a real admin route. The control window binds
+`127.0.0.1:8090`, checks the Host header (DNS rebinding) and needs a per-launch key
+(`test_spotbot_control.py`).
+
 ---
 
 ### T9 · Benchmark integrity · **process control**
@@ -241,6 +252,25 @@ the staging proxy points at `:8011`). Threats and controls:
 - **Losing the capture account:** the permitted API removes the reason the burner was banned.
   Breaking Meta's Platform Terms could still cost the app its access; read them before reusing
   webhook captions for model training.
+
+### T11 · Match between two phones (private set intersection) · B3 → B4 · **mitigated** (2026-11-02)
+
+`/api/match…` lets two people see what they have in common (`serving/psi.py`,
+`serving/match.py`, the Friends screen). Threats and controls:
+
+- **The server, or anyone reading its memory, learning people's lists:** it only ever holds
+  P-256 points blinded by secrets that never leave the phones, plus first names. Every point
+  is decoded and checked to lie on the curve before it's stored.
+- **The friend learning more than the overlap:** they see the shared items and the other
+  list's size, nothing else (the elliptic-curve Diffie-Hellman assumption). Each match uses
+  fresh secrets, so points can't be compared across matches. Not covered: a friend who puts
+  guesses in their own list learns whether you have those items; the cap is 2,000 items per
+  side and one friend per room.
+- **Someone else joining:** a room belongs to one server (guest token or member token for it,
+  `test_admin_authz.py`, 3 benchmark routes); the friend's seat is first come, first served,
+  and rooms close after 30 minutes. Only the starter's seat key can finish it.
+- **Floods:** 50 open rooms per server; requests through the tunnel pass the gatekeeper's
+  512 KB body cap. `/api/forget` drops a server's rooms.
 
 ---
 

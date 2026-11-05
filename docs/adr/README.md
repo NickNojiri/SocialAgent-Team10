@@ -14,7 +14,7 @@ several of these decisions were made by measuring, and the numbers are the point
 | [0005](0005-sqlite-job-store.md) | Capture jobs are stored in SQLite, so a restart never loses one silently | proposed — behind `JOB_STORE=sqlite` |
 | [0006](0006-capture-fallback-chain.md) | Capture is an explicit fallback chain that records its rung, with a breaker on the logged-in source | accepted (oEmbed rung proposed) |
 | [0007](0007-instagram-messaging-webhook.md) | Reels reach SpotBot through Instagram's official Messaging API, not a logged-in burner | accepted (Platform side: webhook app, store, launch and check scripts) · proposed to Track A (`sources/ig_webhook.py` shape) |
-| [0008](0008-phone-app-and-event-pages.md) | A phone app and invite-link event pages beside Discord | proposed |
+| [0008](0008-phone-app-and-event-pages.md) | A phone app and invite-link event pages beside Discord | accepted |
 
 Numbering is chronological by *recording* date, not decision date; the decision date
 is in each file. Superseding a decision means a new ADR that links back, never an edit

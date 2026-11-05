@@ -24,6 +24,8 @@ from src.ingestion.serving.feedback import FeedbackStore
 from src.ingestion.serving.gists import GistStore
 from src.ingestion.serving.guild_settings import GuildSettingsStore
 from src.ingestion.serving.jobs import JobQueue
+from src.ingestion.serving.imports import ImportBacklog
+from src.ingestion.serving.match import MatchRooms
 from src.ingestion.serving.time_to_card import TimeToCardLog
 from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_GUEST, SCOPE_READ, mint_token
 
@@ -64,6 +66,11 @@ PROTECTED_ROUTES = {
     ("POST", "/api/events/{event_id}/poll"),
     ("POST", "/api/events/{event_id}/poll/vote"),
     ("POST", "/api/invite"),
+    ("POST", "/api/import"),
+    ("GET", "/api/import"),
+    ("POST", "/api/match"),
+    ("GET", "/api/match/{room}"),
+    ("POST", "/api/match/{room}/{step}"),
     ("POST", "/recommend"),
     ("POST", "/plan"),
     ("GET", "/share"),
@@ -169,6 +176,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(admin, "_gists", GistStore(tmp_path / "gists"))
     monkeypatch.setattr(admin, "_TAPS", tmp_path / "taps.jsonl")
     monkeypatch.setattr(admin, "describe_post", lambda *a, **k: None)   # never Ollama
+    monkeypatch.setattr(admin, "_imports", ImportBacklog())
+    monkeypatch.setattr(admin, "_matches", MatchRooms())
     with TestClient(admin.app) as c:
         yield c
 
@@ -721,6 +730,7 @@ def test_guest_link_can_read_and_rsvp(client):
     ("post", f"/api/events/{EVENT}/edit", {"venue": "X", "theme": "y z"}),
     ("post", f"/api/events/{EVENT}/poll", {"slots": ["2026-11-06T19:00", "2026-11-07T12:00"]}),
     ("post", "/api/invite", {}),
+    ("post", "/api/import", {"user_id": ME, "urls": ["https://www.instagram.com/reel/ABCDE12345/"]}),
     ("post", "/api/jobs", {"urls": ["https://x.test/1"], "user_id": ME}),
     ("post", "/api/forget", {"confirm": MINE}),
     ("put", "/api/settings", {"home_city": "Long Beach, CA"}),
@@ -757,3 +767,46 @@ def test_member_app_token_acts_only_as_its_user(client):
     assert client.post("/api/invite", headers=hdr(mine), json={"guild_id": MINE, "user_id": YOU}).status_code == 403
     assert client.post("/api/forget", headers=hdr(mine), json={"guild_id": MINE, "confirm": MINE}).status_code == 403
     assert client.delete(f"/api/events/{EVENT}?guild_id={MINE}", headers=hdr(mine)).status_code == 403
+
+
+# ── Instagram import (ADR-0008): signed for the user, like a capture ─────────
+
+REEL = "https://www.instagram.com/reel/ABCDE12345/"
+
+
+def test_import_as_myself_queues_links_and_status_reads_them(client):
+    r = client.post("/api/import", headers=hdr(mint_token(MINE, user_id=ME)),
+                    json={"guild_id": MINE, "user_id": ME, "urls": [REEL, REEL, "https://evil.test/x"]})
+    assert r.status_code == 202
+    assert r.json() == {"added": 1, "duplicates": 1, "rejected": 1, "pending": 1}
+    assert client.get(f"/api/import?guild_id={MINE}", headers=hdr(_guest())).json()["pending"] == 1
+
+
+def test_import_refuses_another_user_another_guild_and_no_token(client):
+    mine = mint_token(MINE, user_id=ME)
+    body = {"guild_id": MINE, "user_id": YOU, "urls": [REEL]}
+    assert client.post("/api/import", headers=hdr(mine), json=body).status_code == 403
+    assert client.post("/api/import", headers=hdr(mine), json={**body, "guild_id": THEIRS, "user_id": ME}).status_code == 403
+    assert client.post("/api/import", json={**body, "user_id": ME}).status_code == 403
+    assert client.get(f"/api/import?guild_id={THEIRS}", headers=hdr(_guest())).status_code == 403
+
+
+def test_forget_drops_the_import_backlog(client):
+    client.post("/api/import", headers=hdr(mint_token(MINE, user_id=ME)),
+                json={"guild_id": MINE, "user_id": ME, "urls": [REEL]})
+    r = client.post("/api/forget", headers=hdr(mint_token(MINE)), json={"guild_id": MINE, "confirm": MINE})
+    assert r.status_code == 200 and r.json()["import_links"] == 1
+
+
+# ── Match rooms (private set intersection): guest scope, one server only ────
+
+
+def test_match_room_belongs_to_one_server(client):
+    room = client.post("/api/match", headers=hdr(_guest()), json={"guild_id": MINE, "name": "Nick"}).json()["room"]
+    assert client.get(f"/api/match/{room}?guild_id={MINE}", headers=hdr(_guest())).status_code == 200
+    theirs = mint_token(THEIRS, scope=SCOPE_GUEST)
+    assert client.get(f"/api/match/{room}?guild_id={THEIRS}", headers=hdr(theirs)).status_code == 404
+    assert client.get(f"/api/match/{room}?guild_id={MINE}", headers=hdr(theirs)).status_code == 403
+    assert client.get(f"/api/match/{room}?guild_id={MINE}").status_code == 403
+    assert client.post("/api/match", json={"guild_id": MINE}).status_code == 403
+    assert client.post("/api/match", headers=hdr(mint_token(MINE, scope=SCOPE_READ)), json={"guild_id": MINE}).status_code == 403
