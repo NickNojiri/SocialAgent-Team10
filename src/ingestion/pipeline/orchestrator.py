@@ -308,7 +308,9 @@ class IngestionPipeline:
                 raw.frame_text = frame_text
 
         self._stage(url, "extracting")
-        record, reason = build_record(raw, extractor=self.extractor if self._llm_ok else None)
+        from src.ingestion.pipeline import place_picker
+        record, reason = build_record(raw, extractor=self.extractor if self._llm_ok else None,
+                                      picker=place_picker.from_env())
         if record is None:
             result = IngestionResult(url=url, fetch_status=fetch_status, rejection_reason=reason)
             # Not a spot, but the reel was read: say what it's about anyway.

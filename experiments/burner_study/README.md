@@ -14,3 +14,11 @@ parser SpotBot uses today gets 62.0% on the same 271 reels. `queue7.py` repeats 
 and 15 to confirm it before anyone reads the test split.
 
 Training needs the prepared inputs under `data/`, which stay out of git.
+
+## Using it in SpotBot
+
+The trainer saves the model to `data/models/reranker_v5_tune_e5_frac<frac>/`. SpotBot loads it
+when `.env` has `PLACE_PICKER_MODEL=<that folder>` (and `torch` + `transformers` are installed):
+`src/ingestion/pipeline/place_picker.py` builds the same candidates and input text, and the
+model's pick replaces the rules' venue when it differs. Measure the product path before turning
+it on: `python -m src.ingestion.pipeline.place_picker --model <folder> --split dev`.

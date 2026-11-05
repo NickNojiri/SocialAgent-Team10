@@ -18,3 +18,7 @@ uvicorn[standard]==0.44.0
 # Only needed when IG_USERNAME/IG_PASSWORD are set; the module imports it
 # lazily and everything degrades to the Playwright path without it.
 # instagrapi==2.1.5
+
+# Optional: the M2 place picker (pipeline/place_picker.py), on when PLACE_PICKER_MODEL is set.
+# torch>=2.2
+# transformers>=4.40

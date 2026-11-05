@@ -143,6 +143,7 @@ per-guild counts).
 | `BOT_INSECURE_SSL=1` | skip TLS verification on intercepting proxies |
 | `SPOT_QUORUM` | votes before "Lock it in" appears (default 3) |
 | `IMPORT_BATCH` / `IMPORT_INTERVAL_S` / `IMPORT_MAX_ACTIVE` | Instagram import drip: links per batch (3), seconds between batches (20), and captures that may already be running before a batch waits (1) |
+| `PLACE_PICKER_MODEL` | folder of the trained M2 place picker (e.g. `data/models/reranker_v5_tune_e5_frac1.0`); needs `pip install torch transformers`. Unset = rules only. Check it first: `python -m src.ingestion.pipeline.place_picker --model <folder> --split dev` |
 | `IMPORT_DB` | where waiting import links are kept (default `data/imports.json`; `off` keeps them in memory only) |
 
 Full list: `README.md` → Configuration.

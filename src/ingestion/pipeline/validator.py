@@ -20,11 +20,13 @@ from src.ingestion.schemas.snapshot import RawPostSnapshot
 
 if TYPE_CHECKING:  # avoid importing httpx at module load for the heuristics-only path
     from src.ingestion.pipeline.llm_extractor import LlmFieldExtractor
+    from src.ingestion.pipeline.place_picker import PlacePicker
 
 
 def build_record(
     raw: RawPostSnapshot,
     extractor: Optional["LlmFieldExtractor"] = None,
+    picker: Optional["PlacePicker"] = None,
 ) -> tuple[Optional[EventInspiration], Optional[str]]:
     """Returns (record, None) on success or (None, rejection_reason)."""
     basis = raw.caption or raw.description or raw.title or ""
@@ -44,6 +46,19 @@ def build_record(
     if candidates.pop("is_vague", False):
         return None, "post is not clearly about a place, event, or food"
 
+    # M2 place picker (pipeline/place_picker.py): may replace the rules' venue with a
+    # better candidate; never removes one. Any failure leaves the rules' answer.
+    m2_pick = None
+    if picker is not None:
+        try:
+            m2_pick = picker.pick(raw, candidates.get("venue_name"))
+        except Exception:
+            m2_pick = None
+        if m2_pick:
+            candidates["venue_name"] = m2_pick
+            candidates["venue_slot"] = "m2"
+            candidates["venue_confidence"] = 0.74       # M2's dev accuracy (ml_reranker v5)
+
     # Extraction-quality signals ride in provenance, not the record body.
     venue_slot = candidates.pop("venue_slot", None)
     venue_confidence = candidates.pop("venue_confidence", 0.5)
@@ -54,6 +69,9 @@ def build_record(
         extractor_tag = f"{raw.extractor}+llm:{extractor.model}"
     else:
         extractor_tag = f"{raw.extractor}+heuristic"        # LLM attempted, fell back
+
+    if picker is not None:
+        extractor_tag += f"+{picker.name}"
 
     platform = raw.platform if raw.platform in ("instagram", "tiktok", "generic") else "generic"
     provenance = {
