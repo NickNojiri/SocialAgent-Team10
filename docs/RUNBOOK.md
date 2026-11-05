@@ -106,6 +106,16 @@ so a kill mid-capture requeues the job (ADR-0005) instead of losing it. First li
 2026-11-02, without the tunnel: 4 kills (catalog twice, gatekeeper twice), all back in
 2.0–2.5 s.
 
+## Always on: the desktop as SpotBot's home
+
+`powershell -ExecutionPolicy Bypass -File .\scripts\desktop_always_on.ps1` (once; it asks for
+admin rights) makes the desktop stay up: no sleep or hibernate while plugged in, SpotBot Control
+starts at every sign-in with no window, and, when the Claude CLI is installed, `claude
+remote-control` starts in the repo folder so the folder shows up in the Claude app and you can
+ask Claude to fix things from anywhere. Run `claude remote-control` by hand once first to sign in
+and approve it. Windows must be signed in: turn on Settings > Accounts > Sign-in options > "Use my
+sign-in info to automatically finish setting up after an update". `-Undo` puts it all back.
+
 ## Docker
 
 `docker compose up --build` runs **only** the bot and the recommend service. The admin
