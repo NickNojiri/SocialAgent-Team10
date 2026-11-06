@@ -134,7 +134,9 @@ guild call (fail closed, 503), all existing tests pass.
       `test_rotate_signing_key.py`.)*
 - [ ] Build it **with** Track D's #30 — same key, adjacent features; don't duplicate.
       *(#10 owns the key; #30 adds per-token expiry and revocation on top. Kimberly to
-      review the grace change.)*
+      review the grace change. Contract agreed on GitHub #13, 2026-11-06: token v2 with a
+      signed kind (c = per-call, max 5 min; l = link, max 30 days, never for forget,
+      delete or settings) and a revocation file that must exist, so a missing one is a 503.)*
 - [ ] **Done when:** you can rotate the key on staging without downtime and without
       breaking a live share link unannounced. Threat-model **T6**. *(Code done; needs a
       staging host to run it on.)*
@@ -145,7 +147,9 @@ guild call (fail closed, 503), all existing tests pass.
 - [ ] A hosted instance running around the clock; only the ports that must be open are
       open. *(Built: `docker-compose.staging.yml` runs everything. Only `share-proxy` is
       reachable from outside, the admin app sits on loopback for `/dash` over SSH, and
-      `test_staging.py` pins it. **Waiting on a host — Nick's pick** (RUNBOOK "Staging").)*
+      `test_staging.py` pins it. **Host for now: Nick's desktop** (2026-11-06):
+      `scripts/desktop_always_on.ps1` keeps it up, and SpotBot Control serves phones through a
+      Cloudflare tunnel and the gatekeeper (RUNBOOK "Always on", "SpotBot Control").)*
 - [ ] Share links served over **HTTPS**. *(Three documented ways: Tailscale Funnel,
       Cloudflare Tunnel, or Caddy with your own domain. Live once a host runs.)*
 - [x] Deploy from a tag, with the rollback documented in `docs/RUNBOOK.md`.
