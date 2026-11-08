@@ -1206,13 +1206,14 @@ class TestDiscordFormat:
         )
         md = format_recommendations([rec])
         assert "**🛍️ Casa Loma**" in md
-        assert "market popup" in md
+        assert "Markets & pop-ups" in md and md.startswith("**1 spot that matches**")
         assert "<t:1781000000:F>" in md
         assert "<https://example.com/p/1>" in md
 
-    def test_unscheduled_shows_tbd(self):
+    def test_unscheduled_has_no_date_line(self):
         rec = Recommendation("h1", "X", "other", "theme", "https://e.com", 0.3)
-        assert "time TBD" in format_recommendations([rec])
+        md = format_recommendations([rec])
+        assert "TBD" not in md and "<t:" not in md
 
     def test_empty_is_friendly(self):
         assert "couldn't find" in format_recommendations([]).lower()

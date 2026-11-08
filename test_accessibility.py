@@ -111,16 +111,21 @@ def test_status_colors_are_also_said_in_words():
 
 
 @pytest.mark.parametrize("name, markup", [
-    ("catalog", '<h1><span aria-hidden="true">🎟️</span>'),
     ("catalog", '<span class="badge"><span aria-hidden="true">${EMOJI'),
     ("catalog", '<span aria-hidden="true">🗓️</span>'),
     ("catalog", '<span aria-hidden="true">🗑</span> Remove'),
-    ("share", '<h1><span aria-hidden="true">📍</span>'),
     ("share", '<span class="badge"><span aria-hidden="true">${EMOJI'),
     ("share", '<span aria-hidden="true">👍</span>'),
-    ("dash", '<span class="icon" aria-hidden="true">'),
 ])
 def test_decorative_emoji_is_hidden_from_screen_readers(name, markup):
     """An emoji next to words that already say the same thing is read aloud as
     noise ("wastebasket Remove"), so it's hidden from screen readers."""
     assert markup in PAGES[name]
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_page_titles_are_plain_words(name):
+    """Headings carry no decorative emoji at all (docs/CLIENT_DESIGN.md, design rules)."""
+    import re
+    h1 = re.search(r"<h1>(.*?)</h1>", PAGES[name], re.S).group(1)
+    assert "aria-hidden" not in h1 and not re.search(r"[\U0001F300-\U0001FAFF]", h1), h1

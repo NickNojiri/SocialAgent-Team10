@@ -155,6 +155,50 @@ three one-time steps; because the blinding commutes, shared items line up and no
 else can be read. Each side learns the overlap and the other's list size. First real
 run: `docs/results/2026-11-02-match-run.md`.
 
+## 8c. Design rules (no "AI slop")
+
+Every surface follows these: the 3D site, the reference page, the phone app, the admin
+pages and the Discord cards. Check a change against the list before it ships.
+
+| # | Rule | What it means here |
+|---|---|---|
+| 1 | Delete filler badges | No decorative badge rows. Badges carry state ("NEW" card, "Leading" time) or go. |
+| 2 | Drop redundant labels | No section eyebrows the nav already names; no field label repeating its value. |
+| 3 | No random italics | Category names are plain text, not *italic*. |
+| 4 | Mono only where needed | Monospace for commands, URLs and code only. |
+| 5 | Use a design system | Each surface keeps its own colour tokens (`:root` variables); no one-off colours inline. |
+| 6 | Show the real product | Screenshots of real cards, not "coming soon" boxes. |
+| 7 | Enlarge the main feature | The spot (place name) is the biggest thing on every card. |
+| 8 | Group with spacing | Spacing groups things; fewer boxes inside boxes. |
+| 9 | Specific headlines | "Right 3 times in 4", not "Measured". "2 spots that match", not "Here's what I found". |
+| 10 | Emphasize the CTA | One filled button per screen; everything else secondary. |
+| 11 | One accent colour | Solid pink in the app and site, blue on admin pages. No gradient-filled text or buttons. |
+| 12 | Consistent icons | One icon set per surface (the app's tab bar is one line-icon set, not mixed emoji). |
+| 13 | Remove embellishments | No emoji glued to button text, no glow orbs, no decorative prefixes like 📝 or ✨. |
+| 14 | Inner radius = outer − padding | Nested rounded corners line up. |
+| 15 | Text contrast | Grey text at least 4.5:1 on its background (checked: site 6.6, app 5.6, admin 5.4). |
+| 16 | Wrap headlines properly | `text-wrap: balance` on headings, `pretty` on paragraphs. |
+| 17 | Align by eye | Optical alignment beats pixel-exact when they disagree. |
+| 18 | Tabular numbers | Counts, votes, times and percentages use `tabular-nums`, with the same decimals side by side. |
+| 19 | Loading states | Never a blank screen or "undefined": say what's loading. |
+| 20 | Animate useful feedback | Motion only confirms an action (button press, toast, progress); none on reduced motion. |
+
+What changed when these were applied (Nov 2026):
+
+- **3D site:** removed seven section eyebrows; headline words use one solid accent instead of
+  gradient text; the vague "Measured." became "Right 3 times in 4."; the test count is current
+  (1,342) and both accuracy bars show one decimal; grey text contrast raised; flat icon tiles.
+- **Reference page:** the empty "Demo video coming soon" box shows a real spot card until the
+  video exists.
+- **Phone app:** one solid pink for the main button; the tab bar uses one line-icon set and is
+  solid; no emoji glued to button and chip text; a loading state while spots load; numbers are
+  tabular; press feedback on buttons (off with reduced motion).
+- **Admin pages:** the catalog is called SpotBot (not "SocialAgent — Event Catalog") and never
+  shows "undefined events"; the dashboard's hard-coded badge row is one plain line; the share
+  page has a real "Get SpotBot for your server" button.
+- **Discord:** spot card footers say "Food & drink", not "food drink"; no 📝 before the summary;
+  search results lead with "2 spots that match", drop the ✨, the italics and the "time TBD" line.
+
 ## 9. Roadmap
 
 1. **Phase 4 (to Dec 11):** this prototype; Going/Maybe/Can't buttons on Discord cards;

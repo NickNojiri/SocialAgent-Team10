@@ -1532,7 +1532,7 @@ def share(guild_id: str = "", t: str | None = None):
 _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>SocialAgent — Event Catalog</title>
+<title>SpotBot — catalog admin</title>
 <style>
   :root{--bg:#111318;--card:#1A1D24;--line:#272B34;--txt:#E7E9EE;--mut:#8B92A0;--acc:#6EA8FE;--ok:#3FB950;--bad:#F85149}
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,sans-serif}
@@ -1561,7 +1561,7 @@ _PAGE = """<!doctype html>
   .empty{color:var(--mut);text-align:center;padding:40px}
   .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
-<header><h1><span aria-hidden="true">🎟️</span> SocialAgent — Event Catalog</h1>
+<header><h1>SpotBot catalog admin</h1>
 <div class="sub">Add public post URLs, curate the list, and vote. Changes are live to the Discord bot.</div></header>
 <main>
   <div class="add">
@@ -1582,7 +1582,7 @@ _PAGE = """<!doctype html>
       </div>
     </div>
   </details>
-  <div class="count" id="count"></div>
+  <div class="count" id="count" role="status">Loading spots…</div>
   <div id="list"></div>
 </main>
 <script>
@@ -1609,9 +1609,9 @@ async function addManual(){
 }
 async function load(){
   const r=await fetch('/api/events'); const d=await r.json();
-  document.getElementById('count').textContent=d.count+' event'+(d.count===1?'':'s')+' in the catalog';
+  const n=d.count??(d.events||[]).length;document.getElementById('count').textContent=n+' spot'+(n===1?'':'s')+' in the catalog';
   const list=document.getElementById('list');
-  if(!d.events.length){list.innerHTML='<div class="empty">No events yet — add a URL above.</div>';return;}
+  if(!(d.events||[]).length){list.innerHTML='<div class="empty">No events yet — add a URL above.</div>';return;}
   list.innerHTML=d.events.map(e=>`
     <div class="ev">
       <div class="votes">
@@ -1672,16 +1672,18 @@ _SHARE_PAGE = """<!doctype html>
   .empty{color:var(--mut);text-align:center;padding:40px}
   footer{max-width:860px;margin:0 auto;padding:8px 24px 32px;color:var(--mut);font-size:13px}
   footer a{color:var(--acc);text-decoration:none;font-weight:600}
+  footer .cta{display:inline-block;margin-left:10px;background:var(--acc);color:#06121f;padding:7px 14px;border-radius:8px}
   .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style></head><body>
-<header><h1><span aria-hidden="true">📍</span> Our spots</h1>
+<header><h1>Our spots</h1>
 <div class="sub">A group catalog of places we want to go — captured from shared reels.</div></header>
 <main>
-  <div class="count" id="count"></div>
+  <div class="count" id="count" role="status">Loading spots…</div>
   <div id="list"></div>
 </main>
 <footer>Powered by <a href="https://github.com/NickNojiri/SocialAgent-Team10" target="_blank" rel="noopener noreferrer">SpotBot<span class="sr"> (opens in a new tab)</span></a>
-— paste a reel in Discord, get a votable spot. Add it to your server.</footer>
+— paste a reel in Discord, get a votable spot.
+<a class="cta" href="https://github.com/NickNojiri/SocialAgent-Team10" target="_blank" rel="noopener noreferrer">Get SpotBot for your server<span class="sr"> (opens in a new tab)</span></a></footer>
 <script>
 const EMOJI={food_drink:"🍽️",cafe_dessert:"🍰",nightlife:"🍸",live_music:"🎶",market_popup:"🛍️",outdoors:"🏞️",community:"🤝",other:"📍"};
 const GUILD=new URLSearchParams(location.search).get('guild_id')||'';
@@ -1693,7 +1695,7 @@ async function load(){
   if(!r.ok){list.innerHTML='<div class="empty">This link is no longer valid — ask for a fresh one with /share.</div>';return;}
   const d=await r.json();
   document.getElementById('count').textContent=d.count+' spot'+(d.count===1?'':'s');
-  if(!d.events.length){list.innerHTML='<div class="empty">Nothing here yet.</div>';return;}
+  if(!(d.events||[]).length){list.innerHTML='<div class="empty">Nothing here yet.</div>';return;}
   list.innerHTML=d.events.map(e=>`
     <div class="ev">
       ${e.image?`<img class="thumb" src="${esc(e.image)}" alt="Photo from the post about ${esc(e.venue)}"/>`:''}
@@ -1747,11 +1749,8 @@ _DASH_PAGE = """<!doctype html>
   .dot{width:7px;height:7px;border-radius:50%;transition:background .3s}
   .on .dot{background:var(--ok)} .off .dot{background:var(--bad)}
   .on{border-color:var(--ok)22} .off{color:var(--mut);border-color:var(--bad)22}
-  /* ML layer badges */
-  .ml-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-  .ml{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--acc)33;
-      border-radius:8px;padding:6px 12px;font-size:12.5px;color:var(--acc)}
-  .ml .icon{font-size:15px}
+  .mlline{margin:0;color:var(--txt);font-size:13px}
+  h3{font-size:12px;font-weight:600;color:var(--mut);margin:16px 0 8px}
   /* tenant table */
   .wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
   table{border-collapse:collapse;width:100%;font-size:13px}
@@ -1793,10 +1792,10 @@ _DASH_PAGE = """<!doctype html>
   <div class="tiles" id="tiles"></div>
 
   <h2>Services</h2>
-  <div class="chips" id="chips"></div>
+  <div class="chips" id="chips"><span class="empty" style="padding:4px 0">Checking services…</span></div>
 
-  <h2>ML Layers active</h2>
-  <div class="ml-row" id="ml"></div>
+  <h2>Recommendations</h2>
+  <p class="mlline" id="ml">Vector search (mxbai-embed-large, 1024-dim) → LLM re-rank → each user's taste (α 0.25)</p>
 
   <h2>Servers</h2>
   <div class="wrap"><table id="tenants"></table></div>
@@ -1867,10 +1866,6 @@ async function load(){
   document.getElementById('chips').innerHTML=Object.entries(d.services||{}).map(([k,up])=>
     `<span class="chip ${up?'on':'off'}"><span class="dot" aria-hidden="true"></span>${SVC_LABELS[k]||k}<span class="sr">${up?' — up':' — down'}</span></span>`).join('');
 
-  document.getElementById('ml').innerHTML=`
-    <span class="ml"><span class="icon" aria-hidden="true">🔢</span>mxbai-embed-large · 1024-dim</span>
-    <span class="ml"><span class="icon" aria-hidden="true">🔁</span>LLM cross-encoder re-ranking</span>
-    <span class="ml"><span class="icon" aria-hidden="true">👤</span>User taste profile (α=0.25)</span>`;
 
   const maxSpots=Math.max(1,...(d.tenants||[]).map(x=>x.spots));
   const rows=(d.tenants||[]).map(x=>

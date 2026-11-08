@@ -72,12 +72,12 @@ APP_HTML = r"""<!doctype html>
 <title>SpotBot</title>
 <style>
   :root { color-scheme: dark; --bg: #0b0a14; --card: #16142a; --card2: #1f1c3a; --line: rgba(255,255,255,.09);
-          --ink: #f1f0fb; --ink2: #b4b1cf; --ink3: #807ca1; --pink: #ff3d8b; --violet: #7c5cff; --orange: #ff8a4c;
-          --green: #34d399; --amber: #fbbf24; --red: #f87171;
-          --grad: linear-gradient(110deg, var(--violet), var(--pink) 55%, var(--orange)); }
+          --ink: #f1f0fb; --ink2: #b4b1cf; --ink3: #948fb6; --pink: #ff3d8b; --violet: #7c5cff; --orange: #ff8a4c;
+          --green: #34d399; --amber: #fbbf24; --red: #f87171; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--ink);
-               font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+               font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
+  h1, h2, h3, .big { text-wrap: balance; }
   button, input { font: inherit; color: inherit; }
   button { cursor: pointer; }
   button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
@@ -97,7 +97,9 @@ APP_HTML = r"""<!doctype html>
   .add { display: flex; gap: 8px; margin: 6px 0 14px; }
   .add input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
   .btn { border: 0; border-radius: 14px; padding: 12px 16px; font-weight: 700; background: var(--card2); }
-  .btn.primary { background: var(--grad); color: #fff; }
+  .btn.primary { background: var(--pink); color: #fff; }
+  .btn, nav.tabs button, .pill { transition: transform .12s, background-color .2s, color .2s; }
+  .btn:active, .pill:active, nav.tabs button:active { transform: scale(.96); }
   .btn.small { padding: 8px 12px; border-radius: 12px; font-size: 14px; }
   .status { font-size: 14px; color: var(--ink2); margin: -6px 0 12px; min-height: 1em; }
   .spot { display: flex; gap: 12px; padding: 12px; margin-bottom: 10px; border-radius: 18px; background: var(--card);
@@ -132,15 +134,18 @@ APP_HTML = r"""<!doctype html>
   .slot input { width: 22px; height: 22px; accent-color: var(--pink); }
   .slot .when { flex: 1; } .slot .n { color: var(--ink3); font-size: 13px; }
   .bar { height: 6px; border-radius: 3px; background: var(--card2); margin-top: 4px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--grad); }
+  .bar i { display: block; height: 100%; background: var(--pink); transition: width .4s; }
   .lead { color: var(--green); font-size: 12px; font-weight: 700; margin-left: 6px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
   .times input { width: 100%; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card2); margin-bottom: 8px; }
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; background: rgba(11,10,20,.95);
+  .loading { padding: 4px 0; } .loading span { display: block; color: var(--ink2); font-size: 14px; margin-top: 4px; }
+  .loading i { display: block; height: 78px; border-radius: 16px; background: var(--card); margin-bottom: 12px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; background: var(--bg);
              border-top: 1px solid var(--line); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); }
   nav.tabs .in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
   nav.tabs button { background: none; border: 0; color: var(--ink3); font-size: 12px; padding: 4px; }
-  nav.tabs button b { display: block; font-size: 22px; font-weight: 400; }
+  nav.tabs button b { display: grid; place-items: center; height: 26px; }
   nav.tabs button[aria-current="page"] { color: var(--ink); }
   .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
            background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 9;
@@ -155,7 +160,7 @@ APP_HTML = r"""<!doctype html>
   .check { border: 1px solid var(--amber); }
   .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 12px; }
   .sent { color: var(--orange); font-size: 13px; margin-top: 2px; }
-  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .btn, .pill, nav.tabs button, .bar i { transition: none; } .loading i { animation: none; } }
 </style>
 </head>
 <body>
@@ -163,13 +168,13 @@ APP_HTML = r"""<!doctype html>
   <header>
     <div class="brand"><h1>📍 SpotBot</h1><small id="who"></small></div>
   </header>
-  <div id="view"></div>
+  <div id="view"><div class="loading" role="status" aria-live="polite"><i></i><i></i><i></i><span>Loading your spots…</span></div></div>
 </div>
 <nav class="tabs" id="tabs" aria-label="Sections"><div class="in">
-  <button data-tab="spots" aria-current="page"><b>🗺️</b>My Spots</button>
-  <button data-tab="plans"><b>📅</b>Plans</button>
-  <button data-tab="friends"><b>🤝</b>Friends</button>
-  <button data-tab="me"><b>🙂</b>You</button>
+  <button data-tab="spots" aria-current="page"><b><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></b>My Spots</button>
+  <button data-tab="plans"><b><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></b>Plans</button>
+  <button data-tab="friends"><b><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.5c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><circle cx="16.5" cy="9" r="2.6"/><path d="M16 14.5c2.6 0 4.4 1.5 5 4.5"/></svg></b>Friends</button>
+  <button data-tab="me"><b><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.5 20c.9-3.8 3.8-5.8 7.5-5.8s6.6 2 7.5 5.8"/></svg></b>You</button>
 </div></nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -442,8 +447,8 @@ function spotsView() {
   if (demo) wrap.append(h("p", { class: "demo" }, "Demo: example spots that live only on this phone. Open /app from Discord to see yours."));
   if (session.role !== "guest") {
     wrap.append(h("div", { class: "quick" },
-      h("button", { class: "btn primary", on: { click: () => { tab = "connect"; render(); } } }, "📥 Import from Instagram"),
-      h("button", { class: "btn", "aria-expanded": String(pasteOpen), on: { click: () => { pasteOpen = !pasteOpen; render(); } } }, "🔗 Paste a link")));
+      h("button", { class: "btn primary", on: { click: () => { tab = "connect"; render(); } } }, "Import from Instagram"),
+      h("button", { class: "btn", "aria-expanded": String(pasteOpen), on: { click: () => { pasteOpen = !pasteOpen; render(); } } }, "Paste a link")));
     const check = checkCard(); if (check) wrap.append(check);
   }
   if (session.role !== "guest" && pasteOpen) {
@@ -451,13 +456,13 @@ function spotsView() {
     const go = h("button", { class: "btn primary", on: { click: async () => {
       const link = input.value.trim(); if (!/^https?:\/\//.test(link)) { toast("Paste a reel link first"); return; }
       go.disabled = true; setStatus("Sending to SpotBot…");
-      try { await capture(link); input.value = ""; setStatus("Saved. 🎉"); spots = await loadSpots(); render(); }
+      try { await capture(link); input.value = ""; setStatus("Saved"); spots = await loadSpots(); render(); }
       catch (err) { setStatus(err.message); } finally { go.disabled = false; }
     } } }, "Add");
     wrap.append(h("div", { class: "add" }, input, go), h("div", { class: "status", id: "status" }, sharedLink ? "Shared from another app. Tap Add to save it." : ""));
   }
   const chips = h("div", { class: "chips", style: "padding:0 0 10px" });
-  for (const [key, label] of [["food", "🍽️ Restaurants"], ["all", "📍 Everything"], ["music", "🎶 Music"], ["night", "🍸 Nightlife"]]) {
+  for (const [key, label] of [["food", "Restaurants"], ["all", "Everything"], ["music", "Music"], ["night", "Nightlife"]]) {
     chips.append(h("button", { class: "pill", "aria-pressed": String(filter === key), on: { click: () => { filter = key; render(); } } }, label));
   }
   wrap.append(chips);
@@ -510,7 +515,7 @@ function connectView() {
   } else if (importState.stage === "sending") {
     box.append(h("p", { class: "status" }, "Sending links to SpotBot…"));
   } else if (importState.stage === "sent") {
-    box.append(h("div", { class: "big" }, "🎉 " + importState.added.toLocaleString() + " on the way"),
+    box.append(h("div", { class: "big" }, importState.added.toLocaleString() + " on the way"),
       h("p", { style: "margin:4px 0 8px;color:var(--ink2)" }, importState.demo ? "Demo: nothing was sent. In your real app they'd start showing up in My Spots." :
         importState.local ? "Kept on this phone, ready to compare with your friend." :
         (importState.duplicates ? importState.duplicates + " were already in. " : "") + "New spots show up in My Spots as SpotBot reads them."),
@@ -746,14 +751,14 @@ function friendsView() {
   if (!m || m.stage === "error" || m.stage === "empty") {
     if (m && m.stage === "error") box.append(h("p", { class: "status", style: "color:var(--red)" }, m.msg));
     if (m && m.stage === "empty") box.append(h("p", { class: "status" }, "Nothing to compare yet. Import your Instagram reels, or tap Going on a few spots."),
-      h("button", { class: "btn", style: "margin-bottom:10px", on: { click: () => { tab = "connect"; render(); } } }, "📥 Import from Instagram"));
+      h("button", { class: "btn", style: "margin-bottom:10px", on: { click: () => { tab = "connect"; render(); } } }, "Import from Instagram"));
     box.append(h("ol", { class: "steps" }, h("li", {}, "Tap ", h("b", {}, "Start a match"), " and send the link to one friend."),
       h("li", {}, "They open it and tap ", h("b", {}, "Compare"), "."),
       h("li", {}, "You both see what you have in common: places you're both into, and reels in both your Instagram.")));
     box.append(m && m.room && m.role !== "a" ? h("button", { class: "btn primary", on: { click: () => joinMatch(m.room) } }, "Compare")
       : h("button", { class: "btn primary", on: { click: startMatch } }, demo ? "Try it with a demo friend" : "Start a match"));
   } else if (m.stage === "invited") {
-    box.append(h("div", { class: "big" }, "🤝 " + m.friend), h("p", { style: "color:var(--ink2)" }, "wants to see what you have in common. Only what you both have is shown to either of you."),
+    box.append(h("div", { class: "big" }, m.friend), h("p", { style: "color:var(--ink2)" }, "wants to see what you have in common. Only what you both have is shown to either of you."),
       h("button", { class: "btn primary", on: { click: () => joinMatch(m.room) } }, "Compare"));
   } else if (m.stage === "working") {
     box.append(h("p", { class: "status", id: "status" }, m.msg || "Working…"));
@@ -762,7 +767,7 @@ function friendsView() {
       h("input", { class: "field", value: m.link, readonly: true, "aria-label": "Match link" }),
       h("button", { class: "btn primary", on: { click: async () => {
         try { if (navigator.share) await navigator.share({ title: "Compare spots on SpotBot", url: m.link }); else { await navigator.clipboard.writeText(m.link); toast("Link copied"); } }
-        catch (e) { if (e.name !== "AbortError") toast(e.message); } } } }, "📨 Send the link"),
+        catch (e) { if (e.name !== "AbortError") toast(e.message); } } } }, "Send the link"),
       h("p", { class: "hint" }, `Your ${m.items.length} items were encrypted on this phone. Waiting for your friend…`));
   } else if (m.stage === "waiting-b") {
     box.append(h("p", { class: "status" }, `Sent. Waiting for ${m.friend} to finish…`));
@@ -806,7 +811,7 @@ function meView() {
     h("section", { class: "block", style: "margin-top:16px" }, h("h3", {}, "Connected to"),
       h("p", { style: "margin:0" }, demo ? "Nothing yet: this is the demo." : session.role === "guest" ? "An invite link (RSVP only)." : "Your SpotBot catalog in Discord."),
       h("p", { class: "hint" }, "Get your own link with /app in Discord. On Android, install this app (browser menu → Install) and SpotBot appears in the share sheet when you share a reel from Instagram.")),
-    session.role === "guest" ? null : h("button", { class: "btn primary", style: "width:100%;margin-bottom:12px", on: { click: () => { tab = "connect"; render(); } } }, "📥 Connect Instagram"),
+    session.role === "guest" ? null : h("button", { class: "btn primary", style: "width:100%;margin-bottom:12px", on: { click: () => { tab = "connect"; render(); } } }, "Connect Instagram"),
     h("section", { class: "block" }, h("h3", {}, "Privacy"),
       h("p", { style: "margin:0" }, "Your link stays on this phone. An Instagram import is read on this phone and only reel links are sent. Reels are read by SpotBot on your group's own computer; nothing goes to outside AI services. /privacy in Discord deletes everything.")),
     demo ? null : h("button", { class: "btn", on: { click: () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); } } }, "Forget this link"));
@@ -822,7 +827,7 @@ function spotView(s) {
   if (sentLine(s)) wrap.append(h("p", { class: "sent", style: "font-size:15px;margin:0 0 8px" }, sentLine(s)));
   if (s.blurb || s.theme) wrap.append(h("p", { style: "color:var(--ink2);margin:0 0 12px" }, s.blurb || s.theme));
   wrap.append(h("div", { class: "row", style: "margin-bottom:12px" },
-    h("a", { class: "pill", href: mapLink(s), target: "_blank", rel: "noopener" }, "🗺️ Map"),
+    h("a", { class: "pill", href: mapLink(s), target: "_blank", rel: "noopener" }, "Map"),
     s.source_url ? h("a", { class: "pill", href: s.source_url, target: "_blank", rel: "noopener" }, "▶ Reel") : null));
   // RSVP
   const mine = ["going", "maybe", "cant"].find(k => s.rsvps && s.rsvps[k].includes(myName()));
@@ -860,7 +865,7 @@ function spotView(s) {
       try { const link = await inviteLink(s);
         if (navigator.share && !demo) await navigator.share({ title: s.venue + " on SpotBot", text: "Are you in? " + s.venue, url: link });
         else { await navigator.clipboard.writeText(link); toast("Invite link copied"); }
-      } catch (err) { if (err.name !== "AbortError") toast(err.message); } } } }, "📨 Invite friends (no Discord needed)"));
+      } catch (err) { if (err.name !== "AbortError") toast(err.message); } } } }, "Invite friends (no Discord needed)"));
   }
   return wrap;
 }
