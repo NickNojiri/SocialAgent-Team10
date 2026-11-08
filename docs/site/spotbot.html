@@ -56,13 +56,13 @@
   nav .links a.gh { color: #fff; background: rgba(255,255,255,.08); }
   @media (max-width: 700px) { nav .links a:not(.gh) { display: none; } }
 
-  /* auto-play: one button scrolls the whole story at a watching pace; any scroll of your own takes over */
-  .autoplay { position: fixed; left: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 35; display: flex; gap: 6px; padding: 6px; border-radius: 999px; }
-  .autoplay button { border: 0; border-radius: 999px; padding: 10px 16px; font: 700 14px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,.08); cursor: pointer; transition: transform .12s, background-color .2s; font-variant-numeric: tabular-nums; }
+  /* auto-play + glide: a Play button in the top bar; one swipe glides to the next section */
+  .autoplay { display: flex; gap: 6px; align-items: center; margin-left: auto; margin-right: 8px; }
+  .autoplay button { border: 0; border-radius: 999px; padding: 7px 14px; font: 700 14px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,.08); cursor: pointer; transition: transform .12s, background-color .2s; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .autoplay button:active { transform: scale(.96); }
-  .autoplay #playBtn { background: var(--pink); color: #fff; min-width: 116px; }
-  .autoplay #speedBtn { min-width: 50px; }
-  @media (max-width: 700px) { .autoplay { left: 50%; translate: -50% 0; bottom: calc(14px + env(safe-area-inset-bottom)); } footer { padding-bottom: 84px; } }
+  .autoplay #playBtn { background: var(--pink); color: #fff; min-width: 104px; }
+  .autoplay #speedBtn { min-width: 44px; }
+  @media (max-width: 420px) { .autoplay #speedBtn { display: none; } .autoplay #playBtn { min-width: 0; } .logo { font-size: 17px; } }
   .rail { position: fixed; right: 22px; top: 50%; translate: 0 -50%; z-index: 30; display: grid; gap: 14px; }
   .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; text-decoration: none; color: var(--ink3); font: 600 12px Inter, sans-serif; }
   .rail a span { opacity: 0; transform: translateX(6px); transition: .25s; white-space: nowrap; }
@@ -427,15 +427,15 @@
 <canvas id="city" aria-hidden="true"></canvas>
 <div class="vignette"></div>
 <div class="progress" id="progress"></div>
-<div class="autoplay glass" role="group" aria-label="Auto-play">
-  <button id="playBtn" type="button" aria-pressed="false">▶ Play</button>
-  <button id="speedBtn" type="button" aria-label="Speed">1×</button>
-</div>
 
 <nav>
   <div class="bar">
     <div class="in glass">
       <a class="logo" href="#top"><i>📍</i>SpotBot</a>
+      <div class="autoplay" role="group" aria-label="Auto-play">
+        <button id="playBtn" type="button" aria-pressed="false">▶ Play</button>
+        <button id="speedBtn" type="button" aria-label="Speed">1×</button>
+      </div>
       <div class="links">
         <a href="#how">How it works</a>
         <a href="#live">Live feed</a>
@@ -512,7 +512,7 @@
         <div class="dc-body" id="heroBody"></div>
       </div>
     </div>
-    <div class="hint">Scroll, or press Play</div>
+    <div class="hint">Swipe once, or press Play</div>
     <div class="reelcount" id="reelcount"></div>
   </div>
 </section>
@@ -1035,43 +1035,126 @@
   addEventListener("resize", frame);
   frame();
 
-  // ── auto-play: scrolls the page for you at a watching pace (the whole story in about 2½ min at 1×).
-  //    Scrolling, swiping or a key press of your own pauses it; a link to /?play starts it right away. ──
-  (function () {
+  // ── auto-play + glide ──
+  //  Play (top bar) scrolls the whole story at a watching pace, about 2½ min at 1×.
+  //  Glide: one swipe, wheel flick or arrow key moves one section. The page speeds up,
+  //  holds its speed, then takes its time to slow down, so the scene plays as it passes.
+  //  One gesture = one section, however long the trackpad's own momentum keeps sending
+  //  events. Reduced motion turns glide off (plain scrolling). /?play starts Play on load.
+  const Motion = (function () {
     const btn = $("playBtn"), speedBtn = $("speedBtn"), SPEEDS = [1, 2, 0.5];
-    let on = false, y = 0, last = 0, speed = 0;
-    const end = () => document.documentElement.scrollHeight - innerHeight;
+    const maxY = () => document.documentElement.scrollHeight - innerHeight;
+    let playing = false, py = 0, plast = 0, speed = 0;
+    let glide = null;            // {from, to, t0, dur}
     function label() {
-      const atEnd = scrollY >= end() - 2;
-      btn.textContent = on ? "❚❚ Pause" : atEnd ? "↺ Replay" : scrollY > 10 ? "▶ Resume" : "▶ Play";
-      btn.setAttribute("aria-pressed", String(on));
+      const atEnd = scrollY >= maxY() - 2;
+      btn.textContent = playing ? "❚❚ Pause" : atEnd ? "↺ Replay" : scrollY > 10 ? "▶ Resume" : "▶ Play";
+      btn.setAttribute("aria-pressed", String(playing));
     }
-    function step(t) {
-      if (!on) return;
-      if (Math.abs(scrollY - y) > 40) { stop(); return; }                  // the scrollbar was dragged: hand over
-      const dt = Math.min(0.1, (t - last) / 1000); last = t;
-      y = Math.min(end(), y + innerHeight * 0.22 * SPEEDS[speed] * dt);    // ~0.22 screens a second
-      scrollTo(0, y);
-      if (y >= end()) { stop(); return; }
-      requestAnimationFrame(step);
+    // ── Play ──
+    function playStep(t) {
+      if (!playing) return;
+      if (Math.abs(scrollY - py) > 40) { pause(); return; }               // the scrollbar was dragged: hand over
+      const dt = Math.min(0.1, (t - plast) / 1000); plast = t;
+      py = Math.min(maxY(), py + innerHeight * 0.22 * SPEEDS[speed] * dt);
+      scrollTo(0, py);
+      if (py >= maxY()) { pause(); return; }
+      requestAnimationFrame(playStep);
     }
-    function start() {
-      if (scrollY >= end() - 2) scrollTo(0, 0);
-      on = true; y = scrollY; last = performance.now(); label(); requestAnimationFrame(step);
+    function play() {
+      glide = null;
+      if (scrollY >= maxY() - 2) scrollTo(0, 0);
+      playing = true; py = scrollY; plast = performance.now(); label(); requestAnimationFrame(playStep);
     }
-    function stop() { on = false; label(); }
-    btn.addEventListener("click", () => (on ? stop() : start()));
+    function pause() { playing = false; label(); }
+    btn.addEventListener("click", () => (playing ? pause() : play()));
     speedBtn.addEventListener("click", () => { speed = (speed + 1) % SPEEDS.length; speedBtn.textContent = SPEEDS[speed] + "×"; });
-    // anything the viewer does to scroll takes over from the auto-play
-    for (const ev of ["wheel", "touchstart"]) addEventListener(ev, () => on && stop(), { passive: true });
-    addEventListener("keydown", (e) => {
-      if (on && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(e.key) && e.target === document.body) stop();
-    });
-    document.querySelectorAll('a[href^="#"]').forEach((a) => a.addEventListener("click", () => on && stop()));
-    addEventListener("scroll", () => { if (!on) label(); }, { passive: true });
+
+    // ── Glide ──
+    function stops() {
+      const ys = [0, ...[...document.querySelectorAll("main.page > section, .after .final")].map((el) => {
+        let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop; return y;
+      }), maxY()];
+      return [...new Set(ys.map((y) => Math.min(maxY(), Math.round(y))))].sort((p, q) => p - q);
+    }
+    // position along a glide (0..1 of the distance) at time u (0..1): speeds up over the first
+    // 15%, cruises, and eases out over the last 50% (the area under a trapezoid of speed)
+    const A = 0.15, D = 0.5, V = 1 / (1 - A / 2 - D / 2);
+    function along(u) {
+      if (u <= A) return V * u * u / (2 * A);
+      if (u <= 1 - D) return V * (A / 2 + (u - A));
+      const r = 1 - u;
+      return 1 - V * r * r / (2 * D);
+    }
+    function glideTo(y) {
+      y = Math.max(0, Math.min(maxY(), y));
+      const dist = Math.abs(y - scrollY);
+      if (dist < 2) return;
+      const dur = Math.min(4200, Math.max(900, 600 + 1000 * dist / (innerHeight * 2.2)));   // ~2.2 screens a second at cruise
+      glide = { from: scrollY, to: y, t0: performance.now(), dur };
+      requestAnimationFrame(glideStep);
+    }
+    function glideStep(t) {
+      if (!glide) return;
+      const u = Math.min(1, (t - glide.t0) / glide.dur);
+      scrollTo(0, glide.from + (glide.to - glide.from) * along(u));
+      if (u < 1) requestAnimationFrame(glideStep); else { glide = null; label(); }
+    }
+    function step(dir) {
+      if (playing) pause();
+      const here = glide ? glide.to : scrollY, s = stops();
+      const next = dir > 0 ? s.find((y) => y > here + 4) : [...s].reverse().find((y) => y < here - 4);
+      if (next !== undefined) glideTo(next);
+    }
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce) {
+      // wheel / trackpad: one gesture moves one section. A gesture ends after 220 ms of quiet,
+      // so momentum events from the same flick never start a second glide.
+      let last = 0, used = false, sum = 0;
+      addEventListener("wheel", (e) => {
+        if (e.ctrlKey) return;                                              // pinch-zoom stays the browser's
+        e.preventDefault();
+        const now = performance.now();
+        if (now - last > 220) { used = false; sum = 0; }
+        last = now;
+        if (used) return;
+        sum += e.deltaY * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? innerHeight : 1);
+        if (Math.abs(sum) >= 8) { used = true; step(Math.sign(sum)); }
+      }, { passive: false });
+      // touch: one swipe (40 px or more) moves one section, the way a reel app does
+      let ty = null, tx = 0;
+      addEventListener("touchstart", (e) => { if (e.touches.length === 1) { ty = e.touches[0].clientY; tx = e.touches[0].clientX; } }, { passive: true });
+      addEventListener("touchmove", (e) => { if (ty !== null && e.cancelable) e.preventDefault(); }, { passive: false });
+      addEventListener("touchend", (e) => {
+        if (ty === null) return;
+        const t = e.changedTouches[0], dy = ty - t.clientY, dx = tx - t.clientX;
+        ty = null;
+        if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) step(Math.sign(dy));
+      }, { passive: true });
+      addEventListener("keydown", (e) => {
+        if (e.target !== document.body && e.target !== document.documentElement) return;
+        const dir = { ArrowDown: 1, PageDown: 1, " ": e.shiftKey ? -1 : 1, ArrowUp: -1, PageUp: -1 }[e.key];
+        if (dir) { e.preventDefault(); step(dir); }
+        else if (e.key === "Home") { e.preventDefault(); if (playing) pause(); glideTo(0); }
+        else if (e.key === "End") { e.preventDefault(); if (playing) pause(); glideTo(maxY()); }
+      });
+      // menu and chapter links glide too
+      document.querySelectorAll('a[href^="#"]').forEach((a) => a.addEventListener("click", (e) => {
+        const el = document.getElementById(a.getAttribute("href").slice(1));
+        if (!el) return;
+        e.preventDefault(); if (playing) pause();
+        let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop;
+        glideTo(y);
+      }));
+    } else {
+      for (const ev of ["wheel", "touchstart"]) addEventListener(ev, () => playing && pause(), { passive: true });
+    }
+    addEventListener("scroll", () => { if (!playing && !glide) label(); }, { passive: true });
     label();
-    if (/[?&]play\b/.test(location.search) || location.hash === "#play") setTimeout(start, 600);
+    if (/[?&]play\b/.test(location.search) || location.hash === "#play") setTimeout(play, 600);
+    return { stops, along, step, get gliding() { return !!glide; }, get playing() { return playing; } };
   })();
+  window.SpotMotion = Motion;   // for the page's own tests
 
   // ── time-lapse: a fast scroll sweeps light across the cards and streaks it behind them; an easy pace
   //    (a wheel notch is under 1 px/ms) shows nothing ──

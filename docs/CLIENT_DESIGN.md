@@ -188,9 +188,12 @@ What changed when these were applied (Nov 2026):
 - **3D site:** removed seven section eyebrows; headline words use one solid accent instead of
   gradient text; the vague "Measured." became "Right 3 times in 4."; the test count is current
   (1,342) and both accuracy bars show one decimal; grey text contrast raised; flat icon tiles.
-- **Auto-play:** a Play button (bottom left; bottom centre on phones) scrolls the whole 3D story at
-  a watching pace, about 2½ minutes at 1× (2× and ½× too). Any scroll, swipe or key of your own
-  pauses it; a link ending in `?play` starts it right away, handy for the demo.
+- **Auto-play and glide:** a Play button in the top bar scrolls the whole 3D story at a
+  watching pace, about 2½ minutes at 1× (2× and ½× too). One swipe, wheel flick or arrow key
+  moves exactly one section: the page speeds up, holds its speed, then eases out slowly so
+  the scene plays as it passes (about 2.5 s for a long scene). A trackpad's momentum never
+  counts as a second swipe. Menu links glide too; reduced motion keeps plain scrolling; a
+  link ending in `?play` starts Play on load.
 - **Reference page:** the empty "Demo video coming soon" box shows a real spot card until the
   video exists.
 - **Phone app:** one solid pink for the main button; the tab bar uses one line-icon set and is
