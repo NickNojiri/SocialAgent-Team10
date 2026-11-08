@@ -70,15 +70,16 @@ Phase 1 feature, and it is the number the whole semester's reliability story res
       breakdown, and re-run it with one command.
 
 **#3 Capture input hardening — SSRF + download safety (60) 🔒**
-- [ ] Resolve the host before fetching; refuse private/loopback/link-local ranges
+- [x] Resolve the host before fetching; refuse private/loopback/link-local ranges
       (127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1, fc00::/7) **and** any
       redirect that lands on one.
-- [ ] Cap download size (hard byte limit, enforced while streaming, not after) and check
+- [x] Cap download size (hard byte limit, enforced while streaming, not after) and check
       the content type before writing a file.
-- [ ] Tests: an internal URL, a redirect to an internal URL, an oversized body, and a
+- [x] Tests: an internal URL, a redirect to an internal URL, an oversized body, and a
       wrong content type are each refused — with no file written.
-- [ ] **Done when:** those four tests pass in CI and a pasted `http://169.254.169.254/...`
-      is refused before any network call. This is threat-model **T3**.
+- [x] **Done when:** those four tests pass in CI and a pasted `http://169.254.169.254/...`
+      is refused before any network call. This is threat-model **T3**. **Done Nov 8**
+      (`browser/url_guard.py`, `test_capture_download_safety.py`; review: Blessie).
 
 ### Phase 2 — Oct 6 – Oct 24 (100 pts)
 

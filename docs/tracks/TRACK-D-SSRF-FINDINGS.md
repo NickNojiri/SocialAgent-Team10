@@ -1,15 +1,11 @@
 # Track D — Feature #12 SSRF findings
 
 Each row is one probe in `test_attack_internal_address_ssrf.py`, with its owner and
-status. Rechecked 2026-10-17 at commit `7600f0e5`: **18 probes, 10 refused, 8 open**
-(all 8 Track A); `./.venv/bin/python scripts/bench_security_attacks.py` prints
-**66 attacks, 58 refused, 8 got through** across every attack class. The focused run
-reported 67 passed and 8 expected failures; the expected failures are the eight open
-Track A probes.
-
-The 8 open probes are marked `xfail(strict=True)`, so CI stays green while they are
-open and turns red the moment one is fixed: then delete that test's mark, and set the
-row here to refused.
+status. Rechecked 2026-11-08: **18 probes, 18 refused, 0 open**;
+`python scripts/bench_security_attacks.py` prints **101 attacks, 101 refused, 0 got through**.
+The eight Track A probes were closed by `src/ingestion/browser/url_guard.py` (the browser
+checks a URL and its DNS answer before opening it; the embed fallback and the video
+download check every redirect hop), so their `xfail` marks are gone.
 
 | # | Probe | Test area | Owner | Ownership basis | Status |
 |---:|---|---|---|---|---|
@@ -23,14 +19,14 @@ row here to refused.
 | 8 | `POST /api/jobs` with `http://10.0.0.1/admin` | API URL validation | Nick / API | Nick owns `src/ingestion/serving/admin.py` API implementation. | refused — `serving/admin.py::_internal_target` (88477a97) |
 | 9 | `POST /api/jobs` with `http://169.254.169.254/latest/meta-data/` | API URL validation | Nick / API | Nick owns `src/ingestion/serving/admin.py` API implementation. | refused — `serving/admin.py::_internal_target` (88477a97) |
 | 10 | `POST /api/jobs` with `http://[::1]/admin` | API URL validation | Nick / API | Nick owns `src/ingestion/serving/admin.py` API implementation. | refused — `serving/admin.py::_internal_target` (88477a97) |
-| 11 | Browser fetch of `http://127.0.0.1/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | open — `xfail(strict)` |
-| 12 | Browser fetch of `http://localhost/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | open — `xfail(strict)` |
-| 13 | Browser fetch of `http://10.0.0.1/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | open — `xfail(strict)` |
-| 14 | Browser fetch of `http://169.254.169.254/latest/meta-data/` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | open — `xfail(strict)` |
-| 15 | Browser fetch of `http://[::1]/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | open — `xfail(strict)` |
-| 16 | `https://spot.example/reel/abc` mocked to resolve to `10.0.0.7` | DNS/private-address validation | Track A | Track A owns `src/ingestion/browser/`; DNS is mocked in the test. | open — `xfail(strict)` |
-| 17 | Instagram embed URL returns a 302 to `http://127.0.0.1/admin` | Redirect validation in embed fallback | Track A | Track A owns `src/ingestion/browser/`, including `ig_embed.py`. | open — `xfail(strict)` |
-| 18 | Video URL returns a 302 to `http://169.254.169.254/latest/meta-data/` | Redirect validation in video download | Track A | Track A owns `pipeline/transcriber.py`. | open — `xfail(strict)` |
+| 11 | Browser fetch of `http://127.0.0.1/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | refused — `browser/url_guard.py` |
+| 12 | Browser fetch of `http://localhost/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | refused — `browser/url_guard.py` |
+| 13 | Browser fetch of `http://10.0.0.1/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | refused — `browser/url_guard.py` |
+| 14 | Browser fetch of `http://169.254.169.254/latest/meta-data/` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | refused — `browser/url_guard.py` |
+| 15 | Browser fetch of `http://[::1]/admin` | URL validation before browser navigation | Track A | Track A owns `src/ingestion/browser/`. | refused — `browser/url_guard.py` |
+| 16 | `https://spot.example/reel/abc` mocked to resolve to `10.0.0.7` | DNS/private-address validation | Track A | Track A owns `src/ingestion/browser/`; DNS is mocked in the test. | refused — `browser/url_guard.py` |
+| 17 | Instagram embed URL returns a 302 to `http://127.0.0.1/admin` | Redirect validation in embed fallback | Track A | Track A owns `src/ingestion/browser/`, including `ig_embed.py`. | refused — `browser/url_guard.py` |
+| 18 | Video URL returns a 302 to `http://169.254.169.254/latest/meta-data/` | Redirect validation in video download | Track A | Track A owns `pipeline/transcriber.py`. | refused — `browser/url_guard.py` |
 
 The repository ownership table supports every assignment: Track A owns browser fetching
 and `pipeline/transcriber.py`; Nick owns the admin API in `serving/admin.py`. No finding

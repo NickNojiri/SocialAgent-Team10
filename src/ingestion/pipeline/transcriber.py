@@ -25,6 +25,8 @@ from typing import Callable, Optional
 
 import httpx
 
+from src.ingestion.browser.url_guard import blocked_reason, stream_following
+
 from src.ingestion.config import IngestionSettings
 
 log = logging.getLogger("ingestion.transcribe")
@@ -35,6 +37,7 @@ TranscribeFn = Callable[[str], Optional[str]]
 _VIDEO_META_KEYS = ("og:video", "og:video:url", "og:video:secure_url")
 _DOWNLOAD_TIMEOUT = 30.0
 _MAX_BYTES = 50 * 1024 * 1024  # 50 MB cap — reels are short; refuse anything huge
+_BINARY_TYPES = {"application/octet-stream", "binary/octet-stream", "application/mp4"}
 _SAMPLE_RATE = 16000           # what Whisper expects
 _DECODE_TIMEOUT = 120.0
 
@@ -210,8 +213,16 @@ class Transcriber:
 
     def _download(self, video_url: str) -> Optional[str]:
         try:
-            with httpx.stream("GET", video_url, timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True) as resp:
+            reason = blocked_reason(video_url)
+            if reason:
+                log.warning(f"[stt] video URL refused: {reason}")
+                return None
+            with stream_following(video_url, timeout=_DOWNLOAD_TIMEOUT) as resp:   # each redirect checked (T3)
                 resp.raise_for_status()
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if ctype and not (ctype.startswith("video/") or ctype in _BINARY_TYPES):
+                    log.warning(f"[stt] not a video ({ctype}); skipping")      # checked before any file exists
+                    return None
                 fd, path = tempfile.mkstemp(suffix=".mp4")
                 total = 0
                 with os.fdopen(fd, "wb") as f:

@@ -82,9 +82,9 @@ no mentions (`AllowedMentions.none()`).
       [`PHASE1_EVIDENCE.md`](../PHASE1_EVIDENCE.md).
 - [x] CI runs `scripts/bench_security_attacks.py` as its own step (added by Platform,
       2026-10-14); the focused tests also run in the offline pytest job.
-- [ ] **Done when:** one command prints "N attacks, M refused, K got through," the list of
-      K is empty or written down with owners, and CI runs it. The open eight are assigned
-      to Track A; CI runs the benchmark.
+- [x] **Done when:** one command prints "N attacks, M refused, K got through," the list of
+      K is empty or written down with owners, and CI runs it. **Done Nov 8:** the open
+      eight were fixed (`browser/url_guard.py`); now **101 attacks, 101 refused, 0 got through**.
 
 ### Phase 2 — Oct 6 – Oct 24 (100 pts)
 

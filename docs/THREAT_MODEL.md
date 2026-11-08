@@ -100,7 +100,7 @@ across tenants; both rely on the `127.0.0.1` bind (T8).
 
 ---
 
-### T3 · Server-side request forgery — the pipeline fetches whatever it is told · B4 · **open**
+### T3 · Server-side request forgery — the pipeline fetches whatever it is told · B4 · **mitigated**
 
 **Attack.** `/api/ingest` checks only the scheme (`admin.py:230`) and the session
 manager only scheme + netloc (`browser/session_manager.py:127`). Playwright will
@@ -114,6 +114,15 @@ since T2 — or the open legacy `""` tenant from the same host.
 `youtube.com`), and resolve-then-reject private/link-local addresses before the video
 GET. Owner: Track A with Nick reviewing, Sprint 3. Existing controls that limit blast
 radius: per-domain throttle, 50 MB download cap, `capture_budget_s`.
+
+**Built (Nov 8).** `browser/url_guard.py`: the browser refuses a URL whose host is
+internal or whose DNS answer is (`session_manager._reject_reason`); the `/embed/`
+fallback and the video download follow redirects one hop at a time and check each
+hop; the download also refuses a non-video content type before writing a file. All 18
+probes in `test_attack_internal_address_ssrf.py` are refused, plus
+`test_capture_download_safety.py`. **Left:** a redirect *inside* Chromium during
+`page.goto` isn't re-checked (the first URL is); the ingest host allowlist is still
+to do.
 
 ---
 
@@ -280,7 +289,7 @@ the staging proxy points at `:8011`). Threats and controls:
 |---|---|---|---|
 | T1 | mention injection via plain-content sends | Spoofing / Elevation | **fixed** — `AllowedMentions.none()` |
 | T2 | caller-controlled `guild_id` | Elevation / Tampering / Info disclosure | **fixed** — HMAC tenant tokens on :8010 and :8003; 32/32 forgeries rejected (0/32 before) |
-| T3 | SSRF through pasted URLs | Elevation | open — Track A + Nick, Sprint 3 |
+| T3 | SSRF through pasted URLs | Elevation | mitigated Nov 8 (`url_guard.py`); in-browser redirects + host allowlist left |
 | T4 | prompt injection into LLM stages | Tampering | accepted, mitigated |
 | T5 | capture floods | DoS | partial — Nick, Sprint 3–4 |
 | T6 | secrets / retention | Info disclosure | mostly in place; deletion built (#21), time-based retention open |

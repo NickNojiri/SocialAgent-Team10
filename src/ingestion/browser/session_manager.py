@@ -24,6 +24,7 @@ from playwright.async_api import (
 )
 
 from src.ingestion.browser.text_isolation import isolate_text
+from src.ingestion.browser.url_guard import blocked_reason
 from src.ingestion.config import IngestionSettings
 from src.ingestion.schemas.results import FetchStatus
 from src.ingestion.schemas.snapshot import PageSnapshot
@@ -125,7 +126,7 @@ class SocialSessionManager:
     def _reject_reason(self, url: str) -> Optional[str]:
         parsed = urlparse(url)
         if parsed.scheme in ("http", "https") and parsed.netloc:
-            return None
+            return blocked_reason(url)            # never a private, loopback or metadata address (T3)
         if parsed.scheme == "file" and self.settings.allow_file_urls:
             return None
         return f"unsupported URL (public http(s) only): {url!r}"
