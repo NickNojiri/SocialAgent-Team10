@@ -56,6 +56,13 @@
   nav .links a.gh { color: #fff; background: rgba(255,255,255,.08); }
   @media (max-width: 700px) { nav .links a:not(.gh) { display: none; } }
 
+  /* auto-play: one button scrolls the whole story at a watching pace; any scroll of your own takes over */
+  .autoplay { position: fixed; left: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 35; display: flex; gap: 6px; padding: 6px; border-radius: 999px; }
+  .autoplay button { border: 0; border-radius: 999px; padding: 10px 16px; font: 700 14px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,.08); cursor: pointer; transition: transform .12s, background-color .2s; font-variant-numeric: tabular-nums; }
+  .autoplay button:active { transform: scale(.96); }
+  .autoplay #playBtn { background: var(--pink); color: #fff; min-width: 116px; }
+  .autoplay #speedBtn { min-width: 50px; }
+  @media (max-width: 700px) { .autoplay { left: 50%; translate: -50% 0; bottom: calc(14px + env(safe-area-inset-bottom)); } footer { padding-bottom: 84px; } }
   .rail { position: fixed; right: 22px; top: 50%; translate: 0 -50%; z-index: 30; display: grid; gap: 14px; }
   .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; text-decoration: none; color: var(--ink3); font: 600 12px Inter, sans-serif; }
   .rail a span { opacity: 0; transform: translateX(6px); transition: .25s; white-space: nowrap; }
@@ -420,6 +427,10 @@
 <canvas id="city" aria-hidden="true"></canvas>
 <div class="vignette"></div>
 <div class="progress" id="progress"></div>
+<div class="autoplay glass" role="group" aria-label="Auto-play">
+  <button id="playBtn" type="button" aria-pressed="false">▶ Play</button>
+  <button id="speedBtn" type="button" aria-label="Speed">1×</button>
+</div>
 
 <nav>
   <div class="bar">
@@ -501,7 +512,7 @@
         <div class="dc-body" id="heroBody"></div>
       </div>
     </div>
-    <div class="hint">Scroll to swipe</div>
+    <div class="hint">Scroll, or press Play</div>
     <div class="reelcount" id="reelcount"></div>
   </div>
 </section>
@@ -1023,6 +1034,44 @@
   addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(frame); } }, { passive: true });
   addEventListener("resize", frame);
   frame();
+
+  // ── auto-play: scrolls the page for you at a watching pace (the whole story in about 2½ min at 1×).
+  //    Scrolling, swiping or a key press of your own pauses it; a link to /?play starts it right away. ──
+  (function () {
+    const btn = $("playBtn"), speedBtn = $("speedBtn"), SPEEDS = [1, 2, 0.5];
+    let on = false, y = 0, last = 0, speed = 0;
+    const end = () => document.documentElement.scrollHeight - innerHeight;
+    function label() {
+      const atEnd = scrollY >= end() - 2;
+      btn.textContent = on ? "❚❚ Pause" : atEnd ? "↺ Replay" : scrollY > 10 ? "▶ Resume" : "▶ Play";
+      btn.setAttribute("aria-pressed", String(on));
+    }
+    function step(t) {
+      if (!on) return;
+      if (Math.abs(scrollY - y) > 40) { stop(); return; }                  // the scrollbar was dragged: hand over
+      const dt = Math.min(0.1, (t - last) / 1000); last = t;
+      y = Math.min(end(), y + innerHeight * 0.22 * SPEEDS[speed] * dt);    // ~0.22 screens a second
+      scrollTo(0, y);
+      if (y >= end()) { stop(); return; }
+      requestAnimationFrame(step);
+    }
+    function start() {
+      if (scrollY >= end() - 2) scrollTo(0, 0);
+      on = true; y = scrollY; last = performance.now(); label(); requestAnimationFrame(step);
+    }
+    function stop() { on = false; label(); }
+    btn.addEventListener("click", () => (on ? stop() : start()));
+    speedBtn.addEventListener("click", () => { speed = (speed + 1) % SPEEDS.length; speedBtn.textContent = SPEEDS[speed] + "×"; });
+    // anything the viewer does to scroll takes over from the auto-play
+    for (const ev of ["wheel", "touchstart"]) addEventListener(ev, () => on && stop(), { passive: true });
+    addEventListener("keydown", (e) => {
+      if (on && ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(e.key) && e.target === document.body) stop();
+    });
+    document.querySelectorAll('a[href^="#"]').forEach((a) => a.addEventListener("click", () => on && stop()));
+    addEventListener("scroll", () => { if (!on) label(); }, { passive: true });
+    label();
+    if (/[?&]play\b/.test(location.search) || location.hash === "#play") setTimeout(start, 600);
+  })();
 
   // ── time-lapse: a fast scroll sweeps light across the cards and streaks it behind them; an easy pace
   //    (a wheel notch is under 1 px/ms) shows nothing ──
