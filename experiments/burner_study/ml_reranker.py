@@ -175,6 +175,9 @@ def main():
     ap.add_argument("--freeze-embeddings", action="store_true",
                     help="keep the pretrained word-embedding table fixed (most of a multilingual model's weights)")
     ap.add_argument("--tag", default="", help="name for this variant in the results file")
+    ap.add_argument("--extra", help="labeled reels from Nick's own export to train on (my_export.py label)")
+    ap.add_argument("--extra-dev", help="labeled held-out reels from the export, scored apart from dev")
+    ap.add_argument("--preds-out", help="write each scored reel's parser / ML hit here (my_export.py report)")
     args = ap.parse_args()
     OPTS.update(clean=args.clean, parser_pick=args.parser_pick, accounts=not args.no_accounts, recipe_cue=args.recipe_cue,
                 llm_hint=args.llm_hint)
@@ -190,12 +193,25 @@ def main():
     dev_rows = [r for r in corpus if ev.split_of(r) == "dev" and V.scoreable(r)]
     if args.dev_plus:
         dev_rows += [r for r in gold_new if ev.split_of(r) == "dev" and V.scoreable(r)]
+    mine_rows, extra = [], []
+    if args.extra or args.extra_dev:
+        import my_export
+        used = {ev._code(r["url"]) for r in corpus + gold_new + silver_new}
+        if args.extra:
+            extra = [r for r in my_export.load_extra(args.extra, "train", used) if V.scoreable(r)]
+            print(f"+ {len(extra)} of Nick's export reels in training", flush=True)
+        if args.extra_dev:
+            mine_rows = [r for r in my_export.load_extra(args.extra_dev, "dev", used) if V.scoreable(r)]
     creators = sorted({ev.creator_of(r) for r in train_rows})
     random.Random(args.seed).shuffle(creators)
     n_val = max(1, int(0.15 * len(creators)))
     val_c = set(creators[:n_val])
     fit_c = creators[n_val:]
     fit_c = set(fit_c[:max(1, int(args.frac * len(fit_c)))])
+    # The export's reels join after the split above, so the early-stopping creators are the
+    # same with and without them: a new creator trains, a known one stays on its side.
+    train_rows += extra
+    fit_c |= {ev.creator_of(r) for r in extra} - val_c
     t0 = time.time()
     fit = [e for e in build([r for r in train_rows if ev.creator_of(r) in fit_c]) if e.target >= 0]
     val = [e for e in build([r for r in train_rows if ev.creator_of(r) in val_c]) if not e.silver]
@@ -264,6 +280,19 @@ def main():
         b, a, pv = ev.mcnemar_exact(rp, mp)
         print(f"   {name:52} parser {sum(rp)}/{len(idx)} ({100 * sum(rp) / len(idx):.1f}%) | "
               f"ML {sum(mp)}/{len(idx)} ({100 * sum(mp) / len(idx):.1f}%) | p={pv:.3g}")
+    scored = [("dev", e, q, h, r) for e, q, h, r in zip(dev, preds, hits, rules)]
+    if mine_rows:
+        mine = build(mine_rows)
+        mq, mh = evaluate(model, tok, mine, device)
+        mr = [bool(ev.venue_same_place(e.rules_pred, e.gold)) for e in mine]
+        print(f"   your held-out reels ({len(mine)}): parser {sum(mr)} | ML {sum(mh)}")
+        scored += [("mine", e, q, h, r) for e, q, h, r in zip(mine, mq, mh, mr)]
+    if args.preds_out:
+        Path(args.preds_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.preds_out, "w", encoding="utf-8", newline="\n") as f:
+            for name, e, q, h, r in scored:
+                f.write(json.dumps({"set": name, "code": ev._code(e.row["url"]), "gold": e.gold, "parser": e.rules_pred,
+                                    "ml": q, "parser_hit": r, "ml_hit": h}, ensure_ascii=False) + "\n")
     out = DATA / "models" / f"reranker_{args.tag or 'base'}_frac{args.frac}"
     model.save_pretrained(out)
     tok.save_pretrained(out)

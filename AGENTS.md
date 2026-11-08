@@ -30,7 +30,7 @@ then use `.\.venv\Scripts\python.exe` in place of `python` below.
 ## Checks — run before you say a task is done
 
 ```bash
-python -m pytest -k "not live" -q                        # offline suite, must stay green (1331+)
+python -m pytest -k "not live" -q                        # offline suite, must stay green (1342+)
 python -m src.ingestion.eval --offline --split dev       # accuracy scorecard (Track B work)
 ```
 Neither needs a Discord token, Ollama, or internet (the suite does need Chromium).
