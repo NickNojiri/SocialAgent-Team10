@@ -188,6 +188,9 @@ What changed when these were applied (Nov 2026):
 - **3D site:** removed seven section eyebrows; headline words use one solid accent instead of
   gradient text; the vague "Measured." became "Right 3 times in 4."; the test count is current
   (1,342) and both accuracy bars show one decimal; grey text contrast raised; flat icon tiles.
+- **Auto-play:** a Play button (bottom left; bottom centre on phones) scrolls the whole 3D story at
+  a watching pace, about 2½ minutes at 1× (2× and ½× too). Any scroll, swipe or key of your own
+  pauses it; a link ending in `?play` starts it right away, handy for the demo.
 - **Reference page:** the empty "Demo video coming soon" box shows a real spot card until the
   video exists.
 - **Phone app:** one solid pink for the main button; the tab bar uses one line-icon set and is
