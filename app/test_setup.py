@@ -15,7 +15,9 @@ import pytest
 import bot
 import cards
 import setup_wizard
-from tenant_auth import tenant_headers
+from tenant_auth import signed_for
+
+_signed = lambda h, g, u="": signed_for(h.get("X-Tenant-Token", ""), g, user_id=u)   # signed for this server (and user)  # noqa: E731
 
 pytestmark = pytest.mark.asyncio
 
@@ -76,7 +78,7 @@ async def test_settings_are_fetched_with_this_servers_token(monkeypatch):
     await setup_wizard.settings_for("g1")
     method, url, params, headers = fake.calls[0]
     assert (method, url, params) == ("GET", f"{cards.ADMIN_URL}/api/settings", {"guild_id": "g1"})
-    assert headers == tenant_headers("g1")
+    assert _signed(headers, "g1")
 
 
 async def test_settings_are_cached_until_asked_fresh(monkeypatch):
@@ -103,7 +105,7 @@ async def test_save_sends_only_what_changed_and_refreshes_the_cache(monkeypatch)
     method, url, body, headers = fake.calls[0]
     assert (method, url) == ("PUT", f"{cards.ADMIN_URL}/api/settings")
     assert body == {"guild_id": "g1", "home_city": "Long Beach, CA"}
-    assert headers == tenant_headers("g1")
+    assert _signed(headers, "g1")
     assert await setup_wizard.settings_for("g1") == saved    # served from cache
     assert len(fake.calls) == 1
 

@@ -64,3 +64,11 @@ def test_two_runs_give_one_stable_key(tmp_path):
     assert esk.ensure(env, ex) == "kept"
     assert env.read_text(encoding="utf-8") == first
     assert len(KEY_LINE.findall(first)) == 1
+
+
+def test_creates_the_revocation_list_once_and_never_overwrites_it(tmp_path):
+    path = tmp_path / "data" / "revoked_tokens.json"
+    assert esk.ensure_revocation_list(path) is True and path.read_text(encoding="utf-8").strip() == "{}"
+    path.write_text('{"' + "a" * 32 + '": 1}', encoding="utf-8")
+    assert esk.ensure_revocation_list(path) is False
+    assert "a" * 32 in path.read_text(encoding="utf-8")          # a revocation is never wiped

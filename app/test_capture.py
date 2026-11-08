@@ -10,7 +10,9 @@ import pytest
 
 import bot
 import cards
-from tenant_auth import tenant_headers
+from tenant_auth import signed_for
+
+_signed = lambda h, g, u="": signed_for(h.get("X-Tenant-Token", ""), g, user_id=u)   # signed for this server (and user)  # noqa: E731
 
 pytestmark = pytest.mark.asyncio
 
@@ -98,7 +100,7 @@ async def test_sync_path_posts_to_ingest(monkeypatch):
         "guild_id": "g1",
         "user_id": "u1",
     }
-    assert fake.headers == [tenant_headers("g1", user_id="u1")]
+    assert len(fake.headers) == 1 and _signed(fake.headers[0], "g1", "u1")
 
 
 async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
@@ -132,8 +134,8 @@ async def test_async_path_polls_reports_stages_and_returns_result(monkeypatch):
         {"urls": urls, "guild_id": "g1", "user_id": "u1"},
     )
     assert all(c[1] == f"{cards.ADMIN_URL}/api/jobs/j1" for c in fake.calls if c[0] == "GET")
-    assert fake.headers[0] == tenant_headers("g1", user_id="u1")
-    assert all(header == tenant_headers("g1") for header in fake.headers[1:])
+    assert _signed(fake.headers[0], "g1", "u1")
+    assert all(_signed(header, "g1") for header in fake.headers[1:])
     assert seen == [
         "⏳ Waiting for a free capture slot… (0/2 done)",
         "🔎 Reading those 2 links — caption and location… (0/2 done)",
@@ -242,8 +244,8 @@ async def test_one_poll_timeout_is_tolerated(monkeypatch):
     monkeypatch.setattr(cards.httpx, "AsyncClient", fake)
 
     assert await cards.capture_urls(["https://x.test/1"], "g1", "u1") == result
-    assert fake.headers[0] == tenant_headers("g1", user_id="u1")
-    assert all(header == tenant_headers("g1") for header in fake.headers[1:])
+    assert _signed(fake.headers[0], "g1", "u1")
+    assert all(_signed(header, "g1") for header in fake.headers[1:])
 
 
 async def test_one_poll_5xx_is_tolerated(monkeypatch):
@@ -405,7 +407,7 @@ async def test_the_timing_report_carries_the_token_and_never_raises(monkeypatch)
     _, url, body = fake.calls[1]
     assert url == f"{cards.ADMIN_URL}/api/time-to-card"
     assert body == {"guild_id": "g1", "seconds": 3600.0, "outcome": "card", "links": 10}   # clamped
-    assert fake.headers[0] == tenant_headers("g1")
+    assert _signed(fake.headers[0], "g1")
 
     class Down(_FakeClient):
         async def post(self, *args, **kwargs):

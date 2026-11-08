@@ -757,7 +757,7 @@ async def app_command(interaction: discord.Interaction):
     gid = cards.guild_key(interaction)
     uid = str(interaction.user.id)
     try:
-        guest, mine = mint_token(gid, scope=SCOPE_GUEST), mint_token(gid, user_id=uid)
+        guest, mine = mint_token(gid, scope=SCOPE_GUEST), mint_token(gid, user_id=uid)   # both links (30/14 days)
     except RuntimeError as exc:
         log.error(f"[app] {exc}")
         await interaction.response.send_message(

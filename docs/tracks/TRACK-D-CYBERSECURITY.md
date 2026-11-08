@@ -89,16 +89,17 @@ no mentions (`AllowedMentions.none()`).
 ### Phase 2 — Oct 6 – Oct 24 (100 pts)
 
 **#30 Authentication & session hardening ★ (100)**
-- [ ] Add an expiry to the signed tenant tokens, and a token id so one can be revoked
+- [x] Add an expiry to the signed tenant tokens, and a token id so one can be revoked
       without rotating the master key.
-- [ ] Revocation list (or key-version) check on every verify; keep it fail-closed.
-- [ ] Defend against replay of a captured token — expiry plus a revocation path at
+- [x] Revocation list (or key-version) check on every verify; keep it fail-closed.
+- [x] Defend against replay of a captured token — expiry plus a revocation path at
       minimum; document what remains possible.
-- [ ] Coordinate with Nick's #10 (secrets & key rotation) — same key, two features.
-- [ ] Tests: an expired token is refused; a revoked token is refused immediately; a valid
+- [x] Coordinate with Nick's #10 (secrets & key rotation) — same key, two features.
+- [x] Tests: an expired token is refused; a revoked token is refused immediately; a valid
       one still works; share links still work across a rotation or are re-issued.
-- [ ] **Done when:** those tests pass and the attack suite gains a replay case that fails
-      to get in.
+- [x] **Done when:** those tests pass and the attack suite gains a replay case that fails
+      to get in. **Nov 8:** token v2 per the #13 contract; `test_attack_token_replay.py` (25
+      cases) is a class in `bench_security_attacks.py`: **126 attacks, 126 refused**. Review: Kimberly.
 
 ### Phase 3 — Oct 27 – Nov 14 (120 pts)
 

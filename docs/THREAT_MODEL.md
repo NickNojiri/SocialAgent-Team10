@@ -91,10 +91,19 @@ forged requests rejected across 32 attack classes, **15/15** authentic requests
 accepted. With `authorize` replaced by a no-op — the pre-fix code path — the same
 32 forgeries are rejected **0/32**.
 
-**Residual (accepted).** Tokens are stable bearer capabilities, not nonces — whoever
-captures one keeps that tenant's access until the key is rotated, and rotating revokes
-every share link. (A planned rotation with `--grace` keeps old links working until an
-announced date, #10; after a leak, rotate without it.) The empty tenant `""` (legacy single-tenant catalog, the local web
+**Hardened (#30, Nov 8).** Tokens now expire and can be revoked one at a time
+(`v2.<kind>.<jti>.<exp>.<sig>`, contract on GitHub #13): per-call tokens last 5 minutes,
+links 30 days (guest invites 14); a link can never forget a server, delete a spot or change
+settings; a token claiming a longer life than its kind allows is refused; revoked ids in
+`data/revoked_tokens.json` are checked on every request, and a missing or broken list is a
+503 (fail closed); v1 tokens are refused unless `SPOTBOT_ACCEPT_V1_TOKENS=1`.
+`test_attack_token_replay.py`: 25 cases, all refused/as expected.
+
+**Residual (accepted).** A captured token still replays until it expires (at most 5
+minutes for a per-call token) or is revoked; links are bearer capabilities until then.
+One-time nonces would need server state on every call and are out of scope. (A planned
+rotation with `--grace` keeps old links working until an announced date, #10; after a
+leak, rotate without it.) The empty tenant `""` (legacy single-tenant catalog, the local web
 UI at `/`) stays open by design, and `/api/stats` + `/dash` show per-guild *counts*
 across tenants; both rely on the `127.0.0.1` bind (T8).
 

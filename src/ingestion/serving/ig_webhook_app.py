@@ -30,7 +30,7 @@ import httpx
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from src.ingestion.serving.tenant_auth import mint_token
+from src.ingestion.serving.tenant_auth import KIND_CALL, mint_token
 from src.ingestion.sources.ig_webhook import (
     SharedPost,
     SharedPostStore,
@@ -170,7 +170,7 @@ def _handle(posts: list[SharedPost]) -> None:
 def _queue_capture(post: SharedPost) -> bool:
     guild = _env("IG_WEBHOOK_GUILD_ID")
     user = _sender_key(post.sender_id)
-    headers = {"X-Tenant-Token": mint_token(guild, user_id=user)} if guild else {}
+    headers = {"X-Tenant-Token": mint_token(guild, user_id=user, kind=KIND_CALL)} if guild else {}
     try:
         with _http_client() as client:
             resp = client.post(f"{_env('ADMIN_URL', 'http://127.0.0.1:8010')}/api/jobs",
