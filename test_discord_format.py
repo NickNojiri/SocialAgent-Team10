@@ -25,14 +25,14 @@ def test_format_as_embed():
     
     embed = format_as_embed([rec1, rec2])
     
-    assert embed["title"] == "✨ Here's what I found:"
+    assert embed["title"] == "2 spots that match"
     assert "fields" in embed
     assert len(embed["fields"]) == 2
     
     f1 = embed["fields"][0]
     assert "🍰" in f1["name"]
     assert "Test Cafe" in f1["name"]
-    assert "cafe dessert" in f1["name"]
+    assert "Cafés & dessert" in f1["name"] and "*" not in f1["name"]
     assert "Good coffee" in f1["value"]
     assert "1700000000" in f1["value"]
     assert "1700003600" in f1["value"]
@@ -41,7 +41,7 @@ def test_format_as_embed():
     f2 = embed["fields"][1]
     assert "🏞️" in f2["name"]
     assert "Test Park" in f2["name"]
-    assert "time TBD" in f2["value"]
+    assert "TBD" not in f2["value"] and "<t:" not in f2["value"]     # no date: no line about it
 
 def test_format_as_embed_empty():
     embed = format_as_embed([])

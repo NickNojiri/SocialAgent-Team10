@@ -64,7 +64,6 @@
   .note { background: #fffbe6; border: 1px solid #ecdca0; padding: 6px 10px; font-size: 13px; margin: 6px 0 12px; }
   .video { aspect-ratio: 16 / 9; background: #1d1f22; border: 1px solid var(--line); display: grid; place-items: center; margin: 6px 0 4px; }
   .video video { width: 100%; height: 100%; display: block; }
-  .video .soon { color: #d7dbe0; text-align: center; padding: 16px; } .video .soon b { display: block; font-size: 17px; color: #fff; }
   .bars { max-width: 560px; margin: 6px 0 4px; }
   .bar { display: grid; grid-template-columns: 200px 1fr 54px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
   .bar i { height: 12px; background: var(--line2); display: block; } .bar i::after { content: ""; display: block; height: 100%; width: var(--w); background: var(--link); }
@@ -479,10 +478,11 @@ Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap cont
       if (first) location.hash = first.querySelector("a").getAttribute("href");
     });
   })();
-  // Until docs/site/media/demo.mp4 exists, show a placeholder instead of an empty player.
+  // Until docs/site/media/demo.mp4 exists, the box shows a screenshot instead.
   (function () {
     var box = document.getElementById("video");
-    function soon() { box.innerHTML = '<div class="soon"><b>Demo video coming soon</b>We’re recording it in our test server.</div>'; }
+    // Until then, show the real product: a spot card from the test server, not an empty player.
+    function soon() { box.innerHTML = '<img src="img/02_spot_card.webp" alt="A SpotBot spot card in Discord: the place, the area, a link to the reel, and the vote buttons" style="width:100%;height:100%;object-fit:contain;background:#313338">'; }
     fetch("media/demo.mp4", { method: "HEAD" }).then(function (r) { if (!r.ok) soon(); }).catch(soon);
   })();
 </script>

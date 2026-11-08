@@ -89,7 +89,7 @@ def test_build_spot_embed_scheduled():
         "[Open map](https://www.openstreetmap.org/?mlat=35.17&mlon=136.91#map=17/35.17/136.91)"
     )
     assert fields["Who's in"] == "nick, sam"
-    assert embed.footer.text == "food drink · shared by nick · via Instagram"
+    assert embed.footer.text == "Food & drink · shared by nick · via Instagram"
 
 
 def test_build_spot_embed_unscheduled_and_already():

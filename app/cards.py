@@ -466,7 +466,7 @@ def build_spot_embed(event: dict, home: Optional[dict] = None) -> discord.Embed:
     desc_parts: list[str] = []
     blurb = event.get("blurb")
     if blurb:                                   # capture flow: video-based quick description
-        desc_parts.append(f"📝 {blurb}")
+        desc_parts.append(str(blurb))
     elif event.get("theme"):
         desc_parts.append(str(event["theme"])[:300])
     if event.get("source_url"):
@@ -498,7 +498,7 @@ def build_spot_embed(event: dict, home: Optional[dict] = None) -> discord.Embed:
             inline=False,
         )
 
-    parts = [category.replace("_", " ")]
+    parts = [CATEGORY_LABEL.get(category, category.replace("_", " ").capitalize())]
     if event.get("sharer"):
         parts.append(f"shared by {event['sharer']}")
     parts.append(_platform_label(event.get("source_url", "")))
