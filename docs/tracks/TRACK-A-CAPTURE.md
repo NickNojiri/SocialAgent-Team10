@@ -60,14 +60,15 @@ Phase 1 feature, and it is the number the whole semester's reliability story res
 ### Phase 1 — Sep 15 – Oct 3 (120 pts)
 
 **#1 Live capture reliability harness (60)**
-- [ ] Collect 50+ reel URLs nobody hand-picked (`scripts/pull_dm_reels.py`, or a random
+- [x] Collect 50+ reel URLs nobody hand-picked (`scripts/pull_dm_reels.py`, or a random
       slice of `fixtures/labels.jsonl` URLs).
-- [ ] Write `scripts/capture_harness.py`: runs the batch unattended, one row per URL.
-- [ ] Record for every URL: outcome, elapsed seconds, and a failure class —
+- [x] Write `scripts/capture_harness.py`: runs the batch unattended, one row per URL.
+- [x] Record for every URL: outcome, elapsed seconds, and a failure class —
       `login_wall`, `no_video`, `timeout`, `no_venue`, `not_a_place`, `other`.
-- [ ] Emit a summary table + a JSON/CSV artifact that Nick's dashboard can read later.
-- [ ] **Done when:** you can state the pass rate on 50+ random reels with the failure
-      breakdown, and re-run it with one command.
+- [x] Emit a summary table + a JSON/CSV artifact that Nick's dashboard can read later.
+- [x] **Done when:** you can state the pass rate on 50+ random reels with the failure
+      breakdown, and re-run it with one command. (Oct 17: 50 random reels, **68% pass**;
+      misses 13 no venue, 3 not a place: `docs/results/capture-harness-2026-10-17.json`.)
 
 **#3 Capture input hardening — SSRF + download safety (60) 🔒**
 - [x] Resolve the host before fetching; refuse private/loopback/link-local ranges

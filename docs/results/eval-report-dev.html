@@ -1,0 +1,122 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpotBot accuracy report: dev</title>
+<style>
+  :root { --ink:#1d2129; --mut:#5b6170; --line:#e3e6ec; --acc:#d6336c; --bg:#fff; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,"Segoe UI",sans-serif; font-variant-numeric:tabular-nums; }
+  main { max-width:900px; margin:0 auto; padding:28px 18px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; text-wrap:balance; } h2 { font-size:17px; margin:32px 0 10px; }
+  .sub { color:var(--mut); font-size:13px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:600; font-size:12px; }
+  td.n { text-align:right; } .hit { font-weight:700; }
+  svg { width:100%; height:auto; font-size:12px; } svg text { fill:var(--ink); }
+  .track { fill:#eef0f4; } .bar { fill:var(--acc); } .ci { stroke:var(--ink); stroke-width:2; }
+  a { color:var(--acc); } .wrap { overflow-x:auto; }
+</style></head><body><main>
+<h1>SpotBot accuracy report: dev split</h1>
+<p class="sub">2026-11-08 · commit ec618ed · 113 reels · rules-only extractor, train-only alias table ·
+rebuilt with <code>python scripts/eval_report.py --split dev</code></p>
+<h2>Every metric, with its 95% interval</h2>
+<svg viewBox="0 0 640 228" role="img" aria-label="Accuracy with 95% intervals"><text x="200" y="25" text-anchor="end">Venue: same place</text><rect x="210" y="14" width="360" height="14" rx="3" class="track"/><rect x="210" y="14" width="234.3" height="14" rx="3" class="bar"/><line x1="410.3" x2="474.6" y1="21" y2="21" class="ci"/><text x="578" y="25">65.1%</text><text x="200" y="59" text-anchor="end">Venue: exact</text><rect x="210" y="48" width="360" height="14" rx="3" class="track"/><rect x="210" y="48" width="163.0" height="14" rx="3" class="bar"/><line x1="340.1" x2="407.1" y1="55" y2="55" class="ci"/><text x="578" y="59">45.3%</text><text x="200" y="93" text-anchor="end">Category</text><rect x="210" y="82" width="360" height="14" rx="3" class="track"/><rect x="210" y="82" width="321.1" height="14" rx="3" class="bar"/><line x1="505.4" x2="547.3" y1="89" y2="89" class="ci"/><text x="578" y="93">89.2%</text><text x="200" y="127" text-anchor="end">City in place text</text><rect x="210" y="116" width="360" height="14" rx="3" class="track"/><rect x="210" y="116" width="285.7" height="14" rx="3" class="bar"/><line x1="461.9" x2="520.9" y1="123" y2="123" class="ci"/><text x="578" y="127">79.3%</text><text x="200" y="161" text-anchor="end">Promo rejected (recall)</text><rect x="210" y="150" width="360" height="14" rx="3" class="track"/><rect x="210" y="150" width="102.9" height="14" rx="3" class="bar"/><line x1="252.2" x2="406.7" y1="157" y2="157" class="ci"/><text x="578" y="161">28.6%</text><text x="200" y="195" text-anchor="end">Promo rejected (precision)</text><rect x="210" y="184" width="360" height="14" rx="3" class="track"/><rect x="210" y="184" width="360.0" height="14" rx="3" class="bar"/><line x1="393.6" x2="570.0" y1="191" y2="191" class="ci"/><text x="578" y="195">100.0%</text></svg>
+<div class="wrap"><table><tr><th>Metric</th><th>Rate</th><th>95% interval (Wilson)</th><th>Count</th><th>Note</th></tr>
+<tr><td>Venue: same place</td><td>65.1%</td><td>[55.6%, 73.5%]</td><td>69 / 106</td><td>LABELING_GUIDE §3 match</td></tr>
+<tr><td>Venue: exact</td><td>45.3%</td><td>[36.1%, 54.8%]</td><td>48 / 106</td><td>identical name</td></tr>
+<tr><td>Category</td><td>89.2%</td><td>[82.0%, 93.7%]</td><td>99 / 111</td><td></td></tr>
+<tr><td>City in place text</td><td>79.3%</td><td>[70.0%, 86.4%]</td><td>73 / 92</td><td></td></tr>
+<tr><td>Promo rejected (recall)</td><td>28.6%</td><td>[11.7%, 54.6%]</td><td>4 / 14</td><td>gold says not a place</td></tr>
+<tr><td>Promo rejected (precision)</td><td>100.0%</td><td>[51.0%, 100.0%]</td><td>4 / 4</td><td>0 real places rejected</td></tr>
+</table></div>
+<h2>Category, per kind</h2><div class="wrap"><table><tr><th>Gold kind</th><th>Right</th><th>95% interval</th><th>Count</th></tr>
+<tr><td>cafe_dessert</td><td>89.2%</td><td>[75.3%, 95.7%]</td><td>33 / 37</td></tr>
+<tr><td>food_drink</td><td>92.6%</td><td>[83.9%, 96.8%]</td><td>63 / 68</td></tr>
+<tr><td>market_popup</td><td>0.0%</td><td>[0.0%, 79.3%]</td><td>0 / 1</td></tr>
+<tr><td>nightlife</td><td>66.7%</td><td>[20.8%, 93.9%]</td><td>2 / 3</td></tr>
+<tr><td>other</td><td>50.0%</td><td>[9.5%, 90.5%]</td><td>1 / 2</td></tr>
+</table></div><h2>Category confusion (rows: gold, columns: predicted)</h2><div class="wrap"><table><tr><th></th>
+<th>cafe_dessert</th>
+<th>food_drink</th>
+<th>live_music</th>
+<th>market_popup</th>
+<th>nightlife</th>
+<th>other</th>
+</tr>
+<tr><th>cafe_dessert</th><td class="n hit">33</td><td class="n">3</td><td class="n"></td><td class="n"></td><td class="n">1</td><td class="n"></td></tr>
+<tr><th>food_drink</th><td class="n">2</td><td class="n hit">63</td><td class="n"></td><td class="n"></td><td class="n">3</td><td class="n"></td></tr>
+<tr><th>market_popup</th><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n hit"></td><td class="n"></td><td class="n"></td></tr>
+<tr><th>nightlife</th><td class="n"></td><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n hit">2</td><td class="n"></td></tr>
+<tr><th>other</th><td class="n">1</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n hit">1</td></tr>
+</table></div><h2>Venues missed (37)</h2><div class="wrap"><table><tr><th>Reel</th><th>Predicted</th><th>Gold</th><th>Rule that fired</th><th>Confidence</th></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcrI427sRR5/">DcrI427sRR5</a></td><td>Live Oak Canyon</td><td>Live Oak Canyon Pumpkin Patch</td><td>sentence</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DbWa7YQhb24/">DbWa7YQhb24</a></td><td>Visitamos la locacion de Doral</td><td>Tap 42 Bar</td><td>pin</td><td class="n">0.80</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcKOjt2oqB3/">DcKOjt2oqB3</a></td><td>None</td><td>Rokusho</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcPbreYK86W/">DcPbreYK86W</a></td><td>None</td><td>Ellie&#x27;s</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcWYz8CsUNe/">DcWYz8CsUNe</a></td><td>Mutsu Love</td><td>Mutsu</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdCxW7dP7Mu/">DdCxW7dP7Mu</a></td><td>None</td><td>Chef Fei</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/Da0-y8DB-FB/">Da0-y8DB-FB</a></td><td>None</td><td>Legado Parrilla</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DbmJtZeRVIh/">DbmJtZeRVIh</a></td><td>Thewifeylifey</td><td>None</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DbvNm7MhnTx/">DbvNm7MhnTx</a></td><td>Miami Beach</td><td>MIAM Cafe</td><td>pin</td><td class="n">0.80</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/Dc1wvaLy6qq/">Dc1wvaLy6qq</a></td><td>None</td><td>Kissa by Motto</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdAkGahCfd5/">DdAkGahCfd5</a></td><td>Sweet Bee West Covina</td><td>Sweet Bee</td><td>pin</td><td class="n">0.80</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdB8mGMuhs5/">DdB8mGMuhs5</a></td><td>None</td><td>Sushi by Woo</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdBz7zuRZh6/">DdBz7zuRZh6</a></td><td>Thompsonandbleeckerpizza</td><td>Thompson &amp; Bleecker</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdC6HVNB3_h/">DdC6HVNB3_h</a></td><td>None</td><td>Zodiac Boba</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdC7FnVhYzI/">DdC7FnVhYzI</a></td><td>Cake Babe Bakery</td><td>None</td><td>own_post</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdCStVtmWm4/">DdCStVtmWm4</a></td><td>Silverlake 2847 W Sunset Blvd</td><td>LA Sorted&#x27;s</td><td>pin</td><td class="n">0.80</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdD0qT3RGNC/">DdD0qT3RGNC</a></td><td>Okucharlotte</td><td>O-Ku</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdDBtj_R35x/">DdDBtj_R35x</a></td><td>Seahawks</td><td>None</td><td>handle_from</td><td class="n">0.85</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdDJ0YisfhJ/">DdDJ0YisfhJ</a></td><td>Churritoloco Southgate</td><td>Churrito Loco</td><td>own_post</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/C8aunMFtNml/">C8aunMFtNml</a></td><td>Tacolandofficial</td><td>Taco Land</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcMVUyeMJqP/">DcMVUyeMJqP</a></td><td>ROL</td><td>ROL Hand Roll Bar</td><td>at_venue</td><td class="n">0.55</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcUXQz_SdUi/">DcUXQz_SdUi</a></td><td>Seasonal Sundaes</td><td>None</td><td>quoted</td><td class="n">0.70</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcrdsFEspx2/">DcrdsFEspx2</a></td><td>None</td><td>Iki Toro</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdINs_DJJHd/">DdINs_DJJHd</a></td><td>Vivalamamma Onthird</td><td>Viva La Mamma</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdIfVxyO2Vh/">DdIfVxyO2Vh</a></td><td>Hawaii Fresh Poke Bowls</td><td>Morning Catch</td><td>first_person</td><td class="n">0.80</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeA4iQPMF7l/">DeA4iQPMF7l</a></td><td>West Fieldcentury City</td><td>BAKE Cheese Tart</td><td>handle_from</td><td class="n">0.85</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeKvzq8ydY2/">DeKvzq8ydY2</a></td><td>Jajiaozi</td><td>Jiaozi Authentic</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeKx91nyY96/">DeKx91nyY96</a></td><td>Jeju</td><td>Mama Chai&#x27;s</td><td>from_titlecase</td><td class="n">0.70</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeLDD9YpgtK/">DeLDD9YpgtK</a></td><td>None</td><td>Coffee and Co</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeMv_DBKrP9/">DeMv_DBKrP9</a></td><td>Rochex Coffee</td><td>Roche Coffee</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNFikSRueR/">DeNFikSRueR</a></td><td>Nakameguro</td><td>None</td><td>at_venue</td><td class="n">0.55</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNLjIny3NH/">DeNLjIny3NH</a></td><td>Eat Mister Burger</td><td>Mister Burger</td><td>bare_mention</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNMUUnCGtj/">DeNMUUnCGtj</a></td><td>Pit Burguer - Grajaú</td><td>Pit Burguer</td><td>at_venue</td><td class="n">0.55</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNsHwogMXy/">DeNsHwogMXy</a></td><td>None</td><td>壽司飯丸專門店</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeOWZ31pU-z/">DeOWZ31pU-z</a></td><td>Knafeh</td><td>Jounieh</td><td>sentence</td><td class="n">0.60</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeOWkGAv9GA/">DeOWkGAv9GA</a></td><td>None</td><td>Cross Section</td><td>none</td><td class="n">0.00</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeOlSfkSnlP/">DeOlSfkSnlP</a></td><td>None</td><td>Tubros Burger</td><td>none</td><td class="n">0.00</td></tr>
+</table></div><h2>Categories missed (12)</h2><div class="wrap"><table><tr><th>Reel</th><th>Predicted</th><th>Gold</th><th>Caption starts</th></tr>
+<tr><td><a href="https://www.instagram.com/reel/DcrI427sRR5/">DcrI427sRR5</a></td><td>food_drink</td><td>market_popup</td><td>Not only is this the biggest pumpkin patch in SoCal, it also has tons of rides, games, foo</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DZyUpeBP46v/">DZyUpeBP46v</a></td><td>food_drink</td><td>cafe_dessert</td><td>@phincoffeetorrance got a major upgrade and has the prettiest and yummiest drinks!! 
+
+📍179</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdC_GCjR-Rf/">DdC_GCjR-Rf</a></td><td>nightlife</td><td>cafe_dessert</td><td>Move over churro cart! I think I found the BEST churros in Walt Disney World! 
+
+These are </td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdCQNyCleo7/">DdCQNyCleo7</a></td><td>nightlife</td><td>food_drink</td><td>Trying out the best burger IN THE WORLD 🌎 
+
+📍La Birra Bar 
+2031 E Oakland Park Blvd
+Fort L</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdCiADMvojF/">DdCiADMvojF</a></td><td>food_drink</td><td>cafe_dessert</td><td>fatia de torta cookie ovomaltine virou meu víciooooo 🙆🏻‍♀️😮‍💨
+
+disponível na vitrine nos d</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdDHrZ0NoRe/">DdDHrZ0NoRe</a></td><td>nightlife</td><td>food_drink</td><td>Send this to the group chat because we finally found the answer to “Where should we eat?” </td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DbQ5Xq7z7h2/">DbQ5Xq7z7h2</a></td><td>food_drink</td><td>cafe_dessert</td><td>New addiction unlocked🔓 
+
+We are open today from:
+
+Fullerton: 10AM-3PM
+
+Brea: 10AM-8PM</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DdINs_DJJHd/">DdINs_DJJHd</a></td><td>nightlife</td><td>food_drink</td><td>A PASTA sampler?! 🍝 Say less!
+
+The waitress told me this pasta sampler is only available o</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/Ddj7rDaB-5D/">Ddj7rDaB-5D</a></td><td>live_music</td><td>nightlife</td><td>THIS FRIDAY 9/25! Jazz and natural wine. Secret location in Costa Mesa. Link in bio for ti</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNFikSRueR/">DeNFikSRueR</a></td><td>cafe_dessert</td><td>other</td><td>another fav neighborhood of mine in Tokyo : Nakameguro 📍✨🇯🇵
+silence, cute coffee shops, gr</td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeNHOuOyZDz/">DeNHOuOyZDz</a></td><td>cafe_dessert</td><td>food_drink</td><td>Fall menus are officially here in Temecula, and we’ve done plenty of research so we could </td></tr>
+<tr><td><a href="https://www.instagram.com/reel/DeOWZ31pU-z/">DeOWZ31pU-z</a></td><td>cafe_dessert</td><td>food_drink</td><td>This is what we mean when we say save room for dessert.
+
+Knafeh is a classic Lebanese dess</td></tr>
+</table></div><p class="sub">The test split isn't in this report. It's read once, at the end, with <code>python -m src.ingestion.eval --split test --final "why"</code>, which logs the read in docs/results/TEST_LEDGER.md.</p></main></body></html>
