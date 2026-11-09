@@ -13,7 +13,7 @@
   :root {
     color-scheme: dark;
     --bg: #06060c; --panel: rgba(14, 13, 30, .62); --line: rgba(255,255,255,.09);
-    --ink: #eceefa; --ink2: #a6aac6; --ink3: #767a9c;
+    --ink: #eceefa; --ink2: #a6aac6; --ink3: #8d91b0;
     --violet: #7C5CFF; --pink: #FF3D8B; --orange: #FF8A4C; --cyan: #22D3EE; --lime: #A3E635; --yellow: #FFD23F;
     --grad: linear-gradient(100deg, var(--violet), var(--pink) 55%, var(--orange));
     --dc-bg: #313338; --dc-embed: #2b2d31; --dc-ink: #dbdee1; --dc-ink2: #b5bac1; --dc-link: #00a8fc; --live: #f23f43;
@@ -21,19 +21,18 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif; overflow-x: hidden; }
-  h1, h2, h3 { font-family: "Bricolage Grotesque", Inter, sans-serif; line-height: 1.02; letter-spacing: -0.025em; margin: 0; }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", Inter, sans-serif; line-height: 1.02; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+  p { text-wrap: pretty; }
   a { color: var(--cyan); }
   /* headline accents follow the sky (the 3D city sets --sky-*: golden hour, dusk, night) */
-  .grad { background: linear-gradient(100deg, var(--sky-g1, #b4a6ff), var(--sky-g2, #f59cc0) 55%, var(--sky-g3, #f7bf98)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 12px/1 Inter, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--sky-acc, #8fd2df); }
+  .grad { color: var(--sky-g2, #f59cc0); }   /* the one accent: a solid colour, not gradient-clipped text */
   /* words over the city: no panels behind them, just the sky's colours and a soft shadow or halo */
   .beat h1, .hero-copy h1, .scene h2, .final h2, .after h2 { color: var(--sky-ink, var(--ink)); text-shadow: var(--sky-shadow, 0 4px 30px rgba(0,0,0,.6)) !important; transition: color .4s; }
   .beat p, .hero-copy p, .lede, .note, .soon, .final p, .timeline li.cur { color: var(--sky-ink2, var(--ink2)) !important; text-shadow: var(--sky-shadow, 0 2px 20px rgba(0,0,0,.7)) !important; transition: color .4s; }
-  .grad { text-shadow: none !important; filter: drop-shadow(0 2px 14px rgba(0,0,0,.35)); }
-  .eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--grad); border-radius: 2px; }
+  .grad { text-shadow: inherit; }
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border-radius: 999px; font-weight: 700; text-decoration: none; transition: transform .2s, box-shadow .2s; }
   .btn:hover { transform: translateY(-2px); }
-  .btn.primary { background: var(--grad); color: #fff; box-shadow: 0 10px 40px -8px color-mix(in srgb, var(--pink) 70%, transparent); }
+  .btn.primary { background: var(--pink); color: #fff; }
   .btn.primary:hover { box-shadow: 0 16px 50px -6px color-mix(in srgb, var(--pink) 90%, transparent); }
   .btn.ghost { color: var(--ink); border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.04); backdrop-filter: blur(10px); }
   .glass { background: var(--panel); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -57,6 +56,13 @@
   nav .links a.gh { color: #fff; background: rgba(255,255,255,.08); }
   @media (max-width: 700px) { nav .links a:not(.gh) { display: none; } }
 
+  /* auto-play + glide: a Play button in the top bar; one swipe glides to the next section */
+  .autoplay { display: flex; gap: 6px; align-items: center; margin-left: auto; margin-right: 8px; }
+  .autoplay button { border: 0; border-radius: 999px; padding: 7px 14px; font: 700 14px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,.08); cursor: pointer; transition: transform .12s, background-color .2s; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .autoplay button:active { transform: scale(.96); }
+  .autoplay #playBtn { background: var(--pink); color: #fff; min-width: 104px; }
+  .autoplay #speedBtn { min-width: 44px; }
+  @media (max-width: 420px) { .autoplay #speedBtn { display: none; } .autoplay #playBtn { min-width: 0; } .logo { font-size: 17px; } }
   .rail { position: fixed; right: 22px; top: 50%; translate: 0 -50%; z-index: 30; display: grid; gap: 14px; }
   .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; text-decoration: none; color: var(--ink3); font: 600 12px Inter, sans-serif; }
   .rail a span { opacity: 0; transform: translateX(6px); transition: .25s; white-space: nowrap; }
@@ -312,7 +318,7 @@
   .bars .track2 { height: 14px; border-radius: 14px; background: rgba(255,255,255,.07); overflow: hidden; }
   .bars .track2 i { display: block; height: 100%; border-radius: 14px; width: calc(var(--w, 0) * 1%); }
   .bars .rules i { background: #5b5f6b; }
-  .bars .ml i { background: var(--grad); box-shadow: 0 0 20px var(--pink); }
+  .bars .ml i { background: var(--pink); }
   .bars .val { text-align: right; font-variant-numeric: tabular-nums; }
   @media (max-width: 860px) { .nums .stats { grid-template-columns: 1fr 1fr; gap: 10px; } .stat .in { padding: 18px 16px; } .bars .row { grid-template-columns: 90px 1fr 46px; } }
 
@@ -326,7 +332,7 @@
   .after { position: relative; padding: 120px 0 0; }
   .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
   .priv { padding: 26px; transform: perspective(900px) rotateX(var(--ty, 0deg)) rotateY(var(--tx, 0deg)); transition: transform .15s; }
-  .priv .ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 26px; background: linear-gradient(135deg, var(--o1), var(--o2)); box-shadow: 0 10px 30px -8px var(--o1); }
+  .priv .ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 26px; background: rgba(255,255,255,.07); }
   .priv h3 { font-size: 22px; margin: 16px 0 6px; }
   .priv p { margin: 0; color: var(--ink2); }
   @media (max-width: 800px) { .privacy { grid-template-columns: 1fr; } }
@@ -426,6 +432,10 @@
   <div class="bar">
     <div class="in glass">
       <a class="logo" href="#top"><i>📍</i>SpotBot</a>
+      <div class="autoplay" role="group" aria-label="Auto-play">
+        <button id="playBtn" type="button" aria-pressed="false">▶ Play</button>
+        <button id="speedBtn" type="button" aria-label="Speed">1×</button>
+      </div>
       <div class="links">
         <a href="#how">How it works</a>
         <a href="#live">Live feed</a>
@@ -502,7 +512,7 @@
         <div class="dc-body" id="heroBody"></div>
       </div>
     </div>
-    <div class="hint">Scroll to swipe</div>
+    <div class="hint">Swipe once, or press Play</div>
     <div class="reelcount" id="reelcount"></div>
   </div>
 </section>
@@ -512,7 +522,6 @@
   <div class="sticky">
     <div class="wrap grid">
       <div>
-        <div class="eyebrow">How it works</div>
         <h2>Share. Read. <span class="grad">Vote.</span></h2>
         <ol class="steplist" id="steplist">
           <li><b>1</b><span>Share a reel</span><div class="pb"><i></i></div></li>
@@ -536,7 +545,7 @@
   <div class="sticky">
     <div class="wrap">
       <div class="wallhead">
-        <div><div class="eyebrow">Live feed</div><h2>Every reel, <span class="grad">a card.</span></h2></div>
+        <div><h2>Every reel, <span class="grad">a card.</span></h2></div>
         <div class="ticker glass"><span class="livedot">LIVE</span><span><b id="made">0</b> cards made</span></div>
       </div>
       <div class="wallstage"><div class="wall" id="wall"></div></div>
@@ -550,7 +559,6 @@
   <div class="sticky">
     <div class="wrap grid">
       <div>
-        <div class="eyebrow">Demo</div>
         <h2>Friday night, <span class="grad">settled.</span></h2>
         <ol class="timeline" id="timeline">
           <li data-at=".04">Maya shares a reel</li>
@@ -588,7 +596,6 @@
   <div class="sticky">
     <div class="wrap grid">
       <div>
-        <div class="eyebrow">Not every reel is a place</div>
         <h2>Memes <span class="grad">don't break it.</span></h2>
         <p class="lede">No place? It's filed under 💭, out of the way.</p>
       </div>
@@ -623,13 +630,12 @@
 <section class="scene nums" id="numbers" data-scene="numbers" style="height:260vh">
   <div class="sticky">
     <div class="wrap">
-      <div class="eyebrow">By the numbers</div>
-      <h2><span class="grad">Measured.</span></h2>
+      <h2>Right <span class="grad">3 times in 4.</span></h2>
       <div class="stats" id="stats">
         <div class="stat"><div class="in glass"><b class="grad" data-to="74" data-suffix="%">0%</b><span>Right place</span><small>271 held-out reels</small></div></div>
         <div class="stat"><div class="in glass"><b class="grad" data-to="0.3" data-dec="1" data-prefix="~" data-suffix="s">~0.0s</b><span>Per reel</span><small>On a laptop CPU</small></div></div>
         <div class="stat"><div class="in glass"><b class="grad" data-to="0">0</b><span>Posts sent out</span><small>It all runs on our machine</small></div></div>
-        <div class="stat"><div class="in glass"><b class="grad" data-to="1196">0</b><span>Automated tests</span><small>Access checks included</small></div></div>
+        <div class="stat"><div class="in glass"><b class="grad" data-to="1342">0</b><span>Automated tests</span><small>Access checks included</small></div></div>
       </div>
       <div class="bars glass" id="bars">
         <div class="row rules"><span>Hand-written rules</span><div class="track2"><i></i></div><span class="val">0%</span></div>
@@ -644,7 +650,6 @@
   <div class="sticky">
     <div class="wrap">
       <div class="musiccap" id="musiccap">
-        <div class="eyebrow">Live music</div>
         <h2>Shows, <span class="grad">too.</span></h2>
         <p class="lede">Concert reels land as 🎶 live music cards, and the server votes on those as well.</p>
       </div>
@@ -655,7 +660,7 @@
 <!-- 7. Privacy + final -->
 <section class="after" id="privacy">
   <div class="wrap">
-    <div class="reveal"><div class="eyebrow">Privacy</div><h2 style="font-size:clamp(34px,5.4vw,64px);margin-top:14px"><span class="grad">Yours.</span></h2></div>
+    <div class="reveal"><h2 style="font-size:clamp(34px,5.4vw,64px);margin-top:14px">Your reels <span class="grad">stay yours.</span></h2></div>
     <div class="privacy">
       <div class="priv glass reveal" data-tilt style="--o1:#7C5CFF;--o2:#22D3EE"><div class="ico">🖥️</div><h3>Runs locally</h3><p>Never sent to an outside AI company.</p></div>
       <div class="priv glass reveal" data-tilt style="--o1:#FF3D8B;--o2:#FF8A4C"><div class="ico">🚫</div><h3>No ads, no selling</h3><p>It only sees what you send it.</p></div>
@@ -693,8 +698,8 @@
   const SPOT = window.SPOT = { intro: 0, hero: 0, how: 0, live: 0, demo: 0, place: 0, np: 0, numbers: 0, music: 0 };
   // Every place on the page is from SpotBot's real catalog: the hand-labelled reels, pinned where the
   // place really is (la/spots.js, built by tools/build_spots.py). The people, captions and votes are a demo.
-  const KIND = { food_drink: ["🍽️", "#FF8A4C", "food drink"], cafe_dessert: ["🍰", "#FF3D8B", "cafe dessert"], nightlife: ["🍸", "#9b87ff", "nightlife"],
-                 outdoors: ["🏞️", "#22D3EE", "outdoors"], live_music: ["🎶", "#A3E635", "live music"], other: ["📍", "#888780", "other"] };
+  const KIND = { food_drink: ["🍽️", "#FF8A4C", "Food & drink"], cafe_dessert: ["🍰", "#FF3D8B", "Cafés & dessert"], nightlife: ["🍸", "#9b87ff", "Nightlife"],
+                 outdoors: ["🏞️", "#22D3EE", "Outdoors"], live_music: ["🎶", "#A3E635", "Live music"], other: ["📍", "#888780", "Other spots"] };
   const DISH = { bbq_grill: "BBQ", drinks_bar: "Drinks", fried_chicken: "Fried chicken", pastry: "Pastries" };
   const SPOTS = (window.SPOTS || []).map((s) => {
     const [emoji, color, cat] = KIND[s.cat] || KIND.other, d = s.dish && s.dish[0];
@@ -716,7 +721,7 @@
       handle: "@demo.night", cap: "dinner in echo park tonight 🍽️", sharer: "ari", sc: "#c0392b", votes: 5 }),
   ].filter(Boolean);
   SPOT.REELS = REELS;
-  const cardHTML = (s, id) => `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="d">📝 ${s.desc}<br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.sharer} · via Instagram</div></div><div class="btns"><span class="up" id="${id}">👍 <b>0</b></span><span>👎</span><span>📅 Lock it in</span></div>`;
+  const cardHTML = (s, id) => `<div class="embed" style="--c:${s.color}"><div class="t">${s.emoji} ${s.venue}</div><div class="d">${s.desc}<br><a href="#">▶ Watch the reel</a></div><div class="fields"><div><b>Where</b><a href="#">Find on map</a></div></div><div class="foot">${s.cat} · shared by ${s.sharer} · via Instagram</div></div><div class="btns"><span class="up" id="${id}">👍 <b>0</b></span><span>👎</span><span>📅 Lock it in</span></div>`;
   const av = (t, bg) => `<div class="av" style="background:${bg}">${t}</div>`;
   const scenes = [...document.querySelectorAll("[data-scene]")];
   const progressOf = (el, r = el.getBoundingClientRect()) => reduce ? 1 : clamp(-r.top / Math.max(1, r.height - innerHeight));
@@ -996,7 +1001,7 @@
     [[62, .5], [74.2, .6]].forEach(([to, at], i) => {
       const e = ease(range(p, at, at + .25));
       bars[i].querySelector("i").style.setProperty("--w", to * e);
-      bars[i].querySelector(".val").textContent = (to * e).toFixed(i ? 1 : 0) + "%";
+      bars[i].querySelector(".val").textContent = (to * e).toFixed(1) + "%";
     });
   }
 
@@ -1029,6 +1034,127 @@
   addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(frame); } }, { passive: true });
   addEventListener("resize", frame);
   frame();
+
+  // ── auto-play + glide ──
+  //  Play (top bar) scrolls the whole story at a watching pace, about 2½ min at 1×.
+  //  Glide: one swipe, wheel flick or arrow key moves one section. The page speeds up,
+  //  holds its speed, then takes its time to slow down, so the scene plays as it passes.
+  //  One gesture = one section, however long the trackpad's own momentum keeps sending
+  //  events. Reduced motion turns glide off (plain scrolling). /?play starts Play on load.
+  const Motion = (function () {
+    const btn = $("playBtn"), speedBtn = $("speedBtn"), SPEEDS = [1, 2, 0.5];
+    const maxY = () => document.documentElement.scrollHeight - innerHeight;
+    let playing = false, py = 0, plast = 0, speed = 0;
+    let glide = null;            // {from, to, t0, dur}
+    function label() {
+      const atEnd = scrollY >= maxY() - 2;
+      btn.textContent = playing ? "❚❚ Pause" : atEnd ? "↺ Replay" : scrollY > 10 ? "▶ Resume" : "▶ Play";
+      btn.setAttribute("aria-pressed", String(playing));
+    }
+    // ── Play ──
+    function playStep(t) {
+      if (!playing) return;
+      if (Math.abs(scrollY - py) > 40) { pause(); return; }               // the scrollbar was dragged: hand over
+      const dt = Math.min(0.1, (t - plast) / 1000); plast = t;
+      py = Math.min(maxY(), py + innerHeight * 0.22 * SPEEDS[speed] * dt);
+      scrollTo(0, py);
+      if (py >= maxY()) { pause(); return; }
+      requestAnimationFrame(playStep);
+    }
+    function play() {
+      glide = null;
+      if (scrollY >= maxY() - 2) scrollTo(0, 0);
+      playing = true; py = scrollY; plast = performance.now(); label(); requestAnimationFrame(playStep);
+    }
+    function pause() { playing = false; label(); }
+    btn.addEventListener("click", () => (playing ? pause() : play()));
+    speedBtn.addEventListener("click", () => { speed = (speed + 1) % SPEEDS.length; speedBtn.textContent = SPEEDS[speed] + "×"; });
+
+    // ── Glide ──
+    function stops() {
+      const ys = [0, ...[...document.querySelectorAll("main.page > section, .after .final")].map((el) => {
+        let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop; return y;
+      }), maxY()];
+      return [...new Set(ys.map((y) => Math.min(maxY(), Math.round(y))))].sort((p, q) => p - q);
+    }
+    // position along a glide (0..1 of the distance) at time u (0..1): speeds up over the first
+    // 15%, cruises, and eases out over the last 50% (the area under a trapezoid of speed)
+    const A = 0.15, D = 0.5, V = 1 / (1 - A / 2 - D / 2);
+    function along(u) {
+      if (u <= A) return V * u * u / (2 * A);
+      if (u <= 1 - D) return V * (A / 2 + (u - A));
+      const r = 1 - u;
+      return 1 - V * r * r / (2 * D);
+    }
+    function glideTo(y) {
+      y = Math.max(0, Math.min(maxY(), y));
+      const dist = Math.abs(y - scrollY);
+      if (dist < 2) return;
+      const dur = Math.min(4200, Math.max(900, 600 + 1000 * dist / (innerHeight * 2.2)));   // ~2.2 screens a second at cruise
+      glide = { from: scrollY, to: y, t0: performance.now(), dur };
+      requestAnimationFrame(glideStep);
+    }
+    function glideStep(t) {
+      if (!glide) return;
+      const u = Math.min(1, (t - glide.t0) / glide.dur);
+      scrollTo(0, glide.from + (glide.to - glide.from) * along(u));
+      if (u < 1) requestAnimationFrame(glideStep); else { glide = null; label(); }
+    }
+    function step(dir) {
+      if (playing) pause();
+      const here = glide ? glide.to : scrollY, s = stops();
+      const next = dir > 0 ? s.find((y) => y > here + 4) : [...s].reverse().find((y) => y < here - 4);
+      if (next !== undefined) glideTo(next);
+    }
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce) {
+      // wheel / trackpad: one gesture moves one section. A gesture ends after 220 ms of quiet,
+      // so momentum events from the same flick never start a second glide.
+      let last = 0, used = false, sum = 0;
+      addEventListener("wheel", (e) => {
+        if (e.ctrlKey) return;                                              // pinch-zoom stays the browser's
+        e.preventDefault();
+        const now = performance.now();
+        if (now - last > 220) { used = false; sum = 0; }
+        last = now;
+        if (used) return;
+        sum += e.deltaY * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? innerHeight : 1);
+        if (Math.abs(sum) >= 8) { used = true; step(Math.sign(sum)); }
+      }, { passive: false });
+      // touch: one swipe (40 px or more) moves one section, the way a reel app does
+      let ty = null, tx = 0;
+      addEventListener("touchstart", (e) => { if (e.touches.length === 1) { ty = e.touches[0].clientY; tx = e.touches[0].clientX; } }, { passive: true });
+      addEventListener("touchmove", (e) => { if (ty !== null && e.cancelable) e.preventDefault(); }, { passive: false });
+      addEventListener("touchend", (e) => {
+        if (ty === null) return;
+        const t = e.changedTouches[0], dy = ty - t.clientY, dx = tx - t.clientX;
+        ty = null;
+        if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) step(Math.sign(dy));
+      }, { passive: true });
+      addEventListener("keydown", (e) => {
+        if (e.target !== document.body && e.target !== document.documentElement) return;
+        const dir = { ArrowDown: 1, PageDown: 1, " ": e.shiftKey ? -1 : 1, ArrowUp: -1, PageUp: -1 }[e.key];
+        if (dir) { e.preventDefault(); step(dir); }
+        else if (e.key === "Home") { e.preventDefault(); if (playing) pause(); glideTo(0); }
+        else if (e.key === "End") { e.preventDefault(); if (playing) pause(); glideTo(maxY()); }
+      });
+      // menu and chapter links glide too
+      document.querySelectorAll('a[href^="#"]').forEach((a) => a.addEventListener("click", (e) => {
+        const el = document.getElementById(a.getAttribute("href").slice(1));
+        if (!el) return;
+        e.preventDefault(); if (playing) pause();
+        let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop;
+        glideTo(y);
+      }));
+    } else {
+      for (const ev of ["wheel", "touchstart"]) addEventListener(ev, () => playing && pause(), { passive: true });
+    }
+    addEventListener("scroll", () => { if (!playing && !glide) label(); }, { passive: true });
+    label();
+    if (/[?&]play\b/.test(location.search) || location.hash === "#play") setTimeout(play, 600);
+    return { stops, along, step, get gliding() { return !!glide; }, get playing() { return playing; } };
+  })();
+  window.SpotMotion = Motion;   // for the page's own tests
 
   // ── time-lapse: a fast scroll sweeps light across the cards and streaks it behind them; an easy pace
   //    (a wheel notch is under 1 px/ms) shows nothing ──
