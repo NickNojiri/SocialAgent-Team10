@@ -1,0 +1,23 @@
+# The door to the team database (docker-compose.teamdb.yml). HTTPS only (Caddy gets the
+# certificate), a teammate's login on every request, the Chroma API and nothing else.
+{
+	admin off
+}
+
+{$TEAMDB_SITE} {
+	header {
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	@api path /api/*
+	handle @api {
+		basic_auth {
+			import /etc/caddy/teamdb_users.caddy
+		}
+		reverse_proxy teamdb:8000
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

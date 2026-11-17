@@ -230,3 +230,6 @@ fixtures/labels.batch*.jsonl
 fixtures/labels.inbox.jsonl
 data/dm_seen.json
 data/dm_watch.on
+
+# Team database logins (bcrypt hashes) written by scripts/teamdb_users.py
+deploy/teamdb_users.caddy
