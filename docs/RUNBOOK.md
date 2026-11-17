@@ -251,6 +251,43 @@ forget a server, delete a spot or change settings.
 - **Upgrading from v1 tokens:** old `/share` and `/app` links stop working. Ask people to
   run `/share` or `/app` again, or set `SPOTBOT_ACCEPT_V1_TOKENS=1` for one release.
 
+## Team database: the class's central database (CECS 491A, Submission 1)
+
+The assignment needs one database everyone saves to and reads from with code in their IDE.
+It's SpotBot's own engine, ChromaDB (same version as the app), on the Oracle VM, behind
+Caddy: HTTPS, one login per teammate, only the Chroma API (`docker-compose.teamdb.yml`,
+`deploy/Caddyfile.teamdb`). It holds demo records only (collection `team_demo`), never a
+server's real catalog. Chroma itself publishes no port; `test_teamdb.py` pins that.
+
+**On the VM, once** (after the Oracle setup: Docker installed, ports 80 and 443 open):
+
+```bash
+# DuckDNS answers for db.<name>.duckdns.org too, so no new DNS record is needed
+echo "TEAMDB_SITE=db.spotbot-nick.duckdns.org" >> .env
+sudo apt-get install -y python3-bcrypt
+python3 scripts/teamdb_users.py add nojiri  "Nicholas Nojiri"
+python3 scripts/teamdb_users.py add gabat   "Blessie Gabat"
+python3 scripts/teamdb_users.py add mojarro "Valeria Mojarro"
+python3 scripts/teamdb_users.py add reyes   "Kimberly Reyes"
+docker compose -f docker-compose.teamdb.yml up -d
+```
+
+Each `add` prints that person's password once: send it to them in a Discord DM. Caddy gets
+the certificate by itself on first start. It uses ports 80 and 443, so if the staging stack
+later runs on the same VM with its own domain, give staging a tunnel instead (see Staging).
+
+**On each teammate's computer** (VS Code, repo open, `.venv` active), add to `.env`:
+`TEAMDB_URL=https://db.spotbot-nick.duckdns.org`, `TEAMDB_USER=…`, `TEAMDB_PASSWORD=…`, then:
+
+```bash
+python scripts/teamdb_demo.py check
+python scripts/teamdb_demo.py save --name "Your Full Name" --note "Tim Ho Wan, Irvine"
+python scripts/teamdb_demo.py list
+```
+
+`list` shows everyone's records with who saved them: that's the proof it's one shared
+database. A wrong password says "refused your login"; a VM that's down says "can't reach".
+
 ## Staging — the always-on instance (#11)
 
 `docker-compose.staging.yml` runs the whole stack in containers: the admin app

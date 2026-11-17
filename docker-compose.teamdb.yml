@@ -1,0 +1,43 @@
+# The team's central database for CECS 491A (Submission 1): SpotBot's own database engine,
+# ChromaDB, on the Oracle VM, reached over HTTPS with one login per teammate.
+#
+#   TEAMDB_SITE=db.<name>.duckdns.org        (in .env; DuckDNS covers subdomains of your name)
+#   python3 scripts/teamdb_users.py add nojiri "Nicholas Nojiri"     (once per teammate)
+#   docker compose -f docker-compose.teamdb.yml up -d
+#
+# Chroma itself publishes no port: only Caddy can reach it, and Caddy lets in only the
+# Chroma API, only over HTTPS, only with a teammate's login. Caddy takes 80 and 443 on
+# the VM (the certificate challenge and HTTPS). Teammates run scripts/teamdb_demo.py.
+#
+# It holds demo records only (collection team_demo), never SpotBot's real catalogs, so
+# nothing anyone posts in Discord leaves the machine that captured it.
+name: spotbot-teamdb
+
+services:
+  teamdb:
+    image: chromadb/chroma:1.5.7          # the same version as requirements.txt's chromadb
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - teamdb:/data
+
+  teamdb-proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      TEAMDB_SITE: ${TEAMDB_SITE:?set TEAMDB_SITE in .env, e.g. db.spotbot-nick.duckdns.org}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile.teamdb:/etc/caddy/Caddyfile:ro
+      - ./deploy/teamdb_users.caddy:/etc/caddy/teamdb_users.caddy:ro
+      - teamdb_caddy:/data
+    depends_on:
+      - teamdb
+
+volumes:
+  teamdb:
+  teamdb_caddy:
