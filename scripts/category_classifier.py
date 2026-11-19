@@ -40,7 +40,7 @@ def reel_text(row: dict) -> str:
     i = row.get("input") or {}
     parts = [i.get("caption"), i.get("og_title"), i.get("handle"), i.get("location_text"),
              " ".join(i.get("hashtags") or []), i.get("transcript"), i.get("ocr")]
-    return " ".join(p for p in parts if p)[:2000]
+    return " ".join(p for p in parts if p)[:1000]
 
 
 def rules_category(row: dict) -> str:
@@ -91,12 +91,50 @@ def cached(embed: Embed, name: str, path: Path = CACHE) -> Embed:
 
     def run(texts):
         keys = [f"{name}:{hashlib.sha256(t.encode('utf-8')).hexdigest()}" for t in texts]
-        missing = [t for t, k in zip(texts, keys) if k not in store]
+        missing = list(dict((k, t) for t, k in zip(texts, keys) if k not in store).items())
         if missing:
-            for t, v in zip(missing, embed(missing)):
-                store[f"{name}:{hashlib.sha256(t.encode('utf-8')).hexdigest()}"] = v
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(store), encoding="utf-8", newline="\n")
+            dimension = next(
+                (len(store[k]) for k in keys if k in store), None
+            )
+            if dimension is None and not any(text.strip() for _, text in missing):
+                raise ValueError("cannot infer embedding size for an all-empty input batch")
+
+            total, completed = len(missing), 0
+            pending_empty = []
+
+            def save(key, vector):
+                store[key] = vector
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(store), encoding="utf-8", newline="\n")
+
+            def show_progress():
+                nonlocal completed
+                completed += 1
+                print(f"\rEmbedding {completed}/{total}", file=sys.stderr, end="", flush=True)
+
+            print(f"Embedding 0/{total}", file=sys.stderr, flush=True)
+            for key, text in missing:
+                if not text.strip():
+                    if dimension is None:
+                        pending_empty.append(key)
+                    else:
+                        # Ollama returns no embedding for an empty prompt. A zero
+                        # vector preserves this row's position without new content.
+                        save(key, [0.0] * dimension)
+                        show_progress()
+                    continue
+
+                vector = embed([text])[0]
+                if dimension is None:
+                    dimension = len(vector)
+                save(key, vector)
+                show_progress()
+                for empty_key in pending_empty:
+                    save(empty_key, [0.0] * dimension)
+                    show_progress()
+                pending_empty.clear()
+
+            print(file=sys.stderr, flush=True)
         return [store[k] for k in keys]
     return run
 

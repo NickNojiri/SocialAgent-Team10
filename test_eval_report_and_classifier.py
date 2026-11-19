@@ -1,5 +1,7 @@
 """scripts/eval_report.py (Track B #17) and scripts/category_classifier.py (Track B #16)."""
+import hashlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -60,3 +62,50 @@ def test_embeddings_are_cached(tmp_path):
     run = cc.cached(embed, "m", tmp_path / "c.json")
     assert run(["a", "bb"]) == [[1.0], [2.0]] and run(["bb", "a"]) == [[2.0], [1.0]]
     assert calls == [["a", "bb"]]
+
+
+def test_empty_text_gets_aligned_zero_vector_without_embedding(tmp_path):
+    calls = []
+
+    def embed(texts):
+        calls.append(list(texts))
+        return [[1.0, 2.0] for _ in texts]
+
+    run = cc.cached(embed, "m", tmp_path / "c.json")
+    vectors = run(["caption", "", "   ", "more text"])
+
+    assert vectors == [[1.0, 2.0], [0.0, 0.0], [0.0, 0.0], [1.0, 2.0]]
+    assert calls == [["caption"], ["more text"]]
+
+
+def test_reel_text_truncates_to_1000_chars_and_preserves_beginning():
+    text = cc.reel_text({"input": {"caption": "beginning " + "x" * 1200}})
+
+    assert len(text) == 1000
+    assert text.startswith("beginning ")
+
+
+def test_embedding_cache_recovers_after_mid_batch_failure(tmp_path, capsys):
+    path = tmp_path / "cache.json"
+    calls = []
+    fail = [True]
+
+    def embed(texts):
+        calls.extend(texts)
+        if texts == ["second"] and fail[0]:
+            raise RuntimeError("simulated Ollama failure")
+        return [[float(len(texts[0]))]]
+
+    run = cc.cached(embed, "m", path)
+    with pytest.raises(RuntimeError, match="simulated Ollama failure"):
+        run(["first", "second", "third"])
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    first_key = f"m:{hashlib.sha256(b'first').hexdigest()}"
+    assert saved[first_key] == [5.0]
+    assert "Embedding 1/3" in capsys.readouterr().err
+
+    fail[0] = False
+    assert run(["first", "second", "third"]) == [[5.0], [6.0], [5.0]]
+    assert calls == ["first", "second", "second", "third"]
+    assert "Embedding 2/2" in capsys.readouterr().err
