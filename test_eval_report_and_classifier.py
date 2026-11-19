@@ -61,7 +61,7 @@ def test_embeddings_are_cached(tmp_path):
 
     run = cc.cached(embed, "m", tmp_path / "c.json")
     assert run(["a", "bb"]) == [[1.0], [2.0]] and run(["bb", "a"]) == [[2.0], [1.0]]
-    assert calls == [["a", "bb"]]
+    assert calls == [["a"], ["bb"]]
 
 
 def test_empty_text_gets_aligned_zero_vector_without_embedding(tmp_path):
