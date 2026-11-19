@@ -108,3 +108,33 @@ def test_an_unreachable_server_says_so(monkeypatch):
     monkeypatch.setattr(demo, "connect", boom)
     with pytest.raises(SystemExit, match="can't reach 127.0.0.1"):
         demo.main(["check"])
+
+
+def test_chroma_cloud_is_used_when_its_key_is_set(monkeypatch):
+    import chromadb
+    calls = {}
+    monkeypatch.setattr(chromadb, "CloudClient", lambda **kw: calls.update(kw) or "cloud-client")
+    for k in ("TEAMDB_URL", "TEAMDB_PASSWORD"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("TEAMDB_CLOUD_API_KEY", "ck-test")
+    monkeypatch.setenv("TEAMDB_CLOUD_TENANT", "t-1")
+    monkeypatch.setenv("TEAMDB_CLOUD_DATABASE", "spotbot-team")
+    monkeypatch.setenv("TEAMDB_USER", "reyes")
+    assert demo.connect() == ("cloud-client", "reyes")
+    assert (calls["api_key"], calls["tenant"], calls["database"]) == ("ck-test", "t-1", "spotbot-team")
+    assert demo.where() == "Chroma Cloud (database spotbot-team)"
+    monkeypatch.delenv("TEAMDB_USER")
+    with pytest.raises(SystemExit, match="TEAMDB_USER"):
+        demo.connect()
+
+
+def test_a_refused_cloud_key_gets_a_plain_message(monkeypatch):
+    monkeypatch.setenv("TEAMDB_CLOUD_API_KEY", "bad")
+    monkeypatch.setenv("TEAMDB_CLOUD_TENANT", "t")
+    monkeypatch.setenv("TEAMDB_CLOUD_DATABASE", "d")
+    monkeypatch.setenv("TEAMDB_USER", "reyes")
+    def boom():
+        raise RuntimeError("403 Forbidden: Permission denied")
+    monkeypatch.setattr(demo, "connect", boom)
+    with pytest.raises(SystemExit, match="Chroma Cloud refused the key"):
+        demo.main(["check"])
