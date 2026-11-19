@@ -8,11 +8,19 @@ script is the demo: run it from VS Code's terminal.
     python scripts/teamdb_demo.py save --name "Nicholas Nojiri" --note "Tim Ho Wan, Irvine"
     python scripts/teamdb_demo.py list                                   # every teammate's records
 
-Your login lives in your own .env (never committed):
+Your login lives in your own .env (never committed). Either the team's Oracle server:
 
     TEAMDB_URL=https://db.<the team's name>.duckdns.org
     TEAMDB_USER=<your username>
     TEAMDB_PASSWORD=<the password Nicholas sent you privately>
+
+or the team's Chroma Cloud database (the same engine, hosted by Chroma; the backup when
+the Oracle VM can't be reached):
+
+    TEAMDB_CLOUD_API_KEY=<the key Nicholas sent you privately>
+    TEAMDB_CLOUD_TENANT=<tenant id from the Chroma Cloud dashboard>
+    TEAMDB_CLOUD_DATABASE=<database name, e.g. spotbot-team>
+    TEAMDB_USER=<your username, so records say who saved them>
 
 It writes to one collection, `team_demo`, never to a server's real catalog. Each record
 says who saved it and when, so `list` shows every teammate's writes: that's the proof
@@ -72,10 +80,32 @@ def embed(texts: list[str]) -> list[list[float]]:
     return out
 
 
+def cloud_settings() -> tuple[str, str, str, str] | None:
+    """(api key, tenant, database, user) when the team uses Chroma Cloud, else None."""
+    key = os.environ.get("TEAMDB_CLOUD_API_KEY", "").strip()
+    if not key:
+        return None
+    tenant, db, user = (os.environ.get(k, "").strip() for k in ("TEAMDB_CLOUD_TENANT", "TEAMDB_CLOUD_DATABASE", "TEAMDB_USER"))
+    missing = [k for k, v in (("TEAMDB_CLOUD_TENANT", tenant), ("TEAMDB_CLOUD_DATABASE", db), ("TEAMDB_USER", user)) if not v]
+    if missing:
+        raise SystemExit(f"set {', '.join(missing)} in your .env (see the top of this file)")
+    return key, tenant, db, user
+
+
+def where() -> str:
+    cloud = cloud_settings()
+    return f"Chroma Cloud (database {cloud[2]})" if cloud else settings()[0]
+
+
 def connect():
     import chromadb
     from chromadb.config import Settings
 
+    cloud = cloud_settings()
+    if cloud:
+        key, tenant, db, user = cloud
+        return chromadb.CloudClient(tenant=tenant, database=db, api_key=key,
+                                    settings=Settings(anonymized_telemetry=False)), user
     host, port, ssl, user, pw = settings()
     auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
     client = chromadb.HttpClient(host=host, port=port, ssl=ssl, headers={"Authorization": f"Basic {auth}"},
@@ -91,8 +121,7 @@ def collection(client):
 def cmd_check(_args) -> None:
     client, user = connect()
     client.heartbeat()
-    host = settings()[0]
-    print(f"connected to the team database at {host} as {user}")
+    print(f"connected to the team database at {where()} as {user}")
     print(f"collection '{COLLECTION}': {collection(client).count()} records")
 
 
@@ -129,6 +158,10 @@ def diagnose(exc: Exception) -> str:
     import urllib.request
 
     msg = str(exc)
+    if cloud_settings():
+        if any(w in msg for w in ("401", "403", "Unauthorized", "Forbidden", "Permission")):
+            return "Chroma Cloud refused the key (check TEAMDB_CLOUD_API_KEY, _TENANT and _DATABASE)"
+        return msg or type(exc).__name__
     if "401" in msg or "Unauthorized" in msg:
         return "the database refused your login (check TEAMDB_USER and TEAMDB_PASSWORD)"
     try:
