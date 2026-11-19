@@ -5,7 +5,8 @@
 Creates .env from .env.example if there is none, then fills SPOTBOT_SIGNING_KEY
 with a fresh random key if it is missing or empty. An existing key is never
 replaced — rotating it would revoke every /share link already sent — and nothing
-else in the file is touched. Safe to run any number of times; setup.ps1 runs it.
+else in the file is touched. Safe to run any number of times; setup.ps1 runs it. It also creates
+data/revoked_tokens.json as {} when missing (token revocation list, #30).
 """
 
 from __future__ import annotations
@@ -51,7 +52,19 @@ def ensure(env_path: Path, example_path: Path) -> str:
     return "created" if created else status
 
 
+def ensure_revocation_list(path: Path) -> bool:
+    """Create the token revocation list as {} if it's missing (#30). The API refuses every
+    tenant request while it's missing, so this runs before anything starts. True if created."""
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n", encoding="utf-8", newline="\n")
+    return True
+
+
 def main() -> None:
+    if ensure_revocation_list(REPO / "data" / "revoked_tokens.json"):
+        print("created data/revoked_tokens.json (no tokens revoked yet)")
     status = ensure(REPO / ".env", REPO / ".env.example")
     messages = {
         "created": f"created .env with a new {ENV_VAR}",

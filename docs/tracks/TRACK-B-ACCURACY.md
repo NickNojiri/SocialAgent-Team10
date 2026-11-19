@@ -101,35 +101,41 @@ unavailable until that slice is supplied.
 ### Phase 1 — Sep 15 – Oct 3 (100 pts)
 
 **#4 Trustworthy accuracy scorecard ★ (60)**
-- [ ] Print a 95% confidence interval (Wilson) next to every accuracy number.
-- [ ] Add a before/after mode with a **paired** test (McNemar) so noise isn't read as
+- [x] Print a 95% confidence interval (Wilson) next to every accuracy number.
+- [x] Add a before/after mode with a **paired** test (McNemar) so noise isn't read as
       progress.
-- [ ] Lock the held-out test set: make it loud and deliberate to look at `--split test`.
-- [ ] **Done when:** `python -m src.ingestion.eval --offline --split test` prints every
-      metric with an interval, and a before/after run prints a p-value.
+- [x] Lock the held-out test set: make it loud and deliberate to look at `--split test`.
+- [x] **Done when:** `python -m src.ingestion.eval --offline --split test` prints every
+      metric with an interval, and a before/after run prints a p-value. (Built: Wilson
+      intervals, `--compare-stored` McNemar, `--final` + TEST_LEDGER.md.)
 
 **#5 Label provenance + agreement tool ★ (40)**
-- [ ] Add a per-row labeler field to `fixtures/labels.jsonl` and backfill what's known
+- [x] Add a per-row labeler field to `fixtures/labels.jsonl` and backfill what's known
       (~354 rows were labeled in Claude sessions with Nick as sole reviewer — record that
       honestly rather than inventing names).
 - [ ] Have two people label the same slice independently; compute **Cohen's kappa**.
+      **Only a person can do this part** (~20 min): `python scripts/kappa_batch.py export --n 40`,
+      label the sheet without looking at the answers, then `import … --labeler valeria`.
 - [ ] **Done when:** every row says who labeled it, and you can quote an agreement number
       on a shared slice.
 
 ### Phase 2 — Oct 6 – Oct 24 (130 pts)
 
 **#16 Learned category classifier (100)**
-- [ ] Embed captions with the local `mxbai-embed-large`; build per-category centroids or
-      train a small classifier — **on the training split only**.
+- [x] Embed captions with the local `mxbai-embed-large`; build per-category centroids or
+      train a small classifier — **on the training split only**. (`scripts/category_classifier.py`)
 - [ ] Beat "always guess `food_drink`" (54.7%) by more than the noise. Note: 27 of 43
       category errors are `→ other` (no keyword matched at all) — that's table coverage,
       not a representation problem, so check the cheap fix first.
 - [ ] **Done when:** a paired test on held-out data shows a real gain over the current
-      63.2%, with the interval printed.
+      63.2%, with the interval printed. **Nov 8:** the rules are now at 89.2% on dev, so
+      the bar moved. The script prints the paired test; it needs one run with Ollama up
+      (`python scripts/category_classifier.py`) to give the real number.
 
 **#17 Evaluation report generator (30)**
-- [ ] One command produces the accuracy report: metrics, intervals, charts, error table.
-- [ ] **Done when:** the final write-up can be rebuilt from that one command.
+- [x] One command produces the accuracy report: metrics, intervals, charts, error table.
+- [x] **Done when:** the final write-up can be rebuilt from that one command.
+      (`python scripts/eval_report.py` -> `docs/results/eval-report-dev.html`, Nov 8.)
 
 ### Phase 3 — Oct 27 – Nov 14 (100 pts)
 

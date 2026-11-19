@@ -58,7 +58,7 @@ from src.ingestion.serving.match import MatchError, MatchRooms
 from src.ingestion.serving.plans import (
     PlanError, apply_rsvp, open_poll, poll_summary, rsvp_summary, vote_poll,
 )
-from src.ingestion.serving.tenant_auth import SCOPE_GUEST, SCOPE_READ, authorize, mint_token
+from src.ingestion.serving.tenant_auth import SCOPE_GUEST, SCOPE_READ, TOKEN_RE, authorize, mint_token, record_link
 from src.ingestion.sinks.chroma_sink import ChromaSink, collection_for_guild
 from src.ingestion.sinks.jsonl_sink import JsonlSink
 
@@ -1013,7 +1013,7 @@ def get_settings(guild_id: str = "", x_tenant_token: str | None = TenantToken):
 def put_settings(body: SettingsBody, x_tenant_token: str | None = TenantToken):
     """Save what the wizard changed. Only the fields sent are touched, and the
     catalog never is, so re-running /setup can't wipe a server's spots."""
-    authorize(body.guild_id, x_tenant_token)
+    authorize(body.guild_id, x_tenant_token, operator=True)
     changes = {k: getattr(body, k) for k in body.model_fields_set if k != "guild_id"}
     try:
         _guild_settings.path_for(body.guild_id)          # a bad server id: 400 before any lookup
@@ -1243,7 +1243,7 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
     `async` on purpose: it runs on the event loop and never awaits, so no
     capture worker can start a job or append a log line halfway through.
     """
-    authorize(body.guild_id, x_tenant_token)
+    authorize(body.guild_id, x_tenant_token, operator=True)      # never with a link (#30)
     gid = body.guild_id
     if not gid:
         raise HTTPException(400, "the shared catalog can't be deleted this way")
@@ -1269,7 +1269,7 @@ async def forget_server(body: ForgetBody, x_tenant_token: str | None = TenantTok
 
 @app.delete("/api/events/{event_id}")
 def delete_event(event_id: str, guild_id: str = "", x_tenant_token: str | None = TenantToken):
-    authorize(guild_id, x_tenant_token)
+    authorize(guild_id, x_tenant_token, operator=True)
     _sink_for(guild_id, create=False).collection.delete(ids=[event_id])
     return {"deleted": event_id}
 
@@ -1372,7 +1372,9 @@ def invite(body: InviteBody, x_tenant_token: str | None = TenantToken):
     authorize(body.guild_id, x_tenant_token, user_id=body.user_id)
     if not body.guild_id:
         raise HTTPException(400, "invites need a server or personal catalog")
-    return {"token": mint_token(body.guild_id, scope=SCOPE_GUEST)}
+    token = mint_token(body.guild_id, scope=SCOPE_GUEST)
+    record_link(token, scope=SCOPE_GUEST, guild_id=body.guild_id, user_id=body.user_id)
+    return {"token": token}
 
 
 # ── The phone app (ADR-0008 prototype): a PWA served from here ────────────────
@@ -1522,8 +1524,8 @@ def share(guild_id: str = "", t: str | None = None):
     scripts/make_share_link.py. Rotating SPOTBOT_SIGNING_KEY revokes every link.
     """
     authorize(guild_id, t, need=SCOPE_READ)
-    # Tokens are hex; anything else is dropped rather than injected into the page.
-    token = t if (t and all(c in "0123456789abcdef" for c in t)) else ""
+    # Only a well-formed token goes into the page; anything else is dropped, never injected.
+    token = t if (t and (TOKEN_RE.match(t) or (len(t) == 64 and all(c in "0123456789abcdef" for c in t)))) else ""
     return _SHARE_PAGE.replace("__TENANT_TOKEN__", token)
 
 

@@ -18,6 +18,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 os.environ.setdefault("SPOTBOT_SIGNING_KEY", "0" * 64)
+# The API refuses every tenant request without a revocation list (#30): give the bench its own.
+_REVOKED = Path(tempfile.mkdtemp(prefix="bench_revoked_")) / "revoked_tokens.json"
+_REVOKED.write_text("{}", encoding="utf-8")
+os.environ["SPOTBOT_REVOKED_TOKENS"] = str(_REVOKED)
+os.environ["SPOTBOT_MINTED_LINKS"] = str(_REVOKED.with_name("minted_links.jsonl"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 

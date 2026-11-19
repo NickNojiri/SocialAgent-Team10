@@ -27,7 +27,7 @@ from src.ingestion.serving.jobs import JobQueue
 from src.ingestion.serving.imports import ImportBacklog
 from src.ingestion.serving.match import MatchRooms
 from src.ingestion.serving.time_to_card import TimeToCardLog
-from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_GUEST, SCOPE_READ, mint_token
+from src.ingestion.serving.tenant_auth import ENV_VAR, SCOPE_GUEST, SCOPE_READ, mint_token, verify_token
 
 KEY = "0" * 64
 MINE = "111111111111111111"
@@ -705,10 +705,14 @@ def test_bot_and_api_mint_identical_tokens(monkeypatch):
     bot_side = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bot_side)
 
-    for guild, user, scope in [(MINE, "", "rw"), (MINE, ME, "rw"), ("dm-7", "", "r")]:
-        assert bot_side.mint_token(guild, scope=scope, user_id=user) == mint_token(guild, scope=scope, user_id=user)
+    jti, now = "0123456789abcdef0123456789abcdef", 1_800_000_000      # a shared test vector
+    for guild, user, scope in [(MINE, "", "rw"), (MINE, ME, "rw"), ("dm-7", "", "r"), (MINE, "", "g")]:
+        assert bot_side.mint_token(guild, scope=scope, user_id=user, jti=jti, now=now) == \
+            mint_token(guild, scope=scope, user_id=user, jti=jti, now=now)
     assert bot_side.tenant_headers("") == {}
-    assert bot_side.tenant_headers(MINE, user_id=ME) == {"X-Tenant-Token": mint_token(MINE, user_id=ME)}
+    token = bot_side.tenant_headers(MINE, user_id=ME)["X-Tenant-Token"]
+    assert token.startswith("v2.c.")                  # a vote is a 5-minute per-call token, not a link
+    assert verify_token(token, MINE, user_id=ME, kinds=("c",))
 
 
 # ── guest invite links (ADR-0008): read + RSVP/poll votes, nothing else ──────
@@ -755,7 +759,7 @@ def test_share_link_cannot_rsvp(client):
 
 def test_invite_mints_a_guest_token_for_that_guild_only(client):
     token = client.post("/api/invite", headers=hdr(mint_token(MINE)), json={"guild_id": MINE}).json()["token"]
-    assert token == _guest()
+    assert token.startswith("v2.l.") and verify_token(token, MINE, scope=SCOPE_GUEST)
     assert client.get(f"/api/events?guild_id={THEIRS}", headers=hdr(token)).status_code == 403
 
 

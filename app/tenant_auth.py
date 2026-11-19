@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import hmac
 import os
+import secrets
+import time
 from hashlib import sha256
 
 ENV_VAR = "SPOTBOT_SIGNING_KEY"
@@ -24,6 +26,17 @@ ENV_VAR = "SPOTBOT_SIGNING_KEY"
 SCOPE_READ = "r"
 SCOPE_WRITE = "rw"
 SCOPE_GUEST = "g"  # event-page invite links (ADR-0008); minted by the admin app
+
+# Token v2 (#30, GitHub #13): v2.<kind>.<jti>.<exp>.<sig>. Kind c = per-call, l = link.
+KIND_CALL = "c"
+KIND_LINK = "l"
+DAY = 86400
+MAX_TTL = {
+    (SCOPE_WRITE, KIND_CALL): 300,
+    (SCOPE_WRITE, KIND_LINK): 30 * DAY,
+    (SCOPE_GUEST, KIND_LINK): 14 * DAY,
+    (SCOPE_READ, KIND_LINK): 30 * DAY,
+}
 
 
 def _key() -> bytes:
@@ -36,9 +49,28 @@ def _key() -> bytes:
     return raw.encode()
 
 
-def mint_token(guild_id: str, *, scope: str = SCOPE_WRITE, user_id: str = "") -> str:
-    payload = f"v1\n{scope}\n{guild_id}\n{user_id}".encode()
-    return hmac.new(_key(), payload, sha256).hexdigest()
+def mint_token(guild_id: str, *, scope: str = SCOPE_WRITE, user_id: str = "", kind: str | None = None,
+               ttl: int | None = None, jti: str | None = None, now: float | None = None) -> str:
+    """rw without a user is a per-call token (5 min); everything else is a link."""
+    kind = kind or (KIND_CALL if scope == SCOPE_WRITE and not user_id else KIND_LINK)
+    if (scope, kind) not in MAX_TTL or (scope, kind) == (SCOPE_WRITE, KIND_LINK) and not user_id:
+        raise ValueError(f"no such token: scope {scope!r}, kind {kind!r}")
+    ttl = MAX_TTL[(scope, kind)] if ttl is None else min(ttl, MAX_TTL[(scope, kind)])
+    jti = jti or secrets.token_hex(16)
+    exp = int(now if now is not None else time.time()) + ttl
+    payload = f"v2\n{kind}\n{scope}\n{guild_id}\n{user_id}\n{jti}\n{exp}".encode()
+    return f"v2.{kind}.{jti}.{exp}.{hmac.new(_key(), payload, sha256).hexdigest()}"
+
+
+def signed_for(token: str, guild_id: str, *, scope: str = SCOPE_WRITE, user_id: str = "") -> bool:
+    """Whether `token` was signed with this key for this server, scope and user. No expiry or
+    revocation check: that's the API's job. Lets tests check a header without the random id."""
+    parts = (token or "").split(".")
+    if len(parts) != 5 or parts[0] != "v2" or not parts[3].isdigit():
+        return False
+    _, kind, jti, exp, sig = parts
+    payload = f"v2\n{kind}\n{scope}\n{guild_id}\n{user_id}\n{jti}\n{exp}".encode()
+    return hmac.compare_digest(sig, hmac.new(_key(), payload, sha256).hexdigest())
 
 
 def tenant_headers(guild_id: str, *, user_id: str = "") -> dict[str, str]:
@@ -49,4 +81,5 @@ def tenant_headers(guild_id: str, *, user_id: str = "") -> dict[str, str]:
     """
     if not str(guild_id or ""):
         return {}
-    return {"X-Tenant-Token": mint_token(str(guild_id), user_id=str(user_id))}
+    # Always a 5-minute per-call token, even when it acts for a user (a vote).
+    return {"X-Tenant-Token": mint_token(str(guild_id), user_id=str(user_id), kind=KIND_CALL)}

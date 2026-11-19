@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from src.ingestion.browser.url_guard import BlockedURL, get_following
+
 from src.ingestion.schemas.results import FetchStatus
 from src.ingestion.schemas.snapshot import PageSnapshot
 
@@ -96,8 +98,11 @@ async def try_embed_fallback(original_url: str) -> Optional[PageSnapshot]:
     log.info(f"[embed] LOGIN_WALL on main page — trying {embed_url}")
 
     try:
-        async with httpx.AsyncClient(headers=_HEADERS, follow_redirects=True, timeout=_TIMEOUT) as client:
-            resp = await client.get(embed_url)
+        async with httpx.AsyncClient(headers=_HEADERS, timeout=_TIMEOUT) as client:
+            resp = await get_following(client, embed_url)      # every redirect hop checked (T3)
+    except BlockedURL as exc:
+        log.warning(f"[embed] {exc}")
+        return None
     except httpx.RequestError as exc:
         log.warning(f"[embed] request error: {exc}")
         return None

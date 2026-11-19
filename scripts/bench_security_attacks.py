@@ -23,6 +23,7 @@ class AttackClassResults:
         self.classes = {
             "injected caption": {"attacks": 0, "refused": 0, "got_through": 0},
             "internal-address/SSRF": {"attacks": 0, "refused": 0, "got_through": 0},
+            "token expiry/replay/revocation": {"attacks": 0, "refused": 0, "got_through": 0},
         }
 
     def pytest_runtest_logreport(self, report):
@@ -33,6 +34,8 @@ class AttackClassResults:
             category = "injected caption"
         elif "test_attack_internal_address_ssrf.py::" in report.nodeid:
             category = "internal-address/SSRF"
+        elif "test_attack_token_replay.py::" in report.nodeid:
+            category = "token expiry/replay/revocation"
         else:
             return
         counts = self.classes[category]
@@ -72,6 +75,7 @@ def main() -> int:
             str(REPO / "test_attack_injected_caption.py"),
             str(REPO / "test_attack_internal_address_ssrf.py"),
             str(REPO / "test_attack_no_token.py"),
+            str(REPO / "test_attack_token_replay.py"),
         ],
         plugins=[results],
     )

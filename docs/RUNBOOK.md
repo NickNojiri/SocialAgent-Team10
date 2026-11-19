@@ -229,8 +229,27 @@ A rotation without `--grace` also removes any `SPOTBOT_SIGNING_KEY_PREVIOUS` sti
 `.env`, so a leak found during a grace period is handled by the plain `--confirm` steps.
 
 **What rotation does not do:** it can't kill one leaked token while keeping the rest —
-it kills all of them. Per-token expiry and revocation is Track D's #30 (Authentication &
-session hardening), built on this same key.
+it kills all of them. For one token, revoke it instead (below). Recommended grace period:
+**30 days**, the longest link lifetime, so no link breaks before its own expiry.
+
+### Tokens expire, and one can be revoked (#30)
+
+Tokens are `v2.<kind>.<id>.<exp>.<sig>` (contract on GitHub #13). The bot's per-call
+tokens last 5 minutes; `/app` and `/share` links 30 days, guest invites 14. A link can't
+forget a server, delete a spot or change settings.
+
+- **Revoke one token or link:** `python scripts/revoke_token.py <token or id>`. Works on
+  the next request, no restart; other tokens keep working. **All links for one server:**
+  `python scripts/revoke_token.py --guild <id>` (links the admin app and
+  `make_share_link.py` minted are listed in `data/minted_links.jsonl`; the bot's /share
+  and /app links aren't, so revoke those by token or rotate).
+- **`data/revoked_tokens.json` must exist.** `scripts/ensure_signing_key.py` creates it as
+  `{}` (setup, `run_local.ps1` and SpotBot Control run it). Missing or broken means every
+  tenant request gets 503 on purpose, so deleting it can't un-revoke anything. On the
+  staging host, run that script once before `docker compose up` (the container reads the
+  host's `./data`).
+- **Upgrading from v1 tokens:** old `/share` and `/app` links stop working. Ask people to
+  run `/share` or `/app` again, or set `SPOTBOT_ACCEPT_V1_TOKENS=1` for one release.
 
 ## Staging — the always-on instance (#11)
 

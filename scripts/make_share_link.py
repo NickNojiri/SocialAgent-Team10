@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token  # noqa: E402
+from src.ingestion.serving.tenant_auth import SCOPE_READ, mint_token, record_link  # noqa: E402
 
 
 def main() -> None:
@@ -22,6 +22,7 @@ def main() -> None:
     base = sys.argv[2].rstrip("/") if len(sys.argv) > 2 else "http://localhost:8010"
     try:
         token = mint_token(guild_id, scope=SCOPE_READ)
+        record_link(token, scope=SCOPE_READ, guild_id=guild_id)
     except Exception as exc:          # fastapi.HTTPException(503) when the key is unset
         raise SystemExit(
             "SPOTBOT_SIGNING_KEY is not set in this shell. Load .env first "

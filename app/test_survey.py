@@ -14,7 +14,9 @@ import pytest
 import bot
 import cards
 import feedback
-from tenant_auth import tenant_headers
+from tenant_auth import signed_for
+
+_signed = lambda h, g, u="": signed_for(h.get("X-Tenant-Token", ""), g, user_id=u)   # signed for this server (and user)  # noqa: E731
 
 pytestmark = pytest.mark.asyncio
 
@@ -90,7 +92,7 @@ async def test_ten_taps_send_the_survey_with_this_servers_token(monkeypatch):
     url, body, headers = fake.calls[0]
     assert url == f"{cards.ADMIN_URL}/api/survey"
     assert body == {"guild_id": "99", "answers": taps, "participant": "P3"}
-    assert headers == tenant_headers("99")
+    assert _signed(headers, "99")
     done = interaction.response.edits[0]
     assert done["embed"].title == "✅ Thank you!" and done["view"] is None
     assert "80" not in done["embed"].description            # no score shown to the participant
